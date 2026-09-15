@@ -72,6 +72,13 @@ export default class EntityConfig {
    * offset callout + leader line; below it the pill centers on the point.
    */
   pillCalloutMinZoom;
+  /**
+   * @type {string|null} Entity attribute holding the angle, in degrees, to
+   * turn a picture marker by. Null turns nothing.
+   */
+  rotationAttribute;
+  /** @type {number} Seconds a change of angle takes to animate. 0 is instant. */
+  rotationTransition;
 
   /** @type {CircleConfig} */
   circleConfig;
@@ -138,6 +145,8 @@ export default class EntityConfig {
     this.useBaseEntityOnly = config.use_base_entity_only ?? false;
     this.positionUpdateThreshold = config.position_update_threshold ?? 10;
     this.pillCalloutMinZoom = config.pill_callout_min_zoom ?? 15;
+    this.rotationAttribute = EntityConfig._nonEmptyString(config.rotation_attribute);
+    this.rotationTransition = EntityConfig._nonNegativeSeconds(config.rotation_transition);
 
     this.circleConfig = new CircleConfig(config.circle, this.color);
     this.geoJsonConfig = new GeoJsonConfig(config.geojson, this.color);
@@ -191,6 +200,24 @@ export default class EntityConfig {
     }
 
     throw Error(`Unknown tap action "${tap_action.action}". Ensure action on tap_action is set.`);
+  }
+
+  /**
+   * @param {*} value
+   * @returns {string|null}
+   */
+  static _nonEmptyString(value) {
+    return (typeof value === "string" && value.trim() !== "") ? value.trim() : null;
+  }
+
+  /**
+   * @param {*} value
+   * @returns {number} the value if it is a finite, non-negative number of seconds, else 0
+   */
+  static _nonNegativeSeconds(value) {
+    if (typeof value !== "number" && typeof value !== "string") return 0;
+    const n = Number(value);
+    return (Number.isFinite(n) && n >= 0) ? n : 0;
   }
 
   get hasHistory() {

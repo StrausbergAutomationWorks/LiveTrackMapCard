@@ -12,6 +12,24 @@ export function shouldOverlayPictureLabel(prefix, suffix, label) {
   return Boolean(prefix || suffix || (label && String(label).trim()));
 }
 
+/**
+ * Inline style turning a marker picture. Empty when there is no angle.
+ *
+ * The angle is used exactly as given - an accumulated value past 360 or below
+ * 0 is what keeps a CSS transition turning the short way.
+ * @param {string} rotation degrees, or empty for none
+ * @param {string} transition seconds
+ * @returns {string}
+ */
+export function pictureRotationStyle(rotation, transition) {
+  if (rotation == null || String(rotation).trim() === "") return "";
+  const deg = Number(rotation);
+  if (!Number.isFinite(deg)) return "";
+  const t = Number(transition);
+  const secs = Number.isFinite(t) && t >= 0 ? t : 0;
+  return `transform: rotate(${deg}deg); transition: transform ${secs}s linear;`;
+}
+
 export default class MapCardEntityMarker extends LitElement {
   static get properties() {
     return {
@@ -22,6 +40,8 @@ export default class MapCardEntityMarker extends LitElement {
       'suffix': {type: String, attribute: 'suffix'},
       'tooltip': {type: String, attribute: 'tooltip'},
       'picture': {type: String, attribute: 'picture'},
+      'rotation': {type: String, attribute: 'rotation'},
+      'rotationTransition': {type: String, attribute: 'rotation-transition'},
       'icon': {type: String, attribute: 'icon'},
       'placeIcon': {type: String, attribute: 'place-icon'},
       'callout': {type: String, attribute: 'callout'},
@@ -109,7 +129,7 @@ export default class MapCardEntityMarker extends LitElement {
     if(this.picture) {
       const hasLabel = shouldOverlayPictureLabel(this.prefix, this.suffix, this.label);
       return html`
-        <div class="entity-picture" style="background-image: url(${this.picture})"></div>
+        <div class="entity-picture" style="background-image: url(${this.picture}); ${pictureRotationStyle(this.rotation, this.rotationTransition)}"></div>
         ${hasLabel ? html`
           <div class="picture-label">
             <span class="prefix" style="display: ${this.prefix ? 'initial' : 'none'}">${this.prefix}</span>

@@ -44,6 +44,18 @@ export default class Entity {
    * @type {string|null}
    */
   _currentPicture;
+  /**
+   * The continuous angle last computed by rotationDegrees().
+   * @private
+   * @type {number|undefined}
+   */
+  _rotation;
+  /**
+   * The angle the marker element was last given.
+   * @private
+   * @type {number|null}
+   */
+  _currentRotation;
   /** 
    * @private
    * @type {boolean} 
@@ -136,6 +148,34 @@ export default class Entity {
       return null;
     }
     return this.picture;
+  }
+
+  /**
+   * The angle to turn the marker's picture by, in degrees, or null when
+   * rotation is not configured or the attribute holds no usable number.
+   *
+   * KEPT CONTINUOUS ON PURPOSE. A CSS transition interpolates the number it
+   * is given, so a bearing crossing north - 350 to 10 - written as 10 would
+   * turn the marker 340 degrees backwards. Each call adds the shortest delta
+   * to the last angle instead, giving 370. A missing value returns null but
+   * keeps the last angle, so the turn stays short when the value returns.
+   * @returns {number|null}
+   */
+  rotationDegrees() {
+    const attr = this.config.rotationAttribute;
+    if (!attr) return null;
+    const value = this.attributes[attr];
+    if (typeof value !== "number" && !(typeof value === "string" && value.trim() !== "")) {
+      return null;
+    }
+    const raw = Number(value);
+    if (!Number.isFinite(raw)) return null;
+    if (this._rotation === undefined) {
+      this._rotation = ((raw % 360) + 360) % 360;
+    } else {
+      this._rotation += ((((raw - this._rotation) % 360) + 540) % 360) - 180;
+    }
+    return this._rotation;
   }
 
   /** @returns {LatLng} */
@@ -417,6 +457,7 @@ export default class Entity {
       }
 
       this.refreshMarkerPicture();
+      this.refreshMarkerRotation();
       this.updateMarkerPosition();
     }
 
@@ -442,17 +483,42 @@ export default class Entity {
     const wanted = this.markerPicture;
     if (wanted == this._currentPicture) return;
 
-    const value = wanted ?? "";
-    this.marker.getElement?.()?.querySelector(MARKER_TAG)?.setAttribute("picture", value);
+    this._setMarkerAttribute("picture", wanted ?? "");
+    this._currentPicture = wanted;
+  }
 
-    // Leaflet re-parses the DivIcon html whenever it rebuilds the icon -
-    // leaving a cluster, for instance - so the stored string must carry the
-    // new value too, or the marker reverts.
+  /**
+   * Give an existing marker the entity's current angle. Same reasoning as
+   * refreshMarkerPicture(): in place, never a rebuild. `rotation` is a
+   * reactive property on the marker element and its CSS transition does the
+   * turning.
+   */
+  refreshMarkerRotation() {
+    if (!this.marker) return;
+    const wanted = this.rotationDegrees();
+    if (wanted == this._currentRotation) return;
+    this._setMarkerAttribute("rotation", wanted ?? "");
+    this._currentRotation = wanted;
+  }
+
+  /**
+   * Set an attribute on the live marker element AND in the DivIcon's stored
+   * html. Leaflet re-parses that html whenever it rebuilds the icon - leaving
+   * a cluster, for instance - so a value written only to the element reverts.
+   * @private
+   * @param {string} name attribute name, as written in createMapMarker()
+   * @param {string|number} value
+   */
+  _setMarkerAttribute(name, value) {
+    const text = String(value);
+    this.marker.getElement?.()?.querySelector(MARKER_TAG)?.setAttribute(name, text);
     const iconOptions = this.marker.options?.icon?.options;
     if (iconOptions && typeof iconOptions.html === "string") {
-      iconOptions.html = iconOptions.html.replace(/picture="[^"]*"/, () => `picture="${value}"`);
+      // Anchored on the preceding whitespace so `rotation` cannot match
+      // inside `rotation-transition` or any other *-rotation attribute.
+      const pattern = new RegExp(`(\\s)${name}="[^"]*"`);
+      iconOptions.html = iconOptions.html.replace(pattern, (_, ws) => `${ws}${name}="${text}"`);
     }
-    this._currentPicture = wanted;
   }
 
   updateMarkerPosition() {
@@ -479,6 +545,8 @@ export default class Entity {
       icon = null;
     }
     this._currentPicture = picture;
+    const rotation = this.rotationDegrees();
+    this._currentRotation = rotation;
 
     const extraCssClasses = this.darkMode ? "dark" : "";
     // Pill mode (opt-in via display: pill): zone icon + initials when the entity
@@ -513,6 +581,8 @@ export default class Entity {
             tooltip="${this.tooltip}"
             icon="${icon ?? ""}"
             picture="${picture ?? ""}"
+            rotation="${rotation ?? ""}"
+            rotation-transition="${this.config.rotationTransition ?? 0}"
             place-icon="${placeIcon ?? ""}"
             callout="${callout}"
             color="${this.config.color}"

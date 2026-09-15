@@ -9,7 +9,10 @@ jest.mock('./EntityHistoryManager.js');
 
 const noop = jest.fn();
 
-function makeEntity({ display = 'marker', picture = 'https://ha/pic-a.svg' } = {}) {
+function makeEntity({
+  display = 'marker', picture = 'https://ha/pic-a.svg',
+  rotationAttribute = null, rotationTransition = 0, bearing,
+} = {}) {
   const hass = {
     states: {
       'geo_location.x': {
@@ -19,6 +22,7 @@ function makeEntity({ display = 'marker', picture = 'https://ha/pic-a.svg' } = {
           entity_picture: picture,
           latitude: 41.9,
           longitude: -87.9,
+          ...(bearing === undefined ? {} : { icon_rotation_deg: bearing }),
         },
       },
     },
@@ -31,6 +35,7 @@ function makeEntity({ display = 'marker', picture = 'https://ha/pic-a.svg' } = {
     prefix: '', suffix: '', label: null, size: 24, color: 'red',
     zIndexOffset: 0, tapAction: {}, css: '', pillCalloutMinZoom: 15,
     positionUpdateThreshold: 10, circleConfig: {}, geoJsonConfig: {},
+    rotationAttribute, rotationTransition,
   };
   const map = { distance: jest.fn(() => 0), getZoom: jest.fn(() => 10) };
   const entity = new Entity(config, hass, map, noop, noop, noop, false);
@@ -166,5 +171,178 @@ describe('a changed entity_picture', () => {
     setPicture(hass, 'https://ha/pic-b.svg');
     await entity.update();
     expect(fake.setLatLng).toHaveBeenCalledTimes(1);
+  });
+});
+
+// rotation_attribute: turn the marker's picture by an entity attribute, with
+// a CSS transition so a course change slides instead of snapping. Mutated in
+// place like the picture - a rebuild would cancel a position transition.
+describe('marker rotation', () => {
+  function liveMarker(opts) {
+    const made = makeEntity({ rotationAttribute: 'icon_rotation_deg', ...opts });
+    const real = made.entity.createMapMarker();
+    const el = { setAttribute: jest.fn() };
+    const root = { querySelector: jest.fn(() => el) };
+    const fake = {
+      options: real.options,
+      getElement: jest.fn(() => root),
+      remove: jest.fn(),
+      setLatLng: jest.fn(),
+    };
+    made.entity.marker = fake;
+    made.entity._lastSetLatLng = made.entity.latLng;
+    made.entity._currentPlaceIcon = made.entity.placeIcon;
+    made.entity._currentTitle = made.entity.title;
+    const createSpy = jest.spyOn(made.entity, 'createMapMarker');
+    return { ...made, fake, el, root, createSpy };
+  }
+  const setBearing = (hass, v) => {
+    const a = hass.states['geo_location.x'].attributes;
+    if (v === undefined) delete a.icon_rotation_deg; else a.icon_rotation_deg = v;
+  };
+  const rotationWrites = (el) =>
+    el.setAttribute.mock.calls.filter(([name]) => name === 'rotation').map(([, v]) => v);
+  const html = (fake) => fake.options.icon.options.html;
+
+  describe('rotationDegrees()', () => {
+    it('is null when rotation is not configured', () => {
+      const { entity } = makeEntity({ bearing: 90 });
+      expect(entity.rotationDegrees()).toBeNull();
+    });
+
+    it('is null when the attribute is absent or not a number', () => {
+      for (const v of [undefined, null, '', '  ', 'north', true, NaN]) {
+        const { entity } = makeEntity({ rotationAttribute: 'icon_rotation_deg', bearing: v });
+        expect(entity.rotationDegrees()).toBeNull();
+      }
+    });
+
+    it('accepts a numeric string', () => {
+      const { entity } = makeEntity({ rotationAttribute: 'icon_rotation_deg', bearing: '45.5' });
+      expect(entity.rotationDegrees()).toBe(45.5);
+    });
+
+    it('starts from the bearing, normalised into 0-360', () => {
+      expect(makeEntity({ rotationAttribute: 'icon_rotation_deg', bearing: 90 }).entity.rotationDegrees()).toBe(90);
+      expect(makeEntity({ rotationAttribute: 'icon_rotation_deg', bearing: 370 }).entity.rotationDegrees()).toBe(10);
+      expect(makeEntity({ rotationAttribute: 'icon_rotation_deg', bearing: -10 }).entity.rotationDegrees()).toBe(350);
+    });
+
+    // A CSS transition interpolates the number it is given. 350 -> 10 written
+    // as 10 would spin the marker 340 degrees the wrong way.
+    it.each([
+      ['across north, clockwise', [350, 10], 370],
+      ['across north, anticlockwise', [10, 350], -10],
+      ['without crossing north', [170, 190], 190],
+      ['round and back again', [350, 10, 30, 340], 340],
+      ['twice round', [0, 120, 240, 0, 120, 240, 0], 720],
+    ])('takes the short way %s', (_, bearings, expected) => {
+      const { entity, hass } = makeEntity({ rotationAttribute: 'icon_rotation_deg', bearing: bearings[0] });
+      let r;
+      for (const b of bearings) { setBearing(hass, b); r = entity.rotationDegrees(); }
+      expect(r).toBeCloseTo(expected, 9);
+    });
+
+    it('stays continuous across a gap in the attribute', () => {
+      const { entity, hass } = makeEntity({ rotationAttribute: 'icon_rotation_deg', bearing: 350 });
+      entity.rotationDegrees();
+      setBearing(hass, undefined);
+      expect(entity.rotationDegrees()).toBeNull();
+      setBearing(hass, 10);
+      expect(entity.rotationDegrees()).toBe(370);
+    });
+
+    it('is stable when asked twice for the same bearing', () => {
+      const { entity } = makeEntity({ rotationAttribute: 'icon_rotation_deg', bearing: 350 });
+      expect(entity.rotationDegrees()).toBe(entity.rotationDegrees());
+    });
+  });
+
+  describe('building the marker', () => {
+    it('writes rotation and rotation-transition onto the element', () => {
+      const { entity } = makeEntity({ rotationAttribute: 'icon_rotation_deg', rotationTransition: 2, bearing: 90 });
+      const h = entity.createMapMarker().options.icon.options.html;
+      expect(h).toContain('rotation="90"');
+      expect(h).toContain('rotation-transition="2"');
+      expect(entity._currentRotation).toBe(90);
+    });
+
+    it('writes an empty rotation when rotation is off', () => {
+      const { entity } = makeEntity({ bearing: 90 });
+      const h = entity.createMapMarker().options.icon.options.html;
+      expect(h).toContain('rotation=""');
+      expect(h).toContain('rotation-transition="0"');
+    });
+  });
+
+  describe('update()', () => {
+    it('pushes a changed angle onto the live element, by OUR tag', async () => {
+      const { entity, hass, el, root } = liveMarker({ bearing: 350 });
+      setBearing(hass, 10);
+      await entity.update();
+      expect(root.querySelector).toHaveBeenCalledWith(MARKER_TAG);
+      expect(rotationWrites(el)).toEqual(['370']);
+      expect(entity._currentRotation).toBe(370);
+    });
+
+    it('never recreates the marker', async () => {
+      const { entity, hass, fake, createSpy } = liveMarker({ bearing: 350 });
+      setBearing(hass, 10);
+      await entity.update();
+      expect(fake.remove).not.toHaveBeenCalled();
+      expect(createSpy).not.toHaveBeenCalled();
+      expect(entity.marker).toBe(fake);
+    });
+
+    it('rewrites rotation in the stored html and leaves rotation-transition alone', async () => {
+      const { entity, hass, fake } = liveMarker({ bearing: 350, rotationTransition: 3 });
+      setBearing(hass, 10);
+      await entity.update();
+      expect(html(fake)).toContain('rotation="370"');
+      expect(html(fake)).toContain('rotation-transition="3"');
+      expect(html(fake)).not.toContain('rotation="350"');
+    });
+
+    it('does nothing when the angle has not changed', async () => {
+      const { entity, el, fake } = liveMarker({ bearing: 90 });
+      const before = html(fake);
+      await entity.update();
+      expect(rotationWrites(el)).toEqual([]);
+      expect(html(fake)).toBe(before);
+    });
+
+    it('does nothing when rotation is not configured', async () => {
+      const { entity, hass, el } = liveMarker({ rotationAttribute: null, bearing: 90 });
+      setBearing(hass, 180);
+      await entity.update();
+      expect(rotationWrites(el)).toEqual([]);
+    });
+
+    it('clears the angle when the attribute goes, and resumes continuously', async () => {
+      const { entity, hass, el, fake } = liveMarker({ bearing: 350 });
+      setBearing(hass, undefined);
+      await entity.update();
+      expect(html(fake)).toContain('rotation=""');
+      setBearing(hass, 10);
+      await entity.update();
+      expect(rotationWrites(el)).toEqual(['', '370']);
+    });
+
+    it('applies a new picture and a new angle in the same update', async () => {
+      const { entity, hass, el } = liveMarker({ bearing: 90 });
+      hass.states['geo_location.x'].attributes.entity_picture = 'https://ha/pic-b.svg';
+      setBearing(hass, 180);
+      await entity.update();
+      expect(el.setAttribute).toHaveBeenCalledWith('picture', 'https://ha/pic-b.svg');
+      expect(rotationWrites(el)).toEqual(['180']);
+    });
+
+    it('still updates the stored html before the marker is in the DOM', async () => {
+      const { entity, hass, fake } = liveMarker({ bearing: 90 });
+      fake.getElement.mockReturnValue(null);
+      setBearing(hass, 100);
+      await entity.update();
+      expect(html(fake)).toContain('rotation="100"');
+    });
   });
 });
