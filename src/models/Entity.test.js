@@ -1,0 +1,330 @@
+// entity.test.js
+import Entity from './Entity.js';
+import L from 'leaflet';
+import { jest, describe, beforeEach, it, expect } from '@jest/globals';
+import TimelineEntry from './TimelineEntry.js';
+
+jest.mock('./Circle.js');
+jest.mock('../util/Logger.js');
+jest.mock('../configs/EntityConfig.js');
+jest.mock('./EntityHistoryManager.js');
+
+describe('Entity class', () => {
+  let entityConfig, hass, map, historyService, dateRangeManager, linkedEntityService, darkMode;
+
+  beforeEach(() => {
+    entityConfig = {
+      id: 'test-entity',
+      display: 'state',
+      circleConfig: {},
+      fixedX: 0,
+      fixedY: 0,
+      fallbackX: 1,
+      fallbackY: 1,
+      color: 'red',
+      size: 20,
+      zIndexOffset: 0,
+      tapAction: {},
+      css: ''
+    };
+    hass = {
+      states: {
+        'test-entity': {
+          attributes: {
+            friendly_name: 'Test Entity',
+            entity_picture: null,
+            latitude: 40.7128,
+            longitude: -74.0060
+          }
+        },
+        hassUrl: jest.fn(url => url)
+      },
+      formatEntityState: jest.fn().mockReturnValue('ENTITY_STATE')
+    };
+    map = { addTo: jest.fn() };
+    historyService = {};
+    dateRangeManager = {};
+    linkedEntityService = {};
+    darkMode = false;
+
+    L.marker = jest.fn(() => ({
+      addTo: jest.fn(),
+      setLatLng: jest.fn(),
+      remove: jest.fn()
+    }));
+    L.divIcon = jest.fn(() => ({}));
+    L.LatLng = jest.fn((lat, lng) => ({ lat, lng }));
+  });
+
+  describe('constructor', () => {
+    it('initializes correctly', () => {
+      entityConfig.display = 'state';
+      const entity = new Entity(entityConfig, hass, map, historyService, dateRangeManager, linkedEntityService, darkMode);
+
+      expect(entity.config).toBe(entityConfig);
+      expect(entity.hass).toBe(hass);
+      expect(entity.map).toBe(map);
+      expect(entity.darkMode).toBe(darkMode);
+      expect(entity._currentTitle).toBe('ENTITY_STATE');
+      expect(entity.circle).toBeDefined();
+      expect(entity.historyManager).toBeDefined();
+    });
+  });
+
+  describe('getters', () => {
+    let entity;
+
+    beforeEach(() => {
+      entity = new Entity(entityConfig, hass, map, historyService, dateRangeManager, linkedEntityService, darkMode);
+    });
+
+    it('should return the entity id', () => {
+      expect(entity.id).toBe('test-entity');
+    });
+
+    it('should return the display', () => {
+      expect(entity.display).toBe('state');
+    });
+
+    it('should return the state for the entity', () => {
+      expect(entity.state).toBe("ENTITY_STATE");
+    });
+
+    it('should return a picture', () => {
+      expect(entity.picture).toBeNull();
+    });
+
+    it('should return the friendlyName', () => {
+      expect(entity.friendlyName).toBe('Test Entity');
+    });
+
+    it('should return the tooltip', () => {
+      expect(entity.tooltip).toBe('Test Entity');
+    });
+
+    it('should return an icon', () => {
+      expect(entity.icon).toBeUndefined();
+    });
+  });
+
+  describe('title getter', () => {
+
+    it('returns the formatted state when display is state', () => {
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+      entityConfig.display = 'state';
+
+      expect(entity.title).toBe('ENTITY_STATE');
+    });
+
+    it('returns the friendly name when available', () => {
+      hass.states['test-entity'].attributes.friendly_name = 'Friendly Name';
+      entityConfig.display = 'marker';
+
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+      expect(entity.title).toBe('FN');
+    });
+
+    it('returns the entity id when friendly name is not available', () => {
+      hass.states['test-entity'].attributes.friendly_name = null;
+      entityConfig.display = 'marker';
+
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+
+      expect(entity.title).toBe('TE');
+    });
+
+    it('returns the first letter of each word when friendly name is long', () => {
+      hass.states['test-entity'].attributes.friendly_name = 'Long Friendly Name';
+      entityConfig.display = 'marker';
+
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+      expect(entity.title).toBe('LFN');
+    });
+
+    it('returns the first three letters of the first three words when friendly name is long', () => {
+      hass.states['test-entity'].attributes.friendly_name = 'Long Friendly Name With More Words';
+      entityConfig.display = 'marker';
+
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+      expect(entity.title).toBe('LFN');
+    });
+
+
+  });
+
+
+  describe('latLng getter', () => {
+    it('returns fixed coordinates when present', () => {
+      entityConfig.fixedX = 10;
+      entityConfig.fixedY = 20;
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+      const result = entity.latLng;
+      
+      expect(result.lat).toBe(10);
+      expect(result.lng).toBe(20);
+    });
+  
+    it('returns state attributes when fixed coordinates are not set', () => {
+      hass.states['test-entity'].attributes = { latitude: 30, longitude: 40 };
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+      
+      expect(entity.latLng.lat).toBe(30);
+      expect(entity.latLng.lng).toBe(40);
+    });
+  
+    it('returns from device tracker if no direct attributes', () => {
+      hass.states['test-entity'].attributes = {
+        device_trackers: ['device1', 'device2']
+      };
+      hass.states['device1'] = { attributes: {} };
+      hass.states['device2'] = { attributes: { latitude: 60, longitude: 70 } };
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+      expect(entity.latLng.lat).toBe(60);
+      expect(entity.latLng.lng).toBe(70);
+    });
+  
+    it('returns fallback coordinates when no other options available', () => {
+      hass.states['test-entity'].attributes = {};
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+      expect(entity.latLng.lat).toBe(1);
+      expect(entity.latLng.lng).toBe(1);
+    });
+  
+    it('returns null if no coordinates can be found, instead of throwing', () => {
+      entityConfig.fallbackX = null;
+      entityConfig.fallbackY = null;
+      hass.states['test-entity'].attributes = {};
+
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+      expect(entity.latLng).toBeNull();
+    });
+
+    it('keeps the last drawn position when the entity becomes unknown', () => {
+      entityConfig.fallbackX = null;
+      entityConfig.fallbackY = null;
+      hass.states['test-entity'].attributes = { latitude: 30, longitude: 40 };
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+      entity._lastSetLatLng = entity.latLng;
+
+      hass.states['test-entity'].attributes = {};
+      expect(entity.latLng.lat).toBe(30);
+      expect(entity.latLng.lng).toBe(40);
+    });
+
+    it('tolerates a missing linked device_tracker', () => {
+      entityConfig.fallbackX = null;
+      entityConfig.fallbackY = null;
+      hass.states['test-entity'].attributes = {
+        device_trackers: ['device_tracker.gone']
+      };
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+      expect(entity.latLng).toBeNull();
+    });    
+
+    it('returns the current latLng if set', () => {
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+      entity._currentLatLng = { lat: 10, lng: 20 };
+      expect(entity.latLng).toEqual({ lat: 10, lng: 20 });
+    });
+
+    it("returns the fixedX and fixedY even if current latLng is set", () => {
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+      entity._currentLatLng = { lat: 10, lng: 20 };
+      entityConfig.fixedX = 30;
+      entityConfig.fixedY = 40;
+      expect(entity.latLng).toEqual({ lat: 30, lng: 40 });
+    });
+
+    it('follows live hass state after hass is replaced', () => {
+      entityConfig.fixedX = null;
+      entityConfig.fixedY = null;
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+
+      expect(entity.latLng.lat).toBe(40.7128);
+      expect(entity.latLng.lng).toBe(-74.0060);
+
+      entity.hass = {
+        ...hass,
+        states: {
+          'test-entity': {
+            attributes: {
+              friendly_name: 'Test Entity',
+              latitude: 51.5074,
+              longitude: -0.1278
+            }
+          }
+        }
+      };
+
+      expect(entity.latLng.lat).toBe(51.5074);
+      expect(entity.latLng.lng).toBe(-0.1278);
+    });
+  })
+
+  describe('react', () => {
+    it('updates latLng', () => {
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+      entity.react(new TimelineEntry(new Date(), "originalEntity", "entity", { a: { latitude: 50, longitude: 60 } }));
+      expect(entity.latLng).toEqual({ lat: 50, lng: 60 });
+    });
+
+    it("updates the currentTimelineEntry if the entity matches", () => {
+      const entity = new Entity(entityConfig, hass, jest.fn(), jest.fn(), jest.fn(), jest.fn(), false);
+      entity.react(new TimelineEntry(new Date(), "test-entity", "test-entity", { a: { latitude: 50, longitude: 60 } }));
+      expect(entity.currentTimelineEntry).toBeDefined();
+      expect(entity.latLng).toEqual({ lat: 50, lng: 60 });
+    });
+  });
+
+});
+
+describe('Entity place pill (display: pill)', () => {
+  const map = { addTo: jest.fn() };
+  const noop = jest.fn();
+  const zones = {
+    'zone.home': { state: 'zoning', attributes: { friendly_name: 'Home', icon: 'mdi:home' } },
+    'zone.extended_family': { state: 'zoning', attributes: { friendly_name: 'Extended Family', icon: 'mdi:account-group' } },
+  };
+
+  const makeEntity = (display, state) => {
+    const hass = {
+      states: {
+        ...zones,
+        'device_tracker.mom_location': { state, attributes: { friendly_name: 'Mom Location', latitude: 1, longitude: 2 } },
+      },
+      formatEntityState: jest.fn(s => (s ? s.state : '')),
+      hassUrl: jest.fn(u => u),
+    };
+    const config = {
+      id: 'device_tracker.mom_location', display, attribute: '', prefix: '', suffix: '',
+      label: null, size: 48, color: 'red', zIndexOffset: 0, tapAction: {}, css: '',
+      circleConfig: {}, geoJsonConfig: {}, pillCalloutMinZoom: 15,
+    };
+    return new Entity(config, hass, map, noop, noop, noop, false);
+  };
+
+  it('placeIcon returns the zone icon when in a named zone', () => {
+    expect(makeEntity('pill', 'Extended Family').placeIcon).toBe('mdi:account-group');
+  });
+  it('placeIcon resolves the Home zone from state "home"', () => {
+    expect(makeEntity('pill', 'home').placeIcon).toBe('mdi:home');
+  });
+  it('placeIcon is null when the entity is not in a zone', () => {
+    expect(makeEntity('pill', 'not_home').placeIcon).toBeNull();
+  });
+  it('placeIcon is null when display is not pill, even inside a zone', () => {
+    expect(makeEntity('marker', 'Extended Family').placeIcon).toBeNull();
+  });
+  it('placeName returns the zone friendly name', () => {
+    expect(makeEntity('pill', 'Extended Family').placeName).toBe('Extended Family');
+  });
+  it('tooltip reads "<person> is at <place>" and strips a tracker suffix', () => {
+    expect(makeEntity('pill', 'Extended Family').tooltip).toBe('Mom is at Extended Family');
+  });
+  it('tooltip falls back to the friendly name when not in a zone', () => {
+    expect(makeEntity('pill', 'not_home').tooltip).toBe('Mom Location');
+  });
+  it('tooltip is the friendly name when display is not pill', () => {
+    expect(makeEntity('marker', 'Extended Family').tooltip).toBe('Mom Location');
+  });
+});
