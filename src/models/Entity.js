@@ -37,6 +37,13 @@ export default class Entity {
    * @type {string} 
    */
   _currentTitle;
+  /**
+   * The picture the marker element was last given, so update() can tell
+   * when the entity starts serving a different one.
+   * @private
+   * @type {string|null}
+   */
+  _currentPicture;
   /** 
    * @private
    * @type {boolean} 
@@ -116,6 +123,19 @@ export default class Entity {
     let picture = this.config.picture ?? this.attributes.entity_picture;
     // Skip if neither found and return null
     return picture ? this.hass.hassUrl(picture) : null;
+  }
+
+  /**
+   * The picture the marker should show: none for display modes that draw an
+   * icon or a text label instead.
+   * @private
+   * @returns {string|null}
+   */
+  get markerPicture() {
+    if (this.display == "icon" || this.display == "state" || this.display == "attribute") {
+      return null;
+    }
+    return this.picture;
   }
 
   /** @returns {LatLng} */
@@ -396,12 +416,43 @@ export default class Entity {
         this._currentPlaceIcon = this.placeIcon;
       }
 
+      this.refreshMarkerPicture();
       this.updateMarkerPosition();
     }
 
     this.historyManager.update();
     this.circle.update();
     this.geoJson.update();
+  }
+
+  /**
+   * Give an existing marker the entity's current picture.
+   *
+   * The picture is baked into the marker element when the marker is built,
+   * and the recreate conditions in update() never fire for a picture marker,
+   * so without this an entity serving a changing image (a rotated icon, say)
+   * keeps the image it had when its marker was made.
+   *
+   * The marker is deliberately NOT recreated: that would cancel any position
+   * transition in flight. `picture` is a reactive property on the marker
+   * element, so setting the attribute re-renders it in place.
+   */
+  refreshMarkerPicture() {
+    if (!this.marker) return;
+    const wanted = this.markerPicture;
+    if (wanted == this._currentPicture) return;
+
+    const value = wanted ?? "";
+    this.marker.getElement?.()?.querySelector(MARKER_TAG)?.setAttribute("picture", value);
+
+    // Leaflet re-parses the DivIcon html whenever it rebuilds the icon -
+    // leaving a cluster, for instance - so the stored string must carry the
+    // new value too, or the marker reverts.
+    const iconOptions = this.marker.options?.icon?.options;
+    if (iconOptions && typeof iconOptions.html === "string") {
+      iconOptions.html = iconOptions.html.replace(/picture="[^"]*"/, () => `picture="${value}"`);
+    }
+    this._currentPicture = wanted;
   }
 
   updateMarkerPosition() {
@@ -423,14 +474,11 @@ export default class Entity {
   createMapMarker() {
     Logger.debug("[MarkerEntity] Creating marker for " + this.id + " with display mode " + this.display);
     let icon = this.icon;
-    let picture = this.picture;
-    if (this.display == "icon") {
-      picture = null;
-    }
+    const picture = this.markerPicture;
     if (this.display == "state" || this.display == "attribute") {
-      picture = null;
       icon = null;
     }
+    this._currentPicture = picture;
 
     const extraCssClasses = this.darkMode ? "dark" : "";
     // Pill mode (opt-in via display: pill): zone icon + initials when the entity
