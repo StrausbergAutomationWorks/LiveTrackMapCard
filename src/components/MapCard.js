@@ -265,7 +265,7 @@ export default class MapCard extends LitElement {
 
     // Sample config
     return {
-      type: 'custom:map-card',
+      type: 'custom:live-track-map-card',
       history_start: '24 hours ago',
       entities: sampleEntities
     };

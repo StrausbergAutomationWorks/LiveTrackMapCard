@@ -7,6 +7,13 @@ import EntityConfig from "../configs/EntityConfig.js";
 import EntityHistoryManager from "./EntityHistoryManager.js";
 import TimelineEntry from "./TimelineEntry.js";
 
+/**
+ * The custom element every marker is built from. index.js registers it under
+ * this name; anything that looks a marker up by tag must use this constant, or
+ * it queries an element this card never defines and silently finds nothing.
+ */
+export const MARKER_TAG = "live-track-map-card-entity-marker";
+
 export default class Entity {
   /** @type {EntityConfig} */
   config;
@@ -449,7 +456,7 @@ export default class Entity {
     const marker = new Marker(this.latLng, {
       icon: new DivIcon({
         html: `
-          <map-card-entity-marker
+          <${MARKER_TAG}
             entity-id="${this.id}"
             title="${this.title}"
             label="${this.config.label ?? ""}"
@@ -465,7 +472,7 @@ export default class Entity {
             size="${this.config.size}"
             extra-css-classes="${extraCssClasses}"
             tap-action='${JSON.stringify(this.config.tapAction)}'
-          ></map-card-entity-marker>
+          ></${MARKER_TAG}>
         `,
         iconSize: placeIcon ? (callout ? [boxW, boxH] : [pillW, pillH]) : [s, s],
         iconAnchor: placeIcon ? (callout ? [boxW - 2, boxH - 2] : [pillW / 2, pillH / 2]) : [s / 2, s / 2],

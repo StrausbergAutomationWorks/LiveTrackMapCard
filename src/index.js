@@ -1,5 +1,6 @@
 import MapCard from "./components/MapCard.js"
 import MapCardEntityMarker from "./components/MapCardEntityMarker.js"
+import { MARKER_TAG } from "./models/Entity.js"
 
 // ⚠ The element names below are what make this card DISTINCT from
 // nathan-gs/ha-map-card. The guard is upstream's and it fails SILENTLY: if
@@ -9,7 +10,7 @@ import MapCardEntityMarker from "./components/MapCardEntityMarker.js"
 // only because these names differ.
 if (!customElements.get("live-track-map-card")) {
   customElements.define("live-track-map-card", MapCard);
-  customElements.define("live-track-map-card-entity-marker", MapCardEntityMarker);
+  customElements.define(MARKER_TAG, MapCardEntityMarker);
   console.info(
     `%cStrausbergAutomationWorks/LiveTrackMapCard: HA_MAP_CARD_VERSION ` +
       `(derived from nathan-gs/ha-map-card 1.16.0, MIT)`,
