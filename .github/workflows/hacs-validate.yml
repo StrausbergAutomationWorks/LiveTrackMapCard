@@ -12,7 +12,7 @@ on:
 
 jobs:
   validate-hacs:
-    if: github.repository == 'nathan-gs/ha-map-card'
+    if: github.repository == 'StrausbergAutomationWorks/LiveTrackMapCard'
     runs-on: "ubuntu-latest"
     steps:
       - uses: "actions/checkout@v4"

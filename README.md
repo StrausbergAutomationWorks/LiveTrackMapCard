@@ -8,7 +8,7 @@ Take a look at the blog post [introducing the custom:map-card for Home Assistant
 
 #### HACS
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=nathan-gs&repository=ha-map-card&category=plugin)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=StrausbergAutomationWorks&repository=LiveTrackMapCard&category=plugin)
 
 #### Manual
 1. Copy `map-card.js` to your `/var/lib/hass/www` folder.
@@ -407,7 +407,7 @@ The [leaflet-extras](https://github.com/leaflet-extras/leaflet-providers) has a 
 
 ## Development
 
-`git clone git@github.com:nathan-gs/ha-map-card.git`
+`git clone git@github.com:StrausbergAutomationWorks/LiveTrackMapCard.git`
 
 This project uses [devenv.sh](https://devenv.sh/).
 
@@ -435,7 +435,3 @@ Tag your Github repo with [ha-map-card-plugin](https://github.com/topics/ha-map-
 * [nathan.gs: Map Card, displaying Weather and Other Tile Layers](https://nathan.gs/2024/02/25/ha-map-card-displaying-weather-and-other-tilelayers/)
 * [userbag.co.uk: Home Assistant Exploring location history](https://userbag.co.uk/development/home-assistant-exploring-location-history/)
 * [leaflet.js: third party plugins](https://leafletjs.com/plugins.html#3rd-party-integration)
-
-### Showcase
-
-We have a gallery of nice examples at [nathan.gs/ha-map-card](https://nathan.gs/ha-map-card/), contributions are welcome, check the [showcase/README.md](showcase/README.md).
