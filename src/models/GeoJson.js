@@ -35,6 +35,14 @@ export default class GeoJson {
     }
   }
 
+  /** Take the GeoJSON layer off the map. */
+  remove() {
+    if (this.geoJsonLayer) {
+      this.entity.map.removeLayer(this.geoJsonLayer);
+      this.geoJsonLayer = null;
+    }
+  }
+
   update() {
     if (!this.config.enabled) {
       return;

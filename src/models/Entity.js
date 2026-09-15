@@ -91,6 +91,11 @@ export default class Entity {
    * @type {LatLng}
    */
   _lastSetLatLng;
+  /**
+   * Set by remove(). A removed entity never draws again.
+   * @type {boolean}
+   */
+  removed = false;
 
   constructor(config, hass, map, historyService, dateRangeManager, linkedEntityService, darkMode) {
     this.config = config;
@@ -420,7 +425,33 @@ export default class Entity {
     }
   }
 
+  /**
+   * Take everything this entity put on the map off it again: marker, circle,
+   * GeoJSON, history trail and history stream.
+   * @param {object|null} clusterGroup the cluster group markers currently live in
+   * @param {{unsubscribeHistory: boolean}} options unsubscribeHistory: false
+   *   when another marker of the same entity still uses the history stream
+   */
+  remove(clusterGroup = null, { unsubscribeHistory = true } = {}) {
+    this.removed = true;
+    if (this._onZoomEnd) {
+      this.map.off("zoomend", this._onZoomEnd);
+      this._onZoomEnd = null;
+    }
+    if (this.marker) {
+      if (clusterGroup?.hasLayer?.(this.marker)) {
+        clusterGroup.removeLayer(this.marker);
+      }
+      this.marker.remove();
+      this.marker = null;
+    }
+    this.circle.remove();
+    this.geoJson.remove();
+    this.historyManager.remove({ unsubscribe: unsubscribeHistory });
+  }
+
   async update(clusterGroup = null) {
+    if (this.removed) return;
     // Entity recovered a position after being unknown/unavailable.
     if (!this.marker && !this.config.geoJsonConfig?.hideMarker && this.latLng) {
       this.marker = this.createMapMarker();

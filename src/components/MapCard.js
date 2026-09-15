@@ -206,9 +206,44 @@ export default class MapCard extends LitElement {
 
 
   setConfig(config) {
+    // Validate first: an invalid config throws here and leaves the card as it was.
+    const mapConfig = new MapConfig(config);
+
+    // Only the ENTITY LIST changed? Apply it in place and keep the map.
+    //
+    // auto-entities calls setConfig on every change to its filter result, and
+    // a geo_location source changes constantly. A rebuild each time redraws
+    // the map, resets the view and discards UI state such as the cluster
+    // toggle. Any other change still rebuilds - tile layers, clustering,
+    // focus and the rest genuinely need it.
+    const onlyEntitiesChanged =
+      this.map && this.config && this.entitiesRenderService &&
+      !this.setupNeeded && !this.hasError &&
+      MapCard._withoutEntities(this.config) === MapCard._withoutEntities(config);
+
     this.config = config;
-    this._config = new MapConfig(config);
+    this._config = mapConfig;
+
+    if (onlyEntitiesChanged) {
+      try {
+        Logger.debug("[MapCard] entity list changed - updating in place");
+        this.entitiesRenderService.updateEntityConfigs(mapConfig.entities);
+        return;
+      } catch (e) {
+        Logger.error("[MapCard] in-place entity update failed, rebuilding", e);
+      }
+    }
     this.setupNeeded = true;
+  }
+
+  /**
+   * @param {object} config
+   * @returns {string} the config with `entities` left out, serialised
+   */
+  static _withoutEntities(config) {
+    // eslint-disable-next-line no-unused-vars
+    const { entities, ...rest } = config ?? {};
+    return JSON.stringify(rest);
   }
 
   // The height of your card. Home Assistant uses this to automatically

@@ -27,6 +27,13 @@ export default class EntityHistoryManager {
   history;
   /** @type {number|null} @private */
   _updateTimeout;
+  /**
+   * Set once the entity has left the map. The date-range and linked-entity
+   * listeners are anonymous and cannot be detached one by one, so a removed
+   * manager ignores them instead.
+   * @type {boolean}
+   */
+  removed = false;
   
   constructor(entity, historyService, dateRangeManager, linkedEntityService) {
     this.entity = entity;
@@ -117,7 +124,7 @@ export default class EntityHistoryManager {
   }
 
   refreshHistory() {
-    if (!this.hasHistory) {
+    if (this.removed || !this.hasHistory) {
       return;
     }
     Logger.debug(`[EntityHistoryManager] Refreshing history for ${this.entity.id}: ${this.currentHistoryStart} -> ${this.currentHistoryEnd}`);
@@ -136,7 +143,7 @@ export default class EntityHistoryManager {
 
   /** @param {TimelineEntry} entry */
   react = (entry) => {
-    if(entry.originalEntityId != this.entity.id) {
+    if(this.removed || entry.originalEntityId != this.entity.id) {
       return;
     }
 
@@ -150,8 +157,29 @@ export default class EntityHistoryManager {
 
   
 
+  /**
+   * Take the history trail off the map and stop listening.
+   * @param {{unsubscribe: boolean}} options unsubscribe: close the history
+   *   stream. False when another marker of the same entity still uses it -
+   *   streams are keyed by entity id.
+   */
+  remove({ unsubscribe = true } = {}) {
+    this.removed = true;
+    if (this._updateTimeout) {
+      clearTimeout(this._updateTimeout);
+      this._updateTimeout = null;
+    }
+    if (this.historyLayerGroup) {
+      this.entity.map.removeLayer(this.historyLayerGroup);
+      this.historyLayerGroup = null;
+    }
+    if (unsubscribe) {
+      this.historyService?.unsubscribeEntity?.(this.entity.id);
+    }
+  }
+
   update() {
-    if(!this.hasHistory) {
+    if(this.removed || !this.hasHistory) {
       return;
     }
     this.history?.update().flat().forEach((marker) => {

@@ -90,8 +90,18 @@ export default class EntityConfig {
   /** @type {GeoJsonConfig} */
   geoJsonConfig;
 
+  /**
+   * The entity's configuration exactly as written, serialised. Two configs
+   * with the same fingerprint describe the same marker, which is how an
+   * in-place entity update tells an unchanged entity from one whose options
+   * changed.
+   * @type {string}
+   */
+  fingerprint;
+
   constructor(config, defaults) {
     this.id = (typeof config === 'string' || config instanceof String) ? config : config.entity;
+    this.fingerprint = JSON.stringify(config);
     this.display = config.display ? config.display : "marker";
     this.attribute = config.attribute ? config.attribute : "";
     this.prefix = config.display === "attribute" ? (config.prefix ? config.prefix : "") : "";

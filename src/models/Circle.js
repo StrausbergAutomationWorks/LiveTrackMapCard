@@ -75,6 +75,12 @@ export default class Circle {
     }
   }
 
+  /** Take the circle off the map. */
+  remove() {
+    this.circle?.remove();
+    this.circle = null;
+  }
+
   update() {
     if(this.circle) {
       this.circle.setLatLng(this.entity.latLng);

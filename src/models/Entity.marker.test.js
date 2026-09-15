@@ -346,3 +346,81 @@ describe('marker rotation', () => {
     });
   });
 });
+
+// An entity leaving the list must take EVERYTHING it put on the map with it:
+// marker, circle, GeoJSON, history trail, and its history stream.
+describe('Entity.remove()', () => {
+  function withParts(opts) {
+    const made = makeEntity(opts);
+    const { entity } = made;
+    const marker = { remove: jest.fn() };
+    entity.marker = marker;
+    entity.circle.remove = jest.fn();
+    entity.geoJson.remove = jest.fn();
+    entity.historyManager.remove = jest.fn();
+    made.map.off = jest.fn();
+    return { ...made, marker };
+  }
+
+  it('takes the marker out of the cluster group it is in', () => {
+    const { entity, marker } = withParts();
+    const cluster = { hasLayer: jest.fn(() => true), removeLayer: jest.fn() };
+    entity.remove(cluster);
+    expect(cluster.removeLayer).toHaveBeenCalledWith(marker);
+    expect(entity.marker).toBeNull();
+  });
+
+  it('takes the marker off the map when it is not clustered', () => {
+    const { entity, marker } = withParts();
+    entity.remove(null);
+    expect(marker.remove).toHaveBeenCalled();
+    expect(entity.marker).toBeNull();
+  });
+
+  it('does not ask a cluster group to remove a marker it does not hold', () => {
+    const { entity, marker } = withParts();
+    const cluster = { hasLayer: jest.fn(() => false), removeLayer: jest.fn() };
+    entity.remove(cluster);
+    expect(cluster.removeLayer).not.toHaveBeenCalled();
+    expect(marker.remove).toHaveBeenCalled();
+  });
+
+  it('removes the circle, the GeoJSON and the history', () => {
+    const { entity } = withParts();
+    const { circle, geoJson, historyManager } = entity;
+    entity.remove(null);
+    expect(circle.remove).toHaveBeenCalled();
+    expect(geoJson.remove).toHaveBeenCalled();
+    expect(historyManager.remove).toHaveBeenCalledWith({ unsubscribe: true });
+  });
+
+  it('can keep the history stream when another marker shares the entity', () => {
+    const { entity } = withParts();
+    entity.remove(null, { unsubscribeHistory: false });
+    expect(entity.historyManager.remove).toHaveBeenCalledWith({ unsubscribe: false });
+  });
+
+  it('unbinds the pill zoom handler', () => {
+    const { entity, map } = withParts();
+    const handler = jest.fn();
+    entity._onZoomEnd = handler;
+    entity.remove(null);
+    expect(map.off).toHaveBeenCalledWith('zoomend', handler);
+    expect(entity._onZoomEnd).toBeNull();
+  });
+
+  it('is safe with no marker, and safe to call twice', () => {
+    const { entity } = withParts();
+    entity.marker = null;
+    expect(() => { entity.remove(null); entity.remove(null); }).not.toThrow();
+  });
+
+  it('stops a removed entity from drawing again', async () => {
+    const { entity } = withParts();
+    entity.remove(null);
+    entity.createMapMarker = jest.fn();
+    await entity.update(null);
+    expect(entity.createMapMarker).not.toHaveBeenCalled();
+    expect(entity.marker).toBeNull();
+  });
+});

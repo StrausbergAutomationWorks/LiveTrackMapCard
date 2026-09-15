@@ -115,6 +115,72 @@ export default class EntitiesRenderService {
     this.map.on('zoomend', this._scheduleResume);
   }
 
+  /**
+   * Replace the entity list WITHOUT rebuilding the map.
+   *
+   * auto-entities hands the card a new list on every change to its filter
+   * result, and a geo_location source changes constantly. Rebuilding each
+   * time redraws the map, resets the view and loses the cluster toggle.
+   *
+   * An entity whose configuration is unchanged keeps its object - and with
+   * it its marker and any movement in flight. One that left is removed
+   * completely. One that is new, or whose own options changed, is created.
+   * Removal runs first: history streams are keyed by entity id, so creating
+   * a replacement before removing the original would close the new stream.
+   * @param {[EntityConfig]} newConfigs
+   */
+  updateEntityConfigs(newConfigs) {
+    // Key by id AND occurrence, so two entries for one entity stay two
+    // markers - as they do after a full setup.
+    const keyed = (configs) => {
+      const seen = {};
+      return configs.map((c) => {
+        const n = seen[c.id] = (seen[c.id] ?? -1) + 1;
+        return [`${c.id}#${n}`, c];
+      });
+    };
+    // ⚠ `Map` in this module is LEAFLET's map class (imported above), not
+    // JavaScript's. `new Map(...)` here would build a map widget, throw, and
+    // turn every in-place update into a full rebuild without a trace.
+    const JsMap = globalThis.Map;
+    const entityOf = new JsMap(this.entities.map((e) => [e.config, e]));
+    const previous = new JsMap(keyed(this.entityConfigs).map(([k, c]) => [k, { config: c, entity: entityOf.get(c) }]));
+
+    const plan = keyed(newConfigs).map(([key, config]) => {
+      const before = previous.get(key);
+      if (before?.entity && before.config.fingerprint === config.fingerprint) {
+        previous.delete(key);
+        return { entity: before.entity, config: before.config };
+      }
+      return { config };
+    });
+
+    const keptIds = new Set(plan.filter((p) => p.entity).map((p) => p.entity.config.id));
+    for (const { entity } of previous.values()) {
+      if (!entity) continue;
+      try {
+        entity.remove(this.markerClusterGroup, { unsubscribeHistory: !keptIds.has(entity.config.id) });
+      } catch (e) {
+        Logger.error("[EntitiesRenderService] failed removing " + entity.config.id, e);
+      }
+    }
+
+    for (const p of plan) {
+      if (p.entity) continue;
+      try {
+        p.entity = new Entity(p.config, this.hass, this.map, this.historyService, this.dateRangeManager, this.linkedEntityService, this.isDarkMode);
+        p.entity.setup(this.markerClusterGroup);
+      } catch (e) {
+        p.entity = null;
+        Logger.error("Entity: " + p.config.id + " skipped due to missing data", e);
+        HaMapUtilities.renderWarningOnMap(this.map, "Entity: " + p.config.id + " could not be loaded. See console for details.");
+      }
+    }
+
+    this.entities = plan.map((p) => p.entity).filter((e) => e);
+    this.entityConfigs = plan.map((p) => p.config);
+  }
+
   cleanup() {
     if (this._followPauseTimer) {
       clearTimeout(this._followPauseTimer);
