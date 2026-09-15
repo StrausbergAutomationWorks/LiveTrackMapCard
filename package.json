@@ -1,7 +1,7 @@
 {
   "name": "live-track-map-card",
   "version": "0.1.0",
-  "description": "SAW's Lovelace map card. Derived from nathan-gs/ha-map-card 1.16.0 (MIT).",
+  "description": "SAW's Lovelace map card for the Live Track integrations.",
   "main": "src/index.js",
   "scripts": {
     "build": "rollup -c --bundleConfigAsCjs",
@@ -11,14 +11,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nathan-gs/ha-map-card.git"
+    "url": "git+https://github.com/StrausbergAutomationWorks/LiveTrackMapCard.git"
   },
   "author": "Nathan Bijnens",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/nathan-gs/ha-map-card/issues"
+    "url": "https://github.com/StrausbergAutomationWorks/LiveTrackMapCard/issues"
   },
-  "homepage": "https://github.com/nathan-gs/ha-map-card#readme",
+  "homepage": "https://github.com/StrausbergAutomationWorks/LiveTrackMapCard#readme",
   "dependencies": {
     "leaflet": "^1.9.4",
     "leaflet.markercluster": "^1.5.3",
