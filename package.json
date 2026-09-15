@@ -1,7 +1,7 @@
 {
-  "name": "ha-map-card",
-  "version": "1.16.0",
-  "description": "A better Map Card for Home Assistant",
+  "name": "live-track-map-card",
+  "version": "0.1.0",
+  "description": "SAW's Lovelace map card. Derived from nathan-gs/ha-map-card 1.16.0 (MIT).",
   "main": "src/index.js",
   "scripts": {
     "build": "rollup -c --bundleConfigAsCjs",

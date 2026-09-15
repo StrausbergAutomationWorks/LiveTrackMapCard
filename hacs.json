@@ -1,5 +1,5 @@
 {
-    "name": "map-card",
-    "render_readme": true,
-    "filename":"map-card.js"
+  "name": "Live Track Map Card",
+  "render_readme": true,
+  "filename": "live-track-map-card.js"
 }

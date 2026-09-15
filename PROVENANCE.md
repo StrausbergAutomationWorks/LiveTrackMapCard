@@ -73,3 +73,51 @@ not what runs here.
 Intended shape: two tabs. One holds the small per-integration cards for
 whichever Live Track integrations the user installed; the other is a panel map
 showing every integration's objects.
+
+## Identity — changed 2026-09-15
+
+The clone now has its own identity. Four separate things, all of which had to
+change together:
+
+| | was | is |
+|---|---|---|
+| npm package | `ha-map-card` | `live-track-map-card` |
+| version | `1.16.0` | `0.1.0` |
+| HACS name / filename | `map-card` / `map-card.js` | `Live Track Map Card` / `live-track-map-card.js` |
+| custom elements | `map-card`, `map-card-entity-marker` | `live-track-map-card`, `live-track-map-card-entity-marker` |
+| card-picker type | `map-card` | `live-track-map-card` |
+| rollup output | `dist/map-card.js` | `dist/live-track-map-card.js` |
+
+Version restarts at `0.1.0` rather than continuing from `1.16.0`, so that our
+`1.17.0` and nathan's `1.17.0` can never be two different things wearing one
+number.
+
+### Why the element rename is load-bearing
+
+`src/index.js` guards registration:
+
+    if (!customElements.get("map-card")) { ... }
+
+Two copies claiming that name do **not** throw. The second simply does not
+register — no error, no console banner — and every `type: custom:map-card` in
+a dashboard renders whichever module loaded first. With HACS's `ha-map-card`
+installed alongside, ours could load, register nothing, and leave the map
+looking as though our patches had regressed, with nothing in the log. A crash
+would have been kinder. Distinct names are what let both be installed at once
+during the transition.
+
+Existing dashboard cards still say `type: custom:map-card` and therefore still
+point at the HACS card. That is intended: they move over one at a time.
+
+### ⚠ A trap for whoever ports the patches
+
+`patch_marker_rotation.py` and `patch_picture_refresh.py` reach for the marker
+element by name:
+
+    querySelector("map-card-entity-marker")
+
+Measured: **0 occurrences in pristine 1.16.0, 2 in our patched bundle**, and
+four references across the two patch scripts. Those calls are OURS, not
+upstream's. Ported verbatim they would query an element this card no longer
+defines — returning null, doing nothing, reporting nothing. They must be
+ported as `live-track-map-card-entity-marker`.
