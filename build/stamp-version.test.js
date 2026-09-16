@@ -1,5 +1,5 @@
 import { describe, expect, it, jest } from "@jest/globals";
-import { TOKEN, buildVersion, bannerFor, isDirty, parseBanner, stampVersion } from "./stamp-version.js";
+import { TOKEN, buildVersion, bannerFor, isDirty, parseBanner, releaseProblems, stampVersion } from "./stamp-version.js";
 
 // The build stamps the real version into the bundle. Without it the banner
 // printed a literal token and nothing could tell which build a browser had
@@ -122,5 +122,56 @@ describe("isDirty", () => {
     expect(isDirty("?? rollup.config-final.cjs\n")).toBe(true);
     expect(isDirty("?? src/rollup.config-1789520000000.cjs\n")).toBe(true);
     expect(isDirty(" M rollup.config-1789520000000.cjs\n")).toBe(true);
+  });
+});
+
+// Run in CI after the build, before anything is published.
+describe("releaseProblems", () => {
+  const good = {
+    packageVersion: "0.1.0",
+    git: { gitHash: "82a9634", dirty: false },
+    bannerVersion: "0.1.0+82a9634",
+    tag: "v0.1.0",
+  };
+
+  it("passes a clean, matching, tagged build", () => {
+    expect(releaseProblems(good)).toEqual([]);
+  });
+
+  it("passes an untagged build - a CI run, not a release", () => {
+    expect(releaseProblems({ ...good, tag: "" })).toEqual([]);
+    expect(releaseProblems({ ...good, tag: undefined })).toEqual([]);
+  });
+
+  it("refuses a tag that disagrees with package.json", () => {
+    expect(releaseProblems({ ...good, tag: "v0.1.1" }).join()).toMatch(/v0\.1\.1.*0\.1\.0/);
+    expect(releaseProblems({ ...good, tag: "0.1.0" }).join()).toMatch(/tag/);
+  });
+
+  it("refuses a dirty build", () => {
+    const p = releaseProblems({ ...good, git: { gitHash: "82a9634", dirty: true }, bannerVersion: "0.1.0+82a9634.dirty" });
+    expect(p.join()).toMatch(/uncommitted/);
+  });
+
+  it("refuses a build made without git", () => {
+    const p = releaseProblems({ ...good, git: { gitHash: null, dirty: false }, bannerVersion: "0.1.0+nogit" });
+    expect(p.join()).toMatch(/git/);
+  });
+
+  it("refuses a bundle built from a different commit", () => {
+    expect(releaseProblems({ ...good, bannerVersion: "0.1.0+3ad7dca" }).join()).toMatch(/3ad7dca.*82a9634/);
+  });
+
+  it("refuses a bundle with no header", () => {
+    expect(releaseProblems({ ...good, bannerVersion: null }).join()).toMatch(/header/);
+  });
+
+  it("refuses a package version that is not semver", () => {
+    expect(releaseProblems({ ...good, packageVersion: "1.0", tag: "v1.0", bannerVersion: "1.0+82a9634" }).join()).toMatch(/semver/);
+  });
+
+  it("reports every problem, not just the first", () => {
+    const p = releaseProblems({ ...good, tag: "v9.9.9", git: { gitHash: "82a9634", dirty: true }, bannerVersion: null });
+    expect(p.length).toBe(3);
   });
 });

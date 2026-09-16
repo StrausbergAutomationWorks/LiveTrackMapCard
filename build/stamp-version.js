@@ -89,6 +89,35 @@ export function parseBanner(text) {
 }
 
 /**
+ * Everything that makes a built bundle unfit to PUBLISH. Empty means fit.
+ * Run after the build; the build itself already refuses an unstamped file.
+ * @param {{packageVersion: string, git: {gitHash: (string|null), dirty: boolean},
+ *          bannerVersion: (string|null), tag: (string|undefined)}} facts
+ *   tag: the git tag being released, e.g. "v0.1.0"; empty for a CI build.
+ * @returns {string[]}
+ */
+export function releaseProblems({ packageVersion, git, bannerVersion, tag }) {
+  const problems = [];
+  let expected = null;
+  try {
+    expected = buildVersion({ packageVersion, gitHash: git?.gitHash ?? null, dirty: !!git?.dirty });
+  } catch (e) {
+    problems.push(e.message);
+  }
+  if (!git?.gitHash) problems.push("built without git - nothing identifies the commit");
+  if (git?.dirty) problems.push("built from uncommitted changes");
+  if (bannerVersion == null) {
+    problems.push("bundle has no version header");
+  } else if (expected && bannerVersion !== expected) {
+    problems.push(`bundle says ${bannerVersion}, but this commit builds ${expected}`);
+  }
+  if (tag && tag !== `v${packageVersion}`) {
+    problems.push(`tag ${tag} does not match package.json version ${packageVersion}`);
+  }
+  return problems;
+}
+
+/**
  * Rollup plugin: replace TOKEN, then refuse any output that is not stamped.
  * @param {string} version
  * @returns {object}

@@ -1,27 +1,48 @@
-name: Releases
+name: Release
 
-on: 
+# A v* tag builds, checks and publishes the card as release assets.
+# Run by hand (workflow_dispatch) it is a DRY RUN: it builds and checks, and
+# uploads the files as a workflow artifact, but publishes nothing.
+
+on:
   push:
     tags:
-    - 'v*'
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-
   release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-    - uses: actions/checkout@v4
-    - uses: cachix/install-nix-action@v27
-    - uses: cachix/cachix-action@v14
-      with:
-        name: devenv
-    - name: Install devenv.sh
-      run: nix profile install nixpkgs#devenv
-    - run: devenv shell release-github
-      name: Release on Github
-    - uses: ncipollo/release-action@v1
-      with:
-        artifacts: "dist/map-card.js"
-        generateReleaseNotes: true
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      # Refuses a dirty or unstamped bundle, and a tag that disagrees with
+      # package.json. The tag comes in through the environment, never
+      # interpolated into the shell line.
+      - name: Release gate
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: node build/check-release.mjs "$RELEASE_TAG"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: live-track-map-card
+          path: |
+            dist/live-track-map-card.js
+            dist/live-track-map-card.js.sha256
+          if-no-files-found: error
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "dist/live-track-map-card.js,dist/live-track-map-card.js.sha256"
+          generateReleaseNotes: true

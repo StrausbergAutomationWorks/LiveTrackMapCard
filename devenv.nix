@@ -12,11 +12,10 @@
     npm run watch
   '';
 
+  # The build stamps the version itself (build/stamp-version.js); no sed.
   scripts.copy-to-ha.exec = ''
     npm run build
-    VERSION=$(get-version)
-    sed -i "s/HA_MAP_CARD_VERSION/$VERSION/" dist/map-card.js
-    sudo cp dist/map-card.js /var/lib/hass/www
+    sudo cp dist/live-track-map-card.js /var/lib/hass/www
   '';
 
 
@@ -26,10 +25,7 @@
 
   scripts.release-github.exec = ''
     npm run build
-    VERSION=$(get-version)
-
-    sed -i "s/HA_MAP_CARD_VERSION/$VERSION/" dist/map-card.js
-    echo $VERSION
+    npm run check-release
   '';
 
   scripts.release.exec = ''
@@ -42,9 +38,8 @@
       git status
       exit 1
     fi
+    npm run check-release
     VERSION=$(get-version)
-
-    sed -i "s/HA_MAP_CARD_VERSION/$VERSION/" dist/map-card.js
     echo $VERSION
 
     git tag v$VERSION
