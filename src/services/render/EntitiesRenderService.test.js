@@ -1,6 +1,6 @@
 import FocusFollowConfig from "../../configs/FocusFollowConfig";
 import EntitiesRenderService from "./EntitiesRenderService";
-import { LatLng, latLng } from "leaflet";
+import { LatLng } from "leaflet";
 
 describe("EntitiesRenderService", () => {
   describe("render", () => {

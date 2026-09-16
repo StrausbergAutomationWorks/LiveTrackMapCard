@@ -6,7 +6,7 @@
   "scripts": {
     "build": "rollup -c --bundleConfigAsCjs",
     "watch": "rollup -c --watch --bundleConfigAsCjs",
-    "lint": "eslint src/**/*.js",
+    "lint": "eslint \"src/**/*.js\" \"build/**/*.js\" \"build/**/*.mjs\" rollup.config.js",
     "test": "jest"
   },
   "repository": {
