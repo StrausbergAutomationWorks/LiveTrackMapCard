@@ -7,6 +7,7 @@ import HaDateRangeService from "../services/HaDateRangeService.js"
 import HaLinkedEntityService from "../services/HaLinkedEntityService.js"
 import HaMapUtilities from "../util/HaMapUtilities.js"
 import Logger from "../util/Logger.js"
+import { VERSION } from "../version.js"
 import HaUrlResolveService from '../services/HaUrlResolveService.js';
 import TileLayersService from '../services/render/TileLayersRenderService.js';
 import EntitiesRenderService from '../services/render/EntitiesRenderService.js';
@@ -294,6 +295,15 @@ export default class MapCard extends LitElement {
       this.themeMode === "dark" ||
       (this.themeMode === "auto" && Boolean(this.hass.themes.darkMode))
     );
+  }
+
+  /**
+   * The build this element comes from - "0.1.0+2a37a80". Read it in a browser
+   * with customElements.get('live-track-map-card').version.
+   * @returns {string}
+   */
+  static get version() {
+    return VERSION;
   }
 
   static getStubConfig(hass) {

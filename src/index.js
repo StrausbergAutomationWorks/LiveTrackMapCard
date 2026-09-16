@@ -1,6 +1,7 @@
 import MapCard from "./components/MapCard.js"
 import MapCardEntityMarker from "./components/MapCardEntityMarker.js"
 import { MARKER_TAG } from "./models/Entity.js"
+import { VERSION } from "./version.js"
 
 // ⚠ The element names below are what make this card DISTINCT from
 // nathan-gs/ha-map-card. The guard is upstream's and it fails SILENTLY: if
@@ -12,7 +13,7 @@ if (!customElements.get("live-track-map-card")) {
   customElements.define("live-track-map-card", MapCard);
   customElements.define(MARKER_TAG, MapCardEntityMarker);
   console.info(
-    `%cStrausbergAutomationWorks/LiveTrackMapCard: HA_MAP_CARD_VERSION ` +
+    `%cStrausbergAutomationWorks/LiveTrackMapCard: ${VERSION} ` +
       `(derived from nathan-gs/ha-map-card 1.16.0, MIT)`,
     'color: #EBF213; font-weight: bold; background: #000000'
   )
@@ -23,6 +24,7 @@ window.customCards.push({
     name: 'Live Track Map Card',
     description: 'Map card for the Live Track integrations. Derived from nathan-gs/ha-map-card.',
     type: 'live-track-map-card',
+    version: VERSION,
     preview: true,
     documentationURL: `https://github.com/StrausbergAutomationWorks/LiveTrackMapCard`,
 });
