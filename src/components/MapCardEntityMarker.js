@@ -13,25 +13,31 @@ export function shouldOverlayPictureLabel(prefix, suffix, label) {
 }
 
 /**
- * Text colour for a label drawn on a filled marker: black or white, whichever
- * has the higher WCAG contrast ratio against the fill. The two ratios cross
- * at a relative luminance of about 0.179 - NOT 0.5, which would put white
- * text on mid-bright fills such as #F29F05 at 2.16:1 instead of black at 9.74:1.
- * Anything that is not a #rrggbb colour leaves the theme's text colour alone.
- * @param {string} color
- * @returns {string} "#000000", "#FFFFFF" or "inherit"
+ * A thin dark outline: four 1px offsets. text-shadow rather than
+ * -webkit-text-stroke, which draws inside the glyph and thins it.
  */
-export function contrastTextOn(color) {
+export const LABEL_OUTLINE =
+  "-1px -1px 0 rgba(0, 0, 0, 0.8), 1px -1px 0 rgba(0, 0, 0, 0.8), " +
+  "-1px 1px 0 rgba(0, 0, 0, 0.8), 1px 1px 0 rgba(0, 0, 0, 0.8)";
+
+/**
+ * Text style for a label drawn on a filled marker: WHITE with a dark outline,
+ * whatever the fill.
+ *
+ * The text colour is deliberately NOT chosen by contrast against the fill.
+ * A label at marker sizes overflows the marker, so part of it sits on the
+ * fill and part on the map tiles; a colour picked for the fill (black on
+ * #F29F05, say) is lost where it crosses the map. White with an outline reads
+ * on both. Anything that is not a #rrggbb[aa] colour leaves the theme's text
+ * colour alone.
+ * @param {string} color the marker fill
+ * @returns {string} an inline style fragment
+ */
+export function labelTextStyle(color) {
   if (typeof color !== "string" || !/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(color)) {
-    return "inherit";
+    return "color: inherit;";
   }
-  const [r, g, b] = [1, 3, 5]
-    .map((i) => parseInt(color.substr(i, 2), 16) / 255)
-    .map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
-  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  const onBlack = (luminance + 0.05) / 0.05;
-  const onWhite = 1.05 / (luminance + 0.05);
-  return onBlack >= onWhite ? "#000000" : "#FFFFFF";
+  return `color: #FFFFFF; text-shadow: ${LABEL_OUTLINE};`;
 }
 
 /**
@@ -123,7 +129,7 @@ export default class MapCardEntityMarker extends LitElement {
     return html`
         <div
           class="marker ${this.picture ? "picture" : ""}  ${this.extraCssClasses ? this.extraCssClasses : ""}"
-          style="background-color: ${this.color}; border-color: ${this.color}; color: ${contrastTextOn(this.color)}; height: ${this.size}px; width: ${this.size}px;"
+          style="background-color: ${this.color}; border-color: ${this.color}; ${labelTextStyle(this.color)} height: ${this.size}px; width: ${this.size}px;"
           @click=${this._badgeTap}
           >
           ${this._inner()}
