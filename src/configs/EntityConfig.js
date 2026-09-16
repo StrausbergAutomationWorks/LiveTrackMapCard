@@ -68,6 +68,11 @@ export default class EntityConfig {
   /** @type {number} */
   positionUpdateThreshold;
   /**
+   * @type {number|string} Seconds a marker takes to slide to a new position,
+   * or 'auto' to use the entity's own update interval. 0 jumps, as before.
+   */
+  positionTransition;
+  /**
    * @type {number} Min map zoom at which a `display: pill` marker shows the
    * offset callout + leader line; below it the pill centers on the point.
    */
@@ -154,6 +159,9 @@ export default class EntityConfig {
 
     this.useBaseEntityOnly = config.use_base_entity_only ?? false;
     this.positionUpdateThreshold = config.position_update_threshold ?? 10;
+    this.positionTransition = config.position_transition === "auto"
+      ? "auto"
+      : EntityConfig._nonNegativeSeconds(config.position_transition);
     this.pillCalloutMinZoom = config.pill_callout_min_zoom ?? 15;
     this.rotationAttribute = EntityConfig._nonEmptyString(config.rotation_attribute);
     this.rotationTransition = EntityConfig._nonNegativeSeconds(config.rotation_transition);

@@ -92,6 +92,18 @@ export default class Entity {
    */
   _lastSetLatLng;
   /**
+   * The animation frame of a marker slide in progress.
+   * @private
+   * @type {number|null}
+   */
+  _transitionFrame = null;
+  /**
+   * When this entity's position last changed, for position_transition 'auto'.
+   * @private
+   * @type {number|undefined}
+   */
+  _lastMoveAt;
+  /**
    * Set by remove(). A removed entity never draws again.
    * @type {boolean}
    */
@@ -434,6 +446,7 @@ export default class Entity {
    */
   remove(clusterGroup = null, { unsubscribeHistory = true } = {}) {
     this.removed = true;
+    this._cancelTransition();
     if (this._onZoomEnd) {
       this.map.off("zoomend", this._onZoomEnd);
       this._onZoomEnd = null;
@@ -559,9 +572,91 @@ export default class Entity {
     const threshold = this.config.positionUpdateThreshold;
     // Update position only if it has changed significantly (configurable threshold in meters)
     if (!this._lastSetLatLng || this.map.distance(this._lastSetLatLng, newLatLng) > threshold) {
-      this.marker.setLatLng(newLatLng);
+      this._moveMarkerTo(this._lastSetLatLng, newLatLng);
       this._lastSetLatLng = newLatLng;
     }
+  }
+
+  /**
+   * Move the marker, over position_transition seconds if configured.
+   *
+   * The threshold in updateMarkerPosition() decides WHETHER to move; this
+   * decides HOW, so jitter below the threshold never animates. With no
+   * previous position there is nothing to slide from and the marker is
+   * placed. A slide starts from where the marker is DRAWN, so a position that
+   * arrives mid-slide carries on from there instead of jumping.
+   * @private
+   * @param {LatLng|null} from the last position the marker was sent to
+   * @param {LatLng} to
+   */
+  _moveMarkerTo(from, to) {
+    const seconds = this._transitionSeconds();
+    this._cancelTransition();
+    if (!from || !seconds) {
+      this.marker.setLatLng(to);
+      return;
+    }
+    const start = this.marker.getLatLng?.() ?? from;
+    const startLat = start.lat, startLng = start.lng;
+    const duration = seconds * 1000;
+    const started = performance.now();
+    const step = (now) => {
+      this._transitionFrame = null;
+      if (!this.marker || this.removed) return;
+      const f = Math.min(1, Math.max(0, (now - started) / duration));
+      if (f >= 1) {
+        this.marker.setLatLng(to);
+        return;
+      }
+      this.marker.setLatLng([
+        startLat + (to.lat - startLat) * f,
+        startLng + (to.lng - startLng) * f,
+      ]);
+      this._transitionFrame = requestAnimationFrame(step);
+    };
+    this._transitionFrame = requestAnimationFrame(step);
+  }
+
+  /** @private */
+  _cancelTransition() {
+    if (this._transitionFrame) {
+      cancelAnimationFrame(this._transitionFrame);
+      this._transitionFrame = null;
+    }
+  }
+
+  /**
+   * Slide duration in seconds, 0 for none. 'auto' uses the time since this
+   * entity's previous position change, capped at 30 s, so the marker is
+   * still moving when the next one arrives; update rates vary from seconds
+   * to minutes by source. Called once per position change, which is what
+   * 'auto' measures. Honours the user's reduced-motion setting.
+   * @private
+   * @returns {number}
+   */
+  _transitionSeconds() {
+    const now = performance.now();
+    const previous = this._lastMoveAt;
+    this._lastMoveAt = now;
+    if (Entity._prefersReducedMotion()) return 0;
+    const cfg = this.config.positionTransition;
+    if (cfg === "auto") {
+      if (!previous) return 0;
+      const gap = (now - previous) / 1000;
+      if (gap < 0.5) return 0;
+      return Math.min(gap, 30);
+    }
+    const n = Number(cfg);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  /**
+   * @private
+   * @returns {boolean}
+   */
+  static _prefersReducedMotion() {
+    return typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
   }
 
   /**
