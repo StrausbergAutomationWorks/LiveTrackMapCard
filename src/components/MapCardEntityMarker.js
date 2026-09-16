@@ -13,6 +13,28 @@ export function shouldOverlayPictureLabel(prefix, suffix, label) {
 }
 
 /**
+ * Text colour for a label drawn on a filled marker: black or white, whichever
+ * has the higher WCAG contrast ratio against the fill. The two ratios cross
+ * at a relative luminance of about 0.179 - NOT 0.5, which would put white
+ * text on mid-bright fills such as #F29F05 at 2.16:1 instead of black at 9.74:1.
+ * Anything that is not a #rrggbb colour leaves the theme's text colour alone.
+ * @param {string} color
+ * @returns {string} "#000000", "#FFFFFF" or "inherit"
+ */
+export function contrastTextOn(color) {
+  if (typeof color !== "string" || !/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(color)) {
+    return "inherit";
+  }
+  const [r, g, b] = [1, 3, 5]
+    .map((i) => parseInt(color.substr(i, 2), 16) / 255)
+    .map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const onBlack = (luminance + 0.05) / 0.05;
+  const onWhite = 1.05 / (luminance + 0.05);
+  return onBlack >= onWhite ? "#000000" : "#FFFFFF";
+}
+
+/**
  * Inline style turning a marker picture. Empty when there is no angle.
  *
  * The angle is used exactly as given - an accumulated value past 360 or below
@@ -101,7 +123,7 @@ export default class MapCardEntityMarker extends LitElement {
     return html`
         <div
           class="marker ${this.picture ? "picture" : ""}  ${this.extraCssClasses ? this.extraCssClasses : ""}"
-          style="border-color: ${this.color}; height: ${this.size}px; width: ${this.size}px;"
+          style="background-color: ${this.color}; border-color: ${this.color}; color: ${contrastTextOn(this.color)}; height: ${this.size}px; width: ${this.size}px;"
           @click=${this._badgeTap}
           >
           ${this._inner()}
