@@ -28,13 +28,17 @@ export const LABEL_OUTLINE =
  * A label at marker sizes overflows the marker, so part of it sits on the
  * fill and part on the map tiles; a colour picked for the fill (black on
  * #F29F05, say) is lost where it crosses the map. White with an outline reads
- * on both. Anything that is not a #rrggbb[aa] colour leaves the theme's text
- * colour alone.
+ * on both. Only a marker with NO fill - a missing, empty or `transparent`
+ * colour - keeps the theme's text colour, without an outline. Every other
+ * colour string counts as a fill, whatever its syntax: the card's own random
+ * colours are `hsl(...)`, and the first version of this rule (hex only) left
+ * every uncoloured marker on the live map without an outline.
  * @param {string} color the marker fill
  * @returns {string} an inline style fragment
  */
 export function labelTextStyle(color) {
-  if (typeof color !== "string" || !/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(color)) {
+  const c = typeof color === "string" ? color.trim().toLowerCase() : "";
+  if (c === "" || c === "transparent") {
     return "color: inherit;";
   }
   return `color: #FFFFFF; text-shadow: ${LABEL_OUTLINE};`;

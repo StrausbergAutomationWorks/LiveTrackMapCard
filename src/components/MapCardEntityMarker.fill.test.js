@@ -45,14 +45,27 @@ describe("labelTextStyle", () => {
     expect(labelTextStyle("#f29f05ff")).toBe(WHITE_OUTLINED);
   });
 
+  // The live map's ships and South Shore branches set no colour, so the card
+  // gives them a random hsl(). A hex-only rule left all of them unoutlined.
+  it.each(["hsl(3, 95%, 35%)", "hsl(297, 95%, 35%)", "rgb(10, 20, 30)", "red", "#abc", " #F29F05 "])(
+    "outlines a fill written as %p", (fill) => {
+      expect(labelTextStyle(fill)).toBe(WHITE_OUTLINED);
+    });
+
+  it("outlines the card's own random colour", () => {
+    const m = new MapCardEntityMarker();
+    Object.assign(m, { size: 28, title: "SHIP", prefix: "", suffix: "", label: "", color: `hsl(${Math.floor(Math.random() * 360)}, 95%, 35%)` });
+    expect(styleOf(m.render(), "marker")).toContain(WHITE_OUTLINED);
+  });
+
   it("outlines on all four sides", () => {
     for (const offset of ["-1px -1px", "1px -1px", "-1px 1px", "1px 1px"]) {
       expect(LABEL_OUTLINE).toContain(`${offset} 0 rgba(0, 0, 0, 0.8)`);
     }
   });
 
-  it.each(["transparent", "red", "hsl(297, 95%, 35%)", "#abc", "", null, undefined, 42])(
-    "leaves the theme colour alone for %p", (value) => {
+  it.each(["transparent", "TRANSPARENT", " transparent ", "", "   ", null, undefined, 42])(
+    "leaves the theme colour alone, no outline, for %p", (value) => {
       expect(labelTextStyle(value)).toBe("color: inherit;");
     });
 });
