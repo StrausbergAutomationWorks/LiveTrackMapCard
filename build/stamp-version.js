@@ -36,6 +36,26 @@ export function buildVersion({ packageVersion, gitHash, dirty }) {
   return `${packageVersion}+${gitHash}${dirty ? ".dirty" : ""}`;
 }
 
+// rollup -c --bundleConfigAsCjs writes rollup.config-<timestamp>.cjs next to
+// the config, runs it and deletes it (rollup/dist/shared/loadConfigFile.js).
+// While this code runs, git sees that file - so it must not count as dirt.
+const ROLLUP_TEMP_CONFIG = /^\?\? rollup\.config-\d+\.[cm]js$/;
+
+/**
+ * Whether `git status --porcelain` output shows changes that could be in the
+ * build. Untracked files count - an untracked source file can be imported -
+ * except rollup's own temporary config.
+ * @param {string} porcelain
+ * @returns {boolean}
+ */
+export function isDirty(porcelain) {
+  return String(porcelain ?? "")
+    .split("\n")
+    .map((line) => line.replace(/\r$/, ""))
+    .filter((line) => line.trim() !== "")
+    .some((line) => !ROLLUP_TEMP_CONFIG.test(line));
+}
+
 /**
  * The commit being built, or nulls when there is no usable git.
  * @param {string} cwd
@@ -44,7 +64,7 @@ export function buildVersion({ packageVersion, gitHash, dirty }) {
 export function readGit(cwd) {
   try {
     const run = (cmd) => execSync(cmd, { cwd, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
-    return { gitHash: run("git rev-parse --short HEAD"), dirty: run("git status --porcelain") !== "" };
+    return { gitHash: run("git rev-parse --short HEAD"), dirty: isDirty(run("git status --porcelain")) };
   } catch {
     return { gitHash: null, dirty: false };
   }

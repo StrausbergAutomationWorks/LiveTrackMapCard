@@ -1,5 +1,5 @@
 import { describe, expect, it, jest } from "@jest/globals";
-import { TOKEN, buildVersion, bannerFor, parseBanner, stampVersion } from "./stamp-version.js";
+import { TOKEN, buildVersion, bannerFor, isDirty, parseBanner, stampVersion } from "./stamp-version.js";
 
 // The build stamps the real version into the bundle. Without it the banner
 // printed a literal token and nothing could tell which build a browser had
@@ -88,5 +88,39 @@ describe("stampVersion plugin", () => {
 
   it("fails if the upstream placeholder is still there", () => {
     expect(run(`/*! live-track-map-card ${V} */\nconst v = "${V}"; "HA_MAP_CARD_VERSION"`)).toThrow(/HA_MAP_CARD_VERSION/);
+  });
+});
+
+// rollup -c --bundleConfigAsCjs compiles the config to
+// rollup.config-<timestamp>.cjs NEXT TO the config, runs it and deletes it
+// (rollup/dist/shared/loadConfigFile.js). While the config runs, git sees that
+// file as untracked - so every build called itself dirty.
+describe("isDirty", () => {
+  it("is clean for an empty status", () => {
+    expect(isDirty("")).toBe(false);
+    expect(isDirty("\n")).toBe(false);
+  });
+
+  it("ignores rollup's own temporary config", () => {
+    expect(isDirty("?? rollup.config-1789520000000.cjs\n")).toBe(false);
+    expect(isDirty("?? rollup.config-1789520000000.mjs")).toBe(false);
+  });
+
+  it("counts a modified tracked file", () => {
+    expect(isDirty(" M src/index.js\n")).toBe(true);
+  });
+
+  it("counts an untracked source file - it may be in the bundle", () => {
+    expect(isDirty("?? src/new.js\n")).toBe(true);
+  });
+
+  it("counts anything else alongside rollup's file", () => {
+    expect(isDirty("?? rollup.config-1789520000000.cjs\n M rollup.config.js\n")).toBe(true);
+  });
+
+  it("does not excuse a lookalike", () => {
+    expect(isDirty("?? rollup.config-final.cjs\n")).toBe(true);
+    expect(isDirty("?? src/rollup.config-1789520000000.cjs\n")).toBe(true);
+    expect(isDirty(" M rollup.config-1789520000000.cjs\n")).toBe(true);
   });
 });
