@@ -66,6 +66,27 @@ describe('MapCard.setConfig', () => {
     expect(card.entitiesRenderService.updateEntityConfigs).toHaveBeenCalledTimes(1);
   });
 
+  // auto-entities sends one entry per matching include branch.
+  it('passes ONE config per entity to the in-place update - the first entry\'s', () => {
+    card.setConfig({ ...base, entities: [
+      { entity: 'geo_location.a', color: '#299FD5' },
+      { entity: 'geo_location.b' },
+      { entity: 'geo_location.a' },
+      { entity: 'geo_location.a', position_transition: 'auto' },
+    ] });
+    expect(card.setupNeeded).toBe(false);
+    const passed = card.entitiesRenderService.updateEntityConfigs.mock.calls[0][0];
+    expect(passed.map((c) => c.id)).toEqual(['geo_location.a', 'geo_location.b']);
+    expect(passed[0].color).toBe('#299FD5');
+  });
+
+  it('builds the first map with one config per entity too', () => {
+    const fresh = new MapCard();
+    fresh.setConfig({ ...base, entities: [{ entity: 'geo_location.a', color: '#299FD5' }, { entity: 'geo_location.a' }] });
+    expect(fresh._config.entities.map((c) => c.id)).toEqual(['geo_location.a']);
+    expect(fresh._config.entities[0].color).toBe('#299FD5');
+  });
+
   it.each([
     ['zoom', { zoom: 12 }],
     ['clustering', { cluster_markers: false }],

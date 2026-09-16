@@ -131,7 +131,9 @@ export default class EntitiesRenderService {
    */
   updateEntityConfigs(newConfigs) {
     // Key by id AND occurrence, so two entries for one entity stay two
-    // markers - as they do after a full setup.
+    // markers if a caller passes them. MapConfig already keeps only the
+    // first entry per entity (MapConfig.firstPerEntity), so from the card
+    // every occurrence is #0; this is a guard for direct callers.
     const keyed = (configs) => {
       const seen = {};
       return configs.map((c) => {

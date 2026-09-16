@@ -87,7 +87,7 @@ export default class MapConfig {
         this.historyEnd = inputConfig.history_end ?? "now";
     }
 
-    this.entities = (inputConfig["entities"] ? inputConfig.entities : []).map((ent) => {
+    this.entities = MapConfig.firstPerEntity(inputConfig["entities"] ? inputConfig.entities : []).map((ent) => {
       // Pass historyStart/ historyEnd defaults down to entity
       return new EntityConfig(ent, {
           historyStart: this.historyStart,
@@ -176,6 +176,31 @@ export default class MapConfig {
   /** @returns {[EntityConfig]} */
   get entitiesWithShowPath() {
     return this.entities.filter((ent) => ent.showPath);
+  }
+
+  /**
+   * One entry per entity: the FIRST entry for an entity id wins, later ones
+   * are dropped.
+   *
+   * auto-entities does not dedupe by default. An entity matching several
+   * include branches - a specific branch, then a fallback, then a catch-all -
+   * arrives once per branch, and each entry would become its own marker at
+   * the same point: a permanent cluster, with the later entries' options
+   * (a random colour, say) drawn alongside the right one. Branch order is how
+   * a dashboard says which options apply, so the first entry is kept.
+   * Entries without an entity id are passed through untouched.
+   * @param {Array} entries entity entries as written
+   * @returns {Array}
+   */
+  static firstPerEntity(entries) {
+    const seen = new Set();
+    return entries.filter((ent) => {
+      const id = (typeof ent === "string" || ent instanceof String) ? String(ent) : ent?.entity;
+      if (typeof id !== "string" || id === "") return true;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
   }
 
 }
