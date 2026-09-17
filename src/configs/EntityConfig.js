@@ -3,6 +3,29 @@ import Logger from "../util/Logger.js";
 import CircleConfig from "./CircleConfig.js";
 import GeoJsonConfig from "./GeoJsonConfig.js";
 
+/**
+ * The fill for a marker whose colour nobody set: no `color:` in the
+ * dashboard and no valid `marker_color` on the entity. One neutral grey, so
+ * an unset colour reads as "not classified". It replaces upstream's colour
+ * hashed from the entity id, which gave every uncoloured object its own
+ * arbitrary hue - indistinguishable from a colour that meant something.
+ */
+export const FALLBACK_MARKER_COLOR = "#757575";
+
+const MARKER_COLOR_FORM = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * The `marker_color` attribute, if it has the one accepted form: `#` and
+ * exactly six hex digits, any case (05_SHARED_LESSONS.md D4a). Anything
+ * else - null, other types, three-digit or alpha hex, names, rgb()/hsl(),
+ * surrounding whitespace - is treated as absent.
+ * @param {*} value
+ * @returns {string|null}
+ */
+export function parseMarkerColor(value) {
+  return typeof value === "string" && MARKER_COLOR_FORM.test(value) ? value : null;
+}
+
 export default class EntityConfig {
   /** @type {string} */
   id;
@@ -53,8 +76,20 @@ export default class EntityConfig {
   picture;
   /** @type {string} */
   icon;
-  /** @type {string} */
+  /**
+   * The colour everything derived at config time uses (circle, GeoJSON,
+   * history line): the configured `color`, else FALLBACK_MARKER_COLOR.
+   * The MARKER's fill is resolved per update by Entity.markerColor, which
+   * can also read the entity's `marker_color` attribute.
+   * @type {string}
+   */
   color;
+  /**
+   * `color` exactly as configured, or null when the dashboard set none.
+   * A configured colour wins over the `marker_color` attribute.
+   * @type {string|null}
+   */
+  configuredColor;
   /** @type {number} */
   gradualOpacity;
   /** @type {object} */
@@ -114,7 +149,8 @@ export default class EntityConfig {
     this.label = config.label ?? null;
     this.size = config.size ? config.size : 48;
     // If historyLineColor not set, inherit icon color
-    this.color = config.color ?? this._generateRandomColor();
+    this.configuredColor = config.color ?? null;
+    this.color = this.configuredColor ?? FALLBACK_MARKER_COLOR;
     this.gradualOpacity = config.gradual_opacity ? config.gradual_opacity : undefined;
 
     // Get history value to use (normal of default)
@@ -240,31 +276,5 @@ export default class EntityConfig {
 
   get hasHistory() {
     return this.historyStart != null || this.historyStartEntity != null || this.usingDateRangeManager === true;
-  }
-
-  _generateRandomColor() {
-    // Generate pseudo-random color from provided entity id
-    let str = this.id;
-
-    // Generate a BigInt numeric hash of the string provided.
-    // 53-bit hash based on cyrb53 (c) 2018 bryc (github.com/bryc). 
-    // License: Public domain, https://github.com/bryc/code/blob/master/jshash/experimental/cyrb53.js
-    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
-    for (let i = 0, ch; i < str.length; i++) {
-      ch = str.charCodeAt(i);
-      h1 = Math.imul(h1 ^ ch, 2654435761);
-      h2 = Math.imul(h2 ^ ch, 1597334677);
-    }
-    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
-    h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
-    h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-    let hash = 4294967296 * (2097151 & h2) + (h1 >>> 0);
-
-    // Now that we have a numeric hash, construct a CSS hsl() color with hue derived from the hash above (hash % 360), 95% saturation and 35% lightness.
-    // Unlike the simplified RGB approach (#RRGGBB) this method produces colors with similar saturation and lightness, resulting in a more aesthetically pleasing palette.
-    // N.B. hue value might be computed to a negative number which is not strictly allowed in HSL palette - but CSS handles these cases well.
-    let color = `hsl(${hash % 360}, 95%, 35%)`;
-    return color;
   }
 }

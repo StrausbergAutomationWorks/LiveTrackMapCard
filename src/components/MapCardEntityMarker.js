@@ -30,9 +30,9 @@ export const LABEL_OUTLINE =
  * #F29F05, say) is lost where it crosses the map. White with an outline reads
  * on both. Only a marker with NO fill - a missing, empty or `transparent`
  * colour - keeps the theme's text colour, without an outline. Every other
- * colour string counts as a fill, whatever its syntax: the card's own random
- * colours are `hsl(...)`, and the first version of this rule (hex only) left
- * every uncoloured marker on the live map without an outline.
+ * colour string counts as a fill, whatever its syntax: a dashboard may set
+ * `hsl(...)` or a name, and the first version of this rule (hex only) left
+ * every marker filled by upstream's hashed `hsl()` colour without an outline.
  * @param {string} color the marker fill
  * @returns {string} an inline style fragment
  */

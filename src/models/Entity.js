@@ -3,7 +3,7 @@ import { DivIcon, LatLng, Map, Marker } from "leaflet";
 import Circle from "./Circle.js";
 import GeoJson from "./GeoJson.js";
 import Logger from "../util/Logger.js"
-import EntityConfig from "../configs/EntityConfig.js";
+import EntityConfig, { parseMarkerColor } from "../configs/EntityConfig.js";
 import EntityHistoryManager from "./EntityHistoryManager.js";
 import TimelineEntry from "./TimelineEntry.js";
 
@@ -56,6 +56,12 @@ export default class Entity {
    * @type {number|null}
    */
   _currentRotation;
+  /**
+   * The fill the marker element was last given.
+   * @private
+   * @type {string|undefined}
+   */
+  _currentColor;
   /** 
    * @private
    * @type {boolean} 
@@ -165,6 +171,21 @@ export default class Entity {
       return null;
     }
     return this.picture;
+  }
+
+  /**
+   * The marker's fill: the dashboard's `color` if one is configured, else
+   * the entity's `marker_color` attribute if it is valid
+   * (05_SHARED_LESSONS.md D4a), else the neutral fallback.
+   *
+   * Read per update, not at config time: an integration may start sending a
+   * colour after the marker exists (a vessel's type arriving, say).
+   * @returns {string}
+   */
+  get markerColor() {
+    return this.config.configuredColor
+      ?? parseMarkerColor(this.attributes.marker_color)
+      ?? this.config.color;
   }
 
   /**
@@ -502,6 +523,7 @@ export default class Entity {
 
       this.refreshMarkerPicture();
       this.refreshMarkerRotation();
+      this.refreshMarkerColor();
       this.updateMarkerPosition();
     }
 
@@ -543,6 +565,19 @@ export default class Entity {
     if (wanted == this._currentRotation) return;
     this._setMarkerAttribute("rotation", wanted ?? "");
     this._currentRotation = wanted;
+  }
+
+  /**
+   * Give an existing marker the entity's current fill. In place, never a
+   * rebuild, for the same reason as the picture: a rebuild cancels a slide.
+   * `color` is a reactive property on the marker element.
+   */
+  refreshMarkerColor() {
+    if (!this.marker) return;
+    const wanted = this.markerColor;
+    if (wanted == this._currentColor) return;
+    this._setMarkerAttribute("color", wanted);
+    this._currentColor = wanted;
   }
 
   /**
@@ -673,6 +708,8 @@ export default class Entity {
     this._currentPicture = picture;
     const rotation = this.rotationDegrees();
     this._currentRotation = rotation;
+    const color = this.markerColor;
+    this._currentColor = color;
 
     const extraCssClasses = this.darkMode ? "dark" : "";
     // Pill mode (opt-in via display: pill): zone icon + initials when the entity
@@ -711,7 +748,7 @@ export default class Entity {
             rotation-transition="${this.config.rotationTransition ?? 0}"
             place-icon="${placeIcon ?? ""}"
             callout="${callout}"
-            color="${this.config.color}"
+            color="${color}"
             style="${this.config.css}"
             size="${this.config.size}"
             extra-css-classes="${extraCssClasses}"
