@@ -40,16 +40,31 @@ export const LABEL_OUTLINE =
  * overflows onto the map.
  * @param {string} color the marker fill
  * @param {string} [labelColor] the label colour; empty or absent for the default
+ * @param {string} [outlineColor] the outline colour; empty or absent for the default
  * @returns {string} an inline style fragment
  */
-export function labelTextStyle(color, labelColor) {
+export function labelTextStyle(color, labelColor, outlineColor) {
+  const outline = labelOutline(outlineColor);
   const l = typeof labelColor === "string" ? labelColor.trim() : "";
-  if (l !== "") return `color: ${l}; text-shadow: ${LABEL_OUTLINE};`;
+  if (l !== "") return `color: ${l}; text-shadow: ${outline};`;
   const c = typeof color === "string" ? color.trim().toLowerCase() : "";
   if (c === "" || c === "transparent") {
     return "color: inherit;";
   }
-  return `color: #FFFFFF; text-shadow: ${LABEL_OUTLINE};`;
+  return `color: #FFFFFF; text-shadow: ${outline};`;
+}
+
+/**
+ * The label outline: LABEL_OUTLINE, or the same four 1px offsets in the
+ * emitter's `marker_label_outline_color`. An outline matching the FILL makes
+ * a label that overflows the disc read as if the disc went on under it.
+ * @param {string} [outlineColor] empty or absent for the default
+ * @returns {string} a text-shadow value
+ */
+export function labelOutline(outlineColor) {
+  const o = typeof outlineColor === "string" ? outlineColor.trim() : "";
+  if (o === "") return LABEL_OUTLINE;
+  return `-1px -1px 0 ${o}, 1px -1px 0 ${o}, -1px 1px 0 ${o}, 1px 1px 0 ${o}`;
 }
 
 /**
@@ -100,6 +115,9 @@ export default class MapCardEntityMarker extends LitElement {
       'color': {type: String, attribute: 'color'},
       'labelColor': {type: String, attribute: 'label-color'},
       'arrow': {type: String, attribute: 'arrow'},
+      'labelOutline': {type: String, attribute: 'label-outline'},
+      'arrowColor': {type: String, attribute: 'arrow-color'},
+      'arrowOutline': {type: String, attribute: 'arrow-outline'},
       'size': {type: Number},
       'tapAction': {type: Object, attribute: 'tap-action'},
       'extraCssClasses': {type: String, attribute: 'extra-css-classes'},
@@ -155,7 +173,7 @@ export default class MapCardEntityMarker extends LitElement {
     return html`
         <div
           class="marker ${this.picture ? "picture" : ""}  ${this.extraCssClasses ? this.extraCssClasses : ""}"
-          style="background-color: ${this.color}; border-color: ${this.color}; ${labelTextStyle(this.color, this.labelColor)} height: ${this.size}px; width: ${this.size}px;"
+          style="background-color: ${this.color}; border-color: ${this.color}; ${labelTextStyle(this.color, this.labelColor, this.labelOutline)} height: ${this.size}px; width: ${this.size}px;"
           @click=${this._badgeTap}
           >
           ${this._arrow()}
@@ -191,8 +209,11 @@ export default class MapCardEntityMarker extends LitElement {
   _arrow() {
     const style = arrowStyle(this.arrow, this.rotationTransition);
     if (!style || this.picture) return "";
+    const own = typeof this.arrowColor === "string" ? this.arrowColor.trim() : "";
     const c = typeof this.color === "string" ? this.color.trim() : "";
-    const fill = c !== "" && c.toLowerCase() !== "transparent" ? c : "currentColor";
+    const fill = own !== "" ? own : c !== "" && c.toLowerCase() !== "transparent" ? c : "currentColor";
+    const ol = typeof this.arrowOutline === "string" ? this.arrowOutline.trim() : "";
+    const stroke = ol !== "" ? ol : "rgba(0, 0, 0, 0.8)";
     const w = Math.max(8, Math.round((this.size || 24) * 0.45));
     const h = Math.round(w * 0.75);
     return html`
@@ -200,7 +221,7 @@ export default class MapCardEntityMarker extends LitElement {
         <svg class="arrow" width="${w}" height="${h}" viewBox="0 0 10 7.5"
              style="top: ${-h - 1}px; margin-left: ${-w / 2}px;">
           <path d="M5 0.6 L9.4 6.9 L0.6 6.9 Z" fill="${fill}"
-                stroke="rgba(0, 0, 0, 0.8)" stroke-width="1" stroke-linejoin="round"></path>
+                stroke="${stroke}" stroke-width="1" stroke-linejoin="round"></path>
         </svg>
       </div>`;
   }

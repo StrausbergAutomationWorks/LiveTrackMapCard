@@ -133,6 +133,12 @@ export default class Entity {
    */
   _currentLabelColor;
   /**
+   * The styling (markerStyling) the marker element was last given.
+   * @private
+   * @type {{[attr: string]: string}|undefined}
+   */
+  _currentStyling;
+  /**
    * The fill the marker element was last given.
    * @private
    * @type {string|undefined}
@@ -278,8 +284,39 @@ export default class Entity {
    */
   get markerLabelColor() {
     if (this.config.configuredLabelColor) return this.config.configuredLabelColor;
+    return this._emitterColor("marker_label_color");
+  }
+
+  /**
+   * A colour the EMITTER chose for its marker's appearance, from attribute
+   * `key`, or null. Same form as marker_color (06_MAP_CONTRACT.md D4a rule
+   * 2). Ignored under a dashboard `color:`: an emitter picks these as a set
+   * against its own fill, and a set half-applied to someone else's fill is
+   * a guess. Each integration styles its markers by emitting these; the card
+   * holds no per-integration styling (Lee, 2026-09-20).
+   * @private
+   * @param {string} key attribute name
+   * @returns {string|null}
+   */
+  _emitterColor(key) {
     if (this.config.configuredColor) return null;
-    return parseMarkerColor(this.attributes.marker_label_color);
+    return parseMarkerColor(this.attributes[key]);
+  }
+
+  /**
+   * The marker's emitter-chosen styling beyond fill and label colour, as the
+   * marker element's attribute names -> values ("" = the card's default):
+   * label-outline (`marker_label_outline_color`, default dark), arrow-color
+   * (`marker_arrow_color`, default the fill), arrow-outline
+   * (`marker_arrow_outline_color`, default dark).
+   * @returns {{[attr: string]: string}}
+   */
+  get markerStyling() {
+    return {
+      "label-outline": this._emitterColor("marker_label_outline_color") ?? "",
+      "arrow-color": this._emitterColor("marker_arrow_color") ?? "",
+      "arrow-outline": this._emitterColor("marker_arrow_outline_color") ?? "",
+    };
   }
 
   /**
@@ -682,6 +719,7 @@ export default class Entity {
       this.refreshMarkerColor();
       this.refreshMarkerLabelColor();
       this.refreshMarkerArrow();
+      this.refreshMarkerStyling();
       this.updateMarkerPosition();
     }
 
@@ -748,6 +786,20 @@ export default class Entity {
     if (wanted == this._currentLabelColor) return;
     this._setMarkerAttribute("label-color", wanted ?? "");
     this._currentLabelColor = wanted;
+  }
+
+  /**
+   * Give an existing marker the entity's current styling (markerStyling).
+   * In place, as the fill; only the attributes that changed are written.
+   */
+  refreshMarkerStyling() {
+    if (!this.marker) return;
+    const wanted = this.markerStyling;
+    const had = this._currentStyling ?? {};
+    for (const [name, value] of Object.entries(wanted)) {
+      if (had[name] !== value) this._setMarkerAttribute(name, value);
+    }
+    this._currentStyling = wanted;
   }
 
   /**
@@ -969,6 +1021,8 @@ export default class Entity {
     this._currentLabelColor = labelColor;
     const arrow = this.arrowDegrees();
     this._currentArrow = arrow;
+    const styling = this.markerStyling;
+    this._currentStyling = styling;
 
     const extraCssClasses = this.darkMode ? "dark" : "";
     // Pill mode (opt-in via display: pill): zone icon + initials when the entity
@@ -1010,6 +1064,9 @@ export default class Entity {
             color="${color}"
             label-color="${labelColor ?? ""}"
             arrow="${arrow ?? ""}"
+            label-outline="${styling["label-outline"]}"
+            arrow-color="${styling["arrow-color"]}"
+            arrow-outline="${styling["arrow-outline"]}"
             style="${this.config.css}"
             size="${this.config.size}"
             extra-css-classes="${extraCssClasses}"
