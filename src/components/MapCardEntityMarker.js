@@ -33,10 +33,18 @@ export const LABEL_OUTLINE =
  * colour string counts as a fill, whatever its syntax: a dashboard may set
  * `hsl(...)` or a name, and the first version of this rule (hex only) left
  * every marker filled by upstream's hashed `hsl()` colour without an outline.
+ *
+ * An explicit `labelColor` (the entity's `marker_label_color` or the
+ * dashboard's `label_color`, backlog 238) replaces the white and KEEPS the
+ * outline, on a fill or not: the outline is what carries the label where it
+ * overflows onto the map.
  * @param {string} color the marker fill
+ * @param {string} [labelColor] the label colour; empty or absent for the default
  * @returns {string} an inline style fragment
  */
-export function labelTextStyle(color) {
+export function labelTextStyle(color, labelColor) {
+  const l = typeof labelColor === "string" ? labelColor.trim() : "";
+  if (l !== "") return `color: ${l}; text-shadow: ${LABEL_OUTLINE};`;
   const c = typeof color === "string" ? color.trim().toLowerCase() : "";
   if (c === "" || c === "transparent") {
     return "color: inherit;";
@@ -62,6 +70,18 @@ export function pictureRotationStyle(rotation, transition) {
   return `transform: rotate(${deg}deg); transition: transform ${secs}s linear;`;
 }
 
+/**
+ * Inline style turning the arrow's frame. Empty when there is no angle, and
+ * then no arrow is drawn at all. The angle is used as given, accumulated
+ * past 360 or below 0, so the CSS transition turns the short way.
+ * @param {string} arrow degrees, or empty for none
+ * @param {string} transition seconds
+ * @returns {string}
+ */
+export function arrowStyle(arrow, transition) {
+  return pictureRotationStyle(arrow, transition);
+}
+
 export default class MapCardEntityMarker extends LitElement {
   static get properties() {
     return {
@@ -78,6 +98,8 @@ export default class MapCardEntityMarker extends LitElement {
       'placeIcon': {type: String, attribute: 'place-icon'},
       'callout': {type: String, attribute: 'callout'},
       'color': {type: String, attribute: 'color'},
+      'labelColor': {type: String, attribute: 'label-color'},
+      'arrow': {type: String, attribute: 'arrow'},
       'size': {type: Number},
       'tapAction': {type: Object, attribute: 'tap-action'},
       'extraCssClasses': {type: String, attribute: 'extra-css-classes'},
@@ -133,9 +155,10 @@ export default class MapCardEntityMarker extends LitElement {
     return html`
         <div
           class="marker ${this.picture ? "picture" : ""}  ${this.extraCssClasses ? this.extraCssClasses : ""}"
-          style="background-color: ${this.color}; border-color: ${this.color}; ${labelTextStyle(this.color)} height: ${this.size}px; width: ${this.size}px;"
+          style="background-color: ${this.color}; border-color: ${this.color}; ${labelTextStyle(this.color, this.labelColor)} height: ${this.size}px; width: ${this.size}px;"
           @click=${this._badgeTap}
           >
+          ${this._arrow()}
           ${this._inner()}
         </div>
       `;
@@ -155,6 +178,31 @@ export default class MapCardEntityMarker extends LitElement {
       event.detail = { config: actions, action: 'tap'};
       this.dispatchEvent(event);
     }
+  }
+
+  /**
+   * A small arrow outside the disc's edge, pointing along `arrow` degrees
+   * (0 = north, clockwise). Only its frame turns: the disc and the label
+   * stay upright, which is the point (backlog 238). Not drawn on a picture
+   * marker - `.marker.picture` clips its overflow, and a picture turns
+   * itself with rotation_attribute - nor without an angle.
+   * @returns {unknown}
+   */
+  _arrow() {
+    const style = arrowStyle(this.arrow, this.rotationTransition);
+    if (!style || this.picture) return "";
+    const c = typeof this.color === "string" ? this.color.trim() : "";
+    const fill = c !== "" && c.toLowerCase() !== "transparent" ? c : "currentColor";
+    const w = Math.max(8, Math.round((this.size || 24) * 0.45));
+    const h = Math.round(w * 0.75);
+    return html`
+      <div class="arrow-frame" style="${style}">
+        <svg class="arrow" width="${w}" height="${h}" viewBox="0 0 10 7.5"
+             style="top: ${-h - 1}px; margin-left: ${-w / 2}px;">
+          <path d="M5 0.6 L9.4 6.9 L0.6 6.9 Z" fill="${fill}"
+                stroke="rgba(0, 0, 0, 0.8)" stroke-width="1" stroke-linejoin="round"></path>
+        </svg>
+      </div>`;
   }
 
   _inner() {
@@ -200,6 +248,16 @@ export default class MapCardEntityMarker extends LitElement {
         color: var(--primary-text-color);
         background-color: var(--card-background-color);
         position: relative;
+      }
+      .arrow-frame {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .arrow {
+        position: absolute;
+        left: 50%;
+        overflow: visible;
       }
       .marker.picture {
         overflow: hidden;

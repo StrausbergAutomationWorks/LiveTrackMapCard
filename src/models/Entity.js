@@ -116,6 +116,23 @@ export default class Entity {
    */
   _currentRotation;
   /**
+   * The continuous angle last computed by arrowDegrees().
+   * @private
+   * @type {number|undefined}
+   */
+  _arrow;
+  /**
+   * The arrow angle and label colour the marker element was last given.
+   * @private
+   * @type {number|null|undefined}
+   */
+  _currentArrow;
+  /**
+   * @private
+   * @type {string|null|undefined}
+   */
+  _currentLabelColor;
+  /**
    * The fill the marker element was last given.
    * @private
    * @type {string|undefined}
@@ -245,6 +262,70 @@ export default class Entity {
     return this.config.configuredColor
       ?? parseMarkerColor(this.attributes.marker_color)
       ?? this.config.color;
+  }
+
+  /**
+   * The label's text colour, or null for the default (white on a fill).
+   *
+   * The dashboard's `label_color` wins, as `color` wins for the fill. The
+   * entity's `marker_label_color` (06_MAP_CONTRACT.md D4a rule 6, amended
+   * 2026-09-20) is used only when the FILL is the entity's own too: an
+   * emitter picks its label colour against its own fill, so under a
+   * dashboard `color:` it could be unreadable - #7F281F on a dashboard's
+   * dark red, say. A dashboard that overrides the fill and wants a coloured
+   * label sets `label_color` as well.
+   * @returns {string|null}
+   */
+  get markerLabelColor() {
+    if (this.config.configuredLabelColor) return this.config.configuredLabelColor;
+    if (this.config.configuredColor) return null;
+    return parseMarkerColor(this.attributes.marker_label_color);
+  }
+
+  /**
+   * The angle an ARROW on the marker's edge points along, or null for no
+   * arrow (backlog 238). Continuous for the same reason as
+   * rotationDegrees(), with its own running angle.
+   *
+   * No value means no arrow (D0). Holding a bearing while the object is at
+   * rest is the EMITTER's job (06_MAP_CONTRACT.md D4, `icon_rotation_basis:
+   * held`), so the card draws exactly what the attribute says.
+   * @returns {number|null}
+   */
+  arrowDegrees() {
+    const attr = this.config.arrowAttribute;
+    if (!attr) return null;
+    const raw = Entity._angleOf(this.attributes[attr]);
+    if (raw === null) return null;
+    this._arrow = Entity._continue(this._arrow, raw);
+    return this._arrow;
+  }
+
+  /**
+   * A finite angle from a number or a numeric string, else null.
+   * @private
+   * @param {unknown} value
+   * @returns {number|null}
+   */
+  static _angleOf(value) {
+    if (typeof value !== "number" && !(typeof value === "string" && value.trim() !== "")) {
+      return null;
+    }
+    const raw = Number(value);
+    return Number.isFinite(raw) ? raw : null;
+  }
+
+  /**
+   * The next angle in a continuous sequence: the first normalised to 0..360,
+   * each later one the previous plus the shortest turn to `raw`.
+   * @private
+   * @param {number|undefined} previous
+   * @param {number} raw
+   * @returns {number}
+   */
+  static _continue(previous, raw) {
+    if (previous === undefined) return ((raw % 360) + 360) % 360;
+    return previous + ((((raw - previous) % 360) + 540) % 360) - 180;
   }
 
   /**
@@ -599,6 +680,8 @@ export default class Entity {
       this.refreshMarkerPicture();
       this.refreshMarkerRotation();
       this.refreshMarkerColor();
+      this.refreshMarkerLabelColor();
+      this.refreshMarkerArrow();
       this.updateMarkerPosition();
     }
 
@@ -655,6 +738,29 @@ export default class Entity {
     this._currentColor = wanted;
   }
 
+  /**
+   * Give an existing marker the entity's current label colour. In place, as
+   * refreshMarkerColor(). An empty attribute means the default.
+   */
+  refreshMarkerLabelColor() {
+    if (!this.marker) return;
+    const wanted = this.markerLabelColor;
+    if (wanted == this._currentLabelColor) return;
+    this._setMarkerAttribute("label-color", wanted ?? "");
+    this._currentLabelColor = wanted;
+  }
+
+  /**
+   * Give an existing marker the entity's current arrow angle. In place, as
+   * refreshMarkerRotation(); the arrow's CSS transition does the turning.
+   */
+  refreshMarkerArrow() {
+    if (!this.marker) return;
+    const wanted = this.arrowDegrees();
+    if (wanted == this._currentArrow) return;
+    this._setMarkerAttribute("arrow", wanted ?? "");
+    this._currentArrow = wanted;
+  }
   /**
    * Set an attribute on the live marker element AND in the DivIcon's stored
    * html. Leaflet re-parses that html whenever it rebuilds the icon - leaving
@@ -859,6 +965,10 @@ export default class Entity {
     this._currentRotation = rotation;
     const color = this.markerColor;
     this._currentColor = color;
+    const labelColor = this.markerLabelColor;
+    this._currentLabelColor = labelColor;
+    const arrow = this.arrowDegrees();
+    this._currentArrow = arrow;
 
     const extraCssClasses = this.darkMode ? "dark" : "";
     // Pill mode (opt-in via display: pill): zone icon + initials when the entity
@@ -898,6 +1008,8 @@ export default class Entity {
             place-icon="${placeIcon ?? ""}"
             callout="${callout}"
             color="${color}"
+            label-color="${labelColor ?? ""}"
+            arrow="${arrow ?? ""}"
             style="${this.config.css}"
             size="${this.config.size}"
             extra-css-classes="${extraCssClasses}"

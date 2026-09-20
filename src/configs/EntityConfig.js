@@ -119,6 +119,18 @@ export default class EntityConfig {
   rotationAttribute;
   /** @type {number} Seconds a change of angle takes to animate. 0 is instant. */
   rotationTransition;
+  /**
+   * @type {string|null} Entity attribute holding the bearing, in degrees, an
+   * ARROW on the marker's edge points along (backlog 238). Only the arrow
+   * turns; the disc and its label stay upright. Null draws no arrow.
+   * Turns over rotationTransition, like a picture.
+   */
+  arrowAttribute;
+  /**
+   * @type {string|null} The dashboard's `label_color`. Wins over the
+   * entity's `marker_label_color`, as `color` wins over `marker_color`.
+   */
+  configuredLabelColor;
 
   /** @type {CircleConfig} */
   circleConfig;
@@ -201,6 +213,8 @@ export default class EntityConfig {
     this.pillCalloutMinZoom = config.pill_callout_min_zoom ?? 15;
     this.rotationAttribute = EntityConfig._nonEmptyString(config.rotation_attribute);
     this.rotationTransition = EntityConfig._nonNegativeSeconds(config.rotation_transition);
+    this.arrowAttribute = EntityConfig._nonEmptyString(config.arrow_attribute);
+    this.configuredLabelColor = EntityConfig._nonEmptyString(config.label_color);
 
     this.circleConfig = new CircleConfig(config.circle, this.color);
     this.geoJsonConfig = new GeoJsonConfig(config.geojson, this.color);

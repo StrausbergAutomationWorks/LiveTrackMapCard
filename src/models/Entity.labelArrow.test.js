@@ -1,0 +1,181 @@
+import Entity from './Entity.js';
+import { jest, describe, it, expect } from '@jest/globals';
+
+jest.mock('./Circle.js');
+jest.mock('./GeoJson.js');
+jest.mock('../util/Logger.js');
+// EntityConfig NOT mocked: parseMarkerColor() is part of the rule under test.
+jest.mock('./EntityHistoryManager.js');
+
+// Backlog 238: marker_label_color and a separately turning arrow.
+// First emitter, Live Track South Shore: Lakeshore #EF8322 fill with a
+// #7F281F label, Monon the swap, bearing in icon_rotation_deg.
+
+/**
+ * An entity on a fake map, with Lakeshore attributes unless overridden.
+ * @param {object} [o]
+ * @param {object} [o.attrs] attributes to merge or, with undefined values, delete
+ * @param {object} [o.config] EntityConfig fields to override
+ * @returns {{entity: Entity, attributes: object}}
+ */
+function makeEntity({ attrs = {}, config = {} } = {}) {
+  const attributes = {
+    friendly_name: 'X', latitude: 41.6, longitude: -87.3, marker_label: '601',
+    marker_color: '#EF8322', marker_label_color: '#7F281F', icon_rotation_deg: 64.5,
+  };
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === undefined) delete attributes[k]; else attributes[k] = v;
+  }
+  const hass = {
+    states: { 'geo_location.x': { state: '1', attributes } },
+    formatEntityState: () => 'S', formatEntityAttributeValue: () => 'A', hassUrl: (u) => u,
+  };
+  const cfg = {
+    id: 'geo_location.x', display: 'marker', attribute: 'marker_label',
+    prefix: '', suffix: '', label: null, size: 24, color: '#757575', configuredColor: null,
+    zIndexOffset: 0, tapAction: {}, css: '', pillCalloutMinZoom: 15,
+    positionUpdateThreshold: 10, positionTransition: 0, circleConfig: {}, geoJsonConfig: {},
+    rotationAttribute: null, rotationTransition: 2,
+    arrowAttribute: 'icon_rotation_deg', configuredLabelColor: null,
+    ...config,
+  };
+  const map = { distance: jest.fn(() => 0), getZoom: jest.fn(() => 10) };
+  return { entity: new Entity(cfg, hass, map, jest.fn(), jest.fn(), jest.fn(), false), attributes };
+}
+
+const attrIn = (html, name) => (html.match(new RegExp(`\\s${name}="([^"]*)"`)) ?? [])[1];
+
+describe('markerLabelColor', () => {
+  it('reads marker_label_color', () => {
+    expect(makeEntity().entity.markerLabelColor).toBe('#7F281F');
+  });
+
+  it.each(['#7F281Fff', '#abc', 'red', 'rgb(1,2,3)', '', null, 7])('ignores %p as absent (D4a rule 2)', (v) => {
+    expect(makeEntity({ attrs: { marker_label_color: v } }).entity.markerLabelColor).toBeNull();
+  });
+
+  it('is null when the attribute is absent', () => {
+    expect(makeEntity({ attrs: { marker_label_color: undefined } }).entity.markerLabelColor).toBeNull();
+  });
+
+  it("the dashboard's label_color wins", () => {
+    expect(makeEntity({ config: { configuredLabelColor: '#FFFF00' } }).entity.markerLabelColor).toBe('#FFFF00');
+  });
+
+  it("is IGNORED under a dashboard fill: the emitter chose it for its own fill", () => {
+    expect(makeEntity({ config: { configuredColor: '#8B0000' } }).entity.markerLabelColor).toBeNull();
+  });
+
+  it('a dashboard fill with a dashboard label_color uses the latter', () => {
+    const { entity } = makeEntity({ config: { configuredColor: '#8B0000', configuredLabelColor: '#FFFFFF' } });
+    expect(entity.markerLabelColor).toBe('#FFFFFF');
+  });
+});
+
+describe('arrowDegrees', () => {
+  it('reads the configured attribute', () => {
+    expect(makeEntity().entity.arrowDegrees()).toBe(64.5);
+  });
+
+  it('is null with no arrow_attribute, whatever the entity carries', () => {
+    expect(makeEntity({ config: { arrowAttribute: null } }).entity.arrowDegrees()).toBeNull();
+  });
+
+  it.each([undefined, null, '', 'north', NaN, Infinity])('is null for %p - no arrow (D0)', (v) => {
+    expect(makeEntity({ attrs: { icon_rotation_deg: v } }).entity.arrowDegrees()).toBeNull();
+  });
+
+  it('accepts a numeric string and normalises the first angle', () => {
+    expect(makeEntity({ attrs: { icon_rotation_deg: '370' } }).entity.arrowDegrees()).toBe(10);
+    expect(makeEntity({ attrs: { icon_rotation_deg: -10 } }).entity.arrowDegrees()).toBe(350);
+  });
+
+  it('stays continuous across north, both ways, and across a gap', () => {
+    const { entity, attributes } = makeEntity({ attrs: { icon_rotation_deg: 350 } });
+    const seq = [];
+    for (const v of [350, 10, 20, 340, undefined, 330]) {
+      if (v === undefined) delete attributes.icon_rotation_deg; else attributes.icon_rotation_deg = v;
+      seq.push(entity.arrowDegrees());
+    }
+    expect(seq).toEqual([350, 370, 380, 340, null, 330]);
+  });
+
+  it('runs separately from the picture rotation', () => {
+    const { entity, attributes } = makeEntity({ config: { rotationAttribute: 'heading' }, attrs: { heading: 350 } });
+    entity.rotationDegrees();
+    attributes.heading = 10;
+    expect(entity.rotationDegrees()).toBe(370);
+    expect(entity.arrowDegrees()).toBe(64.5);
+  });
+});
+
+describe('the marker element', () => {
+  it('is built with label-color and arrow, and no picture rotation', () => {
+    const html = makeEntity().entity.createMapMarker().options.icon.options.html;
+    expect(attrIn(html, 'label-color')).toBe('#7F281F');
+    expect(attrIn(html, 'arrow')).toBe('64.5');
+    expect(attrIn(html, 'rotation')).toBe('');
+    expect(attrIn(html, 'color')).toBe('#EF8322');
+  });
+
+  it('is built with both empty when there is nothing to draw', () => {
+    const { entity } = makeEntity({ attrs: { marker_label_color: undefined, icon_rotation_deg: undefined } });
+    const html = entity.createMapMarker().options.icon.options.html;
+    expect(attrIn(html, 'label-color')).toBe('');
+    expect(attrIn(html, 'arrow')).toBe('');
+  });
+
+  /**
+   * An entity whose marker is a stand-in holding the real DivIcon html.
+   * @param {object} [o] as makeEntity
+   * @returns {object}
+   */
+  function live(o) {
+    const made = makeEntity(o);
+    const real = made.entity.createMapMarker();
+    const el = { setAttribute: jest.fn() };
+    made.entity.marker = { options: real.options, getElement: () => ({ querySelector: () => el }),
+      remove: jest.fn(), setLatLng: jest.fn(), getLatLng: jest.fn() };
+    made.entity._lastSetLatLng = made.entity.latLng;
+    made.entity._currentPlaceIcon = made.entity.placeIcon;
+    made.entity._currentTitle = made.entity.title;
+    const createSpy = jest.spyOn(made.entity, 'createMapMarker');
+    const html = () => made.entity.marker.options.icon.options.html;
+    return { ...made, el, createSpy, html };
+  }
+
+  it('updates both IN PLACE on update(), in the element and the stored html, without a rebuild', async () => {
+    const { entity, attributes, el, createSpy, html } = live();
+    attributes.icon_rotation_deg = 250;
+    attributes.marker_label_color = '#EF8322';
+    await entity.update();
+    // 64.5 -> 250 is 174.5 anticlockwise, the short way: -110, not 250.
+    expect(el.setAttribute).toHaveBeenCalledWith('arrow', '-110');
+    expect(el.setAttribute).toHaveBeenCalledWith('label-color', '#EF8322');
+    expect(attrIn(html(), 'arrow')).toBe('-110');
+    expect(attrIn(html(), 'label-color')).toBe('#EF8322');
+    expect(createSpy).not.toHaveBeenCalled();
+  });
+
+  it('clears the arrow when the bearing goes away, and writes nothing when nothing changed', async () => {
+    const { entity, attributes, el, html } = live();
+    await entity.update();
+    expect(el.setAttribute).not.toHaveBeenCalledWith('arrow', expect.anything());
+    delete attributes.icon_rotation_deg;
+    await entity.update();
+    expect(el.setAttribute).toHaveBeenCalledWith('arrow', '');
+    expect(attrIn(html(), 'arrow')).toBe('');
+  });
+
+  it('a fill change does not touch label-color, nor a label change the fill', async () => {
+    const { entity, attributes, html } = live();
+    attributes.marker_color = '#7F281F';
+    await entity.update();
+    expect(attrIn(html(), 'color')).toBe('#7F281F');
+    expect(attrIn(html(), 'label-color')).toBe('#7F281F');
+    attributes.marker_label_color = '#EF8322';
+    await entity.update();
+    expect(attrIn(html(), 'color')).toBe('#7F281F');
+    expect(attrIn(html(), 'label-color')).toBe('#EF8322');
+  });
+});
