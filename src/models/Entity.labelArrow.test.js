@@ -182,24 +182,25 @@ describe('the marker element', () => {
 
 describe('emitter styling: label outline, arrow colour, arrow outline', () => {
   const STYLE = { marker_label_outline_color: '#EF8322', marker_arrow_color: '#123456', marker_arrow_outline_color: '#FFFFFF' };
+  const NONE = { 'label-outline': '', 'arrow-color': '', 'arrow-outline': '', 'ring-color': '', 'ring-width': '' };
 
   it('reads all three', () => {
     expect(makeEntity({ attrs: STYLE }).entity.markerStyling)
-      .toEqual({ 'label-outline': '#EF8322', 'arrow-color': '#123456', 'arrow-outline': '#FFFFFF' });
+      .toEqual({ ...NONE, 'label-outline': '#EF8322', 'arrow-color': '#123456', 'arrow-outline': '#FFFFFF' });
   });
 
   it('absent: every one empty, the card default', () => {
-    expect(makeEntity().entity.markerStyling).toEqual({ 'label-outline': '', 'arrow-color': '', 'arrow-outline': '' });
+    expect(makeEntity().entity.markerStyling).toEqual(NONE);
   });
 
   it.each(['#abc', 'white', '#FFFFFFFF', 5, null])('ignores %p as absent (D4a rule 2)', (v) => {
     const s = makeEntity({ attrs: { marker_label_outline_color: v, marker_arrow_color: v, marker_arrow_outline_color: v } }).entity.markerStyling;
-    expect(s).toEqual({ 'label-outline': '', 'arrow-color': '', 'arrow-outline': '' });
+    expect(s).toEqual(NONE);
   });
 
   it('ALL are ignored under a dashboard fill, like the label colour', () => {
     const { entity } = makeEntity({ attrs: STYLE, config: { configuredColor: '#8B0000' } });
-    expect(entity.markerStyling).toEqual({ 'label-outline': '', 'arrow-color': '', 'arrow-outline': '' });
+    expect(entity.markerStyling).toEqual(NONE);
     expect(entity.markerLabelColor).toBeNull();
   });
 
@@ -234,6 +235,76 @@ describe('emitter styling: label outline, arrow colour, arrow outline', () => {
     expect(attrIn(html, 'label-outline')).toBe('');
     expect(attrIn(html, 'arrow-color')).toBe('#123456');
     expect(attrIn(html, 'arrow')).toBe('64.5');
+    expect(createSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('emitter styling: the ring around the disc (marker_ring_color, marker_ring_width)', () => {
+  const NONE = { 'label-outline': '', 'arrow-color': '', 'arrow-outline': '', 'ring-color': '', 'ring-width': '' };
+  const RING = { marker_ring_color: '#000000', marker_ring_width: 2 };
+
+  it('reads colour and width', () => {
+    expect(makeEntity({ attrs: RING }).entity.markerStyling)
+      .toEqual({ ...NONE, 'ring-color': '#000000', 'ring-width': '2' });
+  });
+
+  it('each on its own: a colour with no width, a width with no colour', () => {
+    expect(makeEntity({ attrs: { marker_ring_color: '#000000' } }).entity.markerStyling)
+      .toEqual({ ...NONE, 'ring-color': '#000000' });
+    expect(makeEntity({ attrs: { marker_ring_width: 3 } }).entity.markerStyling)
+      .toEqual({ ...NONE, 'ring-width': '3' });
+  });
+
+  it.each([1, 4])('accepts the bounds, %p px', (v) => {
+    expect(makeEntity({ attrs: { marker_ring_width: v } }).entity.markerStyling['ring-width']).toBe(String(v));
+  });
+
+  it.each([0, 5, -1, 2.5, '2', '', null, true, NaN, Infinity, [2], { w: 2 }])(
+    'ignores width %p as absent: an integer from 1 to 4 and nothing else', (v) => {
+      expect(makeEntity({ attrs: { marker_ring_width: v } }).entity.markerStyling['ring-width']).toBe('');
+    });
+
+  it.each(['#000', 'black', '#000000FF', 0, null])('ignores colour %p as absent (D4a rule 2)', (v) => {
+    expect(makeEntity({ attrs: { marker_ring_color: v } }).entity.markerStyling['ring-color']).toBe('');
+  });
+
+  it('BOTH are ignored under a dashboard fill, width included', () => {
+    const { entity } = makeEntity({ attrs: RING, config: { configuredColor: '#8B0000' } });
+    expect(entity.markerStyling).toEqual(NONE);
+  });
+
+  it('are built into the marker element, without disturbing `color`', () => {
+    const html = makeEntity({ attrs: RING }).entity.createMapMarker().options.icon.options.html;
+    expect(attrIn(html, 'ring-color')).toBe('#000000');
+    expect(attrIn(html, 'ring-width')).toBe('2');
+    expect(attrIn(html, 'color')).toBe('#EF8322');
+  });
+
+  it('change IN PLACE, only what changed, and a fill change leaves ring-color alone', async () => {
+    const made = makeEntity({ attrs: RING });
+    const real = made.entity.createMapMarker();
+    const el = { setAttribute: jest.fn() };
+    made.entity.marker = { options: real.options, getElement: () => ({ querySelector: () => el }),
+      remove: jest.fn(), setLatLng: jest.fn(), getLatLng: jest.fn() };
+    made.entity._lastSetLatLng = made.entity.latLng;
+    made.entity._currentPlaceIcon = made.entity.placeIcon;
+    made.entity._currentTitle = made.entity.title;
+    const createSpy = jest.spyOn(made.entity, 'createMapMarker');
+    await made.entity.update();
+    expect(el.setAttribute).not.toHaveBeenCalled();
+    made.attributes.marker_ring_width = 3;
+    await made.entity.update();
+    expect(el.setAttribute.mock.calls).toEqual([['ring-width', '3']]);
+    el.setAttribute.mockClear();
+    made.attributes.marker_color = '#7F281F';
+    delete made.attributes.marker_ring_color;
+    await made.entity.update();
+    expect(el.setAttribute).toHaveBeenCalledWith('ring-color', '');
+    expect(el.setAttribute).toHaveBeenCalledWith('color', '#7F281F');
+    const html = made.entity.marker.options.icon.options.html;
+    expect(attrIn(html, 'ring-color')).toBe('');
+    expect(attrIn(html, 'ring-width')).toBe('3');
+    expect(attrIn(html, 'color')).toBe('#7F281F');
     expect(createSpy).not.toHaveBeenCalled();
   });
 });

@@ -97,6 +97,37 @@ export function arrowStyle(arrow, transition) {
   return pictureRotationStyle(arrow, transition);
 }
 
+/**
+ * The ring's width in px from the element's `ring-width` attribute: a
+ * positive integer, else 1 - the CSS border every disc already has. The
+ * emitted range is enforced upstream (parseRingWidth); this only refuses
+ * what cannot be a width.
+ * @param {string} [ringWidth]
+ * @returns {number}
+ */
+export function ringWidthPx(ringWidth) {
+  if (ringWidth == null || String(ringWidth).trim() === "") return 1;
+  const n = Number(ringWidth);
+  return Number.isInteger(n) && n >= 1 ? n : 1;
+}
+
+/**
+ * Inline style for the disc's ring (its CSS border). Without an emitted ring
+ * colour it is the fill, as it always was, so the ring stays unseen; with
+ * none of either the output is exactly the old `border-color: <fill>;`. The
+ * border is inside the disc (box-sizing: border-box), so a wider ring takes
+ * its pixels from the fill and the marker keeps its size.
+ * @param {string} color the marker fill
+ * @param {string} [ringColor] empty or absent for the fill
+ * @param {string} [ringWidth] empty or absent for 1 px
+ * @returns {string} an inline style fragment
+ */
+export function ringStyle(color, ringColor, ringWidth) {
+  const r = typeof ringColor === "string" ? ringColor.trim() : "";
+  const w = ringWidthPx(ringWidth);
+  return `border-color: ${r !== "" ? r : (color ?? "")};` + (w !== 1 ? ` border-width: ${w}px;` : "");
+}
+
 export default class MapCardEntityMarker extends LitElement {
   static get properties() {
     return {
@@ -118,6 +149,8 @@ export default class MapCardEntityMarker extends LitElement {
       'labelOutline': {type: String, attribute: 'label-outline'},
       'arrowColor': {type: String, attribute: 'arrow-color'},
       'arrowOutline': {type: String, attribute: 'arrow-outline'},
+      'ringColor': {type: String, attribute: 'ring-color'},
+      'ringWidth': {type: String, attribute: 'ring-width'},
       'size': {type: Number},
       'tapAction': {type: Object, attribute: 'tap-action'},
       'extraCssClasses': {type: String, attribute: 'extra-css-classes'},
@@ -173,7 +206,7 @@ export default class MapCardEntityMarker extends LitElement {
     return html`
         <div
           class="marker ${this.picture ? "picture" : ""}  ${this.extraCssClasses ? this.extraCssClasses : ""}"
-          style="background-color: ${this.color}; border-color: ${this.color}; ${labelTextStyle(this.color, this.labelColor, this.labelOutline)} height: ${this.size}px; width: ${this.size}px;"
+          style="background-color: ${this.color}; ${ringStyle(this.color, this.ringColor, this.ringWidth)} ${labelTextStyle(this.color, this.labelColor, this.labelOutline)} height: ${this.size}px; width: ${this.size}px;"
           @click=${this._badgeTap}
           >
           ${this._arrow()}
@@ -216,10 +249,13 @@ export default class MapCardEntityMarker extends LitElement {
     const stroke = ol !== "" ? ol : "rgba(0, 0, 0, 0.8)";
     const w = Math.max(8, Math.round((this.size || 24) * 0.45));
     const h = Math.round(w * 0.75);
+    // The frame fills the PADDING box, inside the ring, so the arrow is lifted
+    // by the ring's width to sit on the disc's outer edge whatever the width.
+    const ring = ringWidthPx(this.ringWidth);
     return html`
       <div class="arrow-frame" style="${style}">
         <svg class="arrow" width="${w}" height="${h}" viewBox="0 0 10 7.5"
-             style="top: ${-h - 1}px; margin-left: ${-w / 2}px;">
+             style="top: ${-h - ring}px; margin-left: ${-w / 2}px;">
           <path d="M5 0.6 L9.4 6.9 L0.6 6.9 Z" fill="${fill}"
                 stroke="${stroke}" stroke-width="1" stroke-linejoin="round"></path>
         </svg>

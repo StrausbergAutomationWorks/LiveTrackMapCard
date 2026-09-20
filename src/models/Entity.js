@@ -3,7 +3,7 @@ import { DivIcon, LatLng, Map, Marker } from "leaflet";
 import Circle from "./Circle.js";
 import GeoJson from "./GeoJson.js";
 import Logger from "../util/Logger.js"
-import EntityConfig, { parseMarkerColor } from "../configs/EntityConfig.js";
+import EntityConfig, { parseMarkerColor, parseRingWidth } from "../configs/EntityConfig.js";
 import EntityHistoryManager from "./EntityHistoryManager.js";
 import TimelineEntry from "./TimelineEntry.js";
 
@@ -308,14 +308,21 @@ export default class Entity {
    * marker element's attribute names -> values ("" = the card's default):
    * label-outline (`marker_label_outline_color`, default dark), arrow-color
    * (`marker_arrow_color`, default the fill), arrow-outline
-   * (`marker_arrow_outline_color`, default dark).
+   * (`marker_arrow_outline_color`, default dark), ring-color
+   * (`marker_ring_color`, default the fill - the ring is there today, in the
+   * fill's own colour, and so unseen) and ring-width (`marker_ring_width`,
+   * integer px, default 1). The width belongs to the same set, so it too is
+   * ignored under a dashboard `color:`.
    * @returns {{[attr: string]: string}}
    */
   get markerStyling() {
+    const width = this.config.configuredColor ? null : parseRingWidth(this.attributes.marker_ring_width);
     return {
       "label-outline": this._emitterColor("marker_label_outline_color") ?? "",
       "arrow-color": this._emitterColor("marker_arrow_color") ?? "",
       "arrow-outline": this._emitterColor("marker_arrow_outline_color") ?? "",
+      "ring-color": this._emitterColor("marker_ring_color") ?? "",
+      "ring-width": width == null ? "" : String(width),
     };
   }
 
@@ -1067,6 +1074,8 @@ export default class Entity {
             label-outline="${styling["label-outline"]}"
             arrow-color="${styling["arrow-color"]}"
             arrow-outline="${styling["arrow-outline"]}"
+            ring-color="${styling["ring-color"]}"
+            ring-width="${styling["ring-width"]}"
             style="${this.config.css}"
             size="${this.config.size}"
             extra-css-classes="${extraCssClasses}"
