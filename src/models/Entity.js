@@ -311,7 +311,7 @@ export default class Entity {
    * (`marker_arrow_outline_color`, default dark), ring-color
    * (`marker_ring_color`, default the fill - the ring is there today, in the
    * fill's own colour, and so unseen) and ring-width (`marker_ring_width`,
-   * integer px, default 1). The width belongs to the same set, so it too is
+   * CSS px, fractions allowed, default 1). The width belongs to the same set, so it too is
    * ignored under a dashboard `color:`.
    * @returns {{[attr: string]: string}}
    */

@@ -98,17 +98,33 @@ export function arrowStyle(arrow, transition) {
 }
 
 /**
- * The ring's width in px from the element's `ring-width` attribute: a
- * positive integer, else 1 - the CSS border every disc already has. The
- * emitted range is enforced upstream (parseRingWidth); this only refuses
- * what cannot be a width.
+ * The ring's width in CSS px from the element's `ring-width` attribute: a
+ * positive finite number, fractions allowed, else 1 - the CSS border every
+ * disc already has. The emitted range is enforced upstream (parseRingWidth);
+ * this only refuses what cannot be a width.
  * @param {string} [ringWidth]
  * @returns {number}
  */
 export function ringWidthPx(ringWidth) {
   if (ringWidth == null || String(ringWidth).trim() === "") return 1;
   const n = Number(ringWidth);
-  return Number.isInteger(n) && n >= 1 ? n : 1;
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+/**
+ * The width the browser will actually DRAW for a border of `width` CSS px:
+ * floored to whole device pixels, never under one. Measured in Chrome
+ * 2026-09-20 at devicePixelRatio 1: 0.5, 1.25, 1.5 and 1.75 all compute to
+ * 1px. The arrow is lifted by this, not by the asked-for width, or a 1.5
+ * ring on a 1x screen would leave a half-pixel gap under the arrow.
+ * @param {number} width CSS px
+ * @param {number} [dpr] device pixels per CSS px; defaults to the window's, else 1
+ * @returns {number} CSS px
+ */
+export function drawnBorderPx(width, dpr) {
+  const r = Number.isFinite(dpr) && dpr > 0 ? dpr
+    : (typeof window !== "undefined" && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1);
+  return Math.max(1, Math.floor(width * r + 1e-6)) / r;
 }
 
 /**
@@ -250,8 +266,8 @@ export default class MapCardEntityMarker extends LitElement {
     const w = Math.max(8, Math.round((this.size || 24) * 0.45));
     const h = Math.round(w * 0.75);
     // The frame fills the PADDING box, inside the ring, so the arrow is lifted
-    // by the ring's width to sit on the disc's outer edge whatever the width.
-    const ring = ringWidthPx(this.ringWidth);
+    // by the ring's DRAWN width to sit on the disc's outer edge whatever the width.
+    const ring = drawnBorderPx(ringWidthPx(this.ringWidth));
     return html`
       <div class="arrow-frame" style="${style}">
         <svg class="arrow" width="${w}" height="${h}" viewBox="0 0 10 7.5"

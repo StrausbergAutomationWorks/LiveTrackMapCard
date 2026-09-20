@@ -26,21 +26,24 @@ export function parseMarkerColor(value) {
   return typeof value === "string" && MARKER_COLOR_FORM.test(value) ? value : null;
 }
 
-/** Bounds, in px, of an emitted `marker_ring_width` (06_MAP_CONTRACT.md D4a 6b). */
-export const RING_WIDTH_MIN = 1;
+/** Bounds, in CSS px, of an emitted `marker_ring_width` (06_MAP_CONTRACT.md D4a 6b). */
+export const RING_WIDTH_MIN = 0.5;
 export const RING_WIDTH_MAX = 4;
 
 /**
- * An emitted ring width: a JSON integer from RING_WIDTH_MIN to RING_WIDTH_MAX
- * px, or null. Nothing else - no numeric strings, no fractions, no booleans -
- * the same strictness as rule 2 for colours. The ring is drawn inside the
- * disc (box-sizing: border-box), so each pixel is taken from the fill; 4 px
- * leaves 20 px of fill on a 28 px disc.
+ * An emitted ring width: a JSON number from RING_WIDTH_MIN to RING_WIDTH_MAX
+ * CSS px, fractions allowed, or null. Nothing else - no numeric strings, no
+ * booleans, no NaN or Infinity - the same strictness as rule 2 for colours.
+ * The width is the INTEGRATION's to choose (Lee, 2026-09-20); the card only
+ * refuses what cannot be drawn. A browser floors a border to whole DEVICE
+ * pixels, minimum one, so 1.5 draws 1 px on a 1x screen and 1.5 px (3
+ * device px) on a 2x one. The ring is drawn inside the disc
+ * (box-sizing: border-box), so each pixel is taken from the fill.
  * @param {*} value the attribute value
  * @returns {number|null}
  */
 export function parseRingWidth(value) {
-  return typeof value === "number" && Number.isInteger(value)
+  return typeof value === "number" && Number.isFinite(value)
     && value >= RING_WIDTH_MIN && value <= RING_WIDTH_MAX ? value : null;
 }
 

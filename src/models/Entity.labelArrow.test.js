@@ -255,12 +255,12 @@ describe('emitter styling: the ring around the disc (marker_ring_color, marker_r
       .toEqual({ ...NONE, 'ring-width': '3' });
   });
 
-  it.each([1, 4])('accepts the bounds, %p px', (v) => {
+  it.each([0.5, 1, 1.5, 4])('accepts %p px: a number from 0.5 to 4, fractions allowed', (v) => {
     expect(makeEntity({ attrs: { marker_ring_width: v } }).entity.markerStyling['ring-width']).toBe(String(v));
   });
 
-  it.each([0, 5, -1, 2.5, '2', '', null, true, NaN, Infinity, [2], { w: 2 }])(
-    'ignores width %p as absent: an integer from 1 to 4 and nothing else', (v) => {
+  it.each([0, 0.25, 4.5, 5, -1, '1.5', '', null, true, NaN, Infinity, [2], { w: 2 }])(
+    'ignores width %p as absent: a number from 0.5 to 4 and nothing else', (v) => {
       expect(makeEntity({ attrs: { marker_ring_width: v } }).entity.markerStyling['ring-width']).toBe('');
     });
 

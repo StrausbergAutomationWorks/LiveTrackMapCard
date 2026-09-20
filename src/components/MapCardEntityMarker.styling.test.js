@@ -6,7 +6,7 @@ jest.mock("lit", () => {
   return { LitElement: class {}, html, css: () => "" };
 });
 
-import MapCardEntityMarker, { labelTextStyle, labelOutline, LABEL_OUTLINE, ringStyle, ringWidthPx } from "./MapCardEntityMarker.js";
+import MapCardEntityMarker, { labelTextStyle, labelOutline, LABEL_OUTLINE, ringStyle, ringWidthPx, drawnBorderPx } from "./MapCardEntityMarker.js";
 
 // Emitter-chosen label outline, arrow colour and arrow outline (Lee
 // 2026-09-20): Lakeshore labels outlined in their own orange, the Monon
@@ -81,7 +81,7 @@ describe("arrow colour and outline", () => {
 // always the fill's own colour, so it existed and could not be seen.
 describe("ring around the disc", () => {
   const disc = (out) => out.match(/<div\s+class="marker[^"]*"\s+style="([^"]*)"/)[1];
-  const svgTop = (out) => Number(out.match(/<svg class="arrow"[^>]*style="top: (-?\d+)px/)[1]);
+  const svgTop = (out) => Number(out.match(/<svg class="arrow"[^>]*style="top: (-?[\d.]+)px/)[1]);
 
   it("absent: exactly the old style, `border-color: <fill>;` and nothing more", () => {
     expect(ringStyle("#EF8322", "", "")).toBe("border-color: #EF8322;");
@@ -106,15 +106,29 @@ describe("ring around the disc", () => {
     expect(ringStyle("#EF8322", "", "2")).toBe("border-color: #EF8322; border-width: 2px;");
   });
 
-  it.each(["", "  ", undefined, null, "0", "-2", "2.5", "wide"])("width %p reads as 1 px", (v) => {
+  it("a fractional width is written as given; the browser does the snapping", () => {
+    expect(ringStyle("#EF8322", "#000000", "1.5")).toBe("border-color: #000000; border-width: 1.5px;");
+    expect(ringWidthPx("1.5")).toBe(1.5);
+    expect(ringWidthPx("0.5")).toBe(0.5);
+  });
+
+  it.each(["", "  ", undefined, null, "0", "-2", "wide", "Infinity"])("width %p reads as 1 px", (v) => {
     expect(ringWidthPx(v)).toBe(1);
   });
 
-  it("the arrow is lifted by the ring's width so it stays on the outer edge", () => {
-    // size 28: arrow 13 x 10; top = -h - ring
+  it.each([
+    [1, 1, 1], [1.5, 1, 1], [0.5, 1, 1], [1.75, 1, 1], [2, 1, 2],
+    [1.5, 2, 1.5], [0.5, 2, 0.5], [1.25, 2, 1], [4, 2, 4],
+  ])("a %p px ring at DPR %p is drawn %p px (device-pixel floor, minimum one)", (w, dpr, drawn) => {
+    expect(drawnBorderPx(w, dpr)).toBe(drawn);
+  });
+
+  it("the arrow is lifted by the DRAWN ring so it stays on the outer edge", () => {
+    // size 28: arrow 13 x 10; top = -h - drawn ring. The test runs at DPR 1.
     expect(svgTop(render({}))).toBe(-11);
     expect(svgTop(render({ ringWidth: "2" }))).toBe(-12);
     expect(svgTop(render({ ringWidth: "4" }))).toBe(-14);
+    expect(svgTop(render({ ringWidth: "1.5" }))).toBe(-11);
   });
 
   it("the ring colour does not reach the arrow, and the arrow keeps its own colours", () => {
