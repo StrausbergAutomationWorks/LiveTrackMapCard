@@ -165,3 +165,76 @@ describe('position_transition and the rest of the lifecycle', () => {
     expect(requestAnimationFrame).toHaveBeenCalled();
   });
 });
+
+// position_jump: the emitter says this fix did not arrive by travelling, so
+// the marker is PLACED even with position_transition on. Brightline's ~313 km
+// terminal snap, which used to slide across Florida for a minute (Lee,
+// 2026-09-20).
+describe('position_jump', () => {
+  const setJump = (entity, value) => {
+    entity.hass.states['geo_location.x'].attributes.position_jump = value;
+  };
+  const clearJump = (entity) => {
+    delete entity.hass.states['geo_location.x'].attributes.position_jump;
+  };
+
+  it('places the marker instead of sliding, and starts no animation frame', () => {
+    const { entity, marker, moveTo, at } = makeEntity(60);
+    setJump(entity, true);
+    moveTo(28.4, -81.3);                       // Orlando-ish: a very long way
+    expect(at().lat).toBeCloseTo(28.4, 6);
+    expect(at().lng).toBeCloseTo(-81.3, 6);
+    expect(globalThis.requestAnimationFrame).not.toHaveBeenCalled();
+    expect(marker.setLatLng).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not disable sliding for the NEXT update once the flag is gone', () => {
+    const { entity, moveTo, at } = makeEntity(60);
+    setJump(entity, true);
+    moveTo(28.4, -81.3);
+    clearJump(entity);
+    moveTo(28.5, -81.3);
+    expect(globalThis.requestAnimationFrame).toHaveBeenCalled();
+    tick(30000);
+    expect(at().lat).toBeGreaterThan(28.4);
+    expect(at().lat).toBeLessThan(28.5);       // mid-slide, not placed
+  });
+
+  it('cancels a slide already in flight rather than letting it finish', () => {
+    const { entity, moveTo, at } = makeEntity(60);
+    moveTo(41.5, -88.0);
+    tick(30000);
+    const midway = at().lat;
+    expect(midway).toBeGreaterThan(41.0);
+    expect(midway).toBeLessThan(41.5);
+    setJump(entity, true);
+    moveTo(28.4, -81.3);
+    expect(at().lat).toBeCloseTo(28.4, 6);
+    tick(60000);
+    expect(at().lat).toBeCloseTo(28.4, 6);     // no stale frame drags it back
+  });
+
+  it.each([false, 'true', 1, 'yes', null, undefined, {}])(
+    'ignores %p: only a JSON true is the flag', (v) => {
+      const { entity, moveTo } = makeEntity(60);
+      setJump(entity, v);
+      moveTo(41.5, -88.0);
+      expect(globalThis.requestAnimationFrame).toHaveBeenCalled();
+    });
+
+  it('changes nothing when no transition is configured', () => {
+    const { entity, moveTo, at } = makeEntity(0);
+    setJump(entity, true);
+    moveTo(28.4, -81.3);
+    expect(at().lat).toBeCloseTo(28.4, 6);
+    expect(globalThis.requestAnimationFrame).not.toHaveBeenCalled();
+  });
+
+  it('still respects the movement threshold: a jump flag does not force a move', () => {
+    const { entity, marker, moveTo } = makeEntity(60);
+    setJump(entity, true);
+    marker.setLatLng.mockClear();
+    moveTo(41.00001, -88.00001);               // ~1.5 m, under the 10 m threshold
+    expect(marker.setLatLng).not.toHaveBeenCalled();
+  });
+});

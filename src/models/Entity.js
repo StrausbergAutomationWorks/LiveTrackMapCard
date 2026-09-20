@@ -853,12 +853,33 @@ export default class Entity {
   }
 
   /**
+   * Has the emitter declared THIS position discontinuous with the last one it
+   * published? `position_jump: true` (06_MAP_CONTRACT.md D4a) means the fix
+   * did not get here by travelling - the emitter's tracker dropped its old
+   * endpoint - so sliding would draw a journey that never happened.
+   *
+   * Brightline's terminal snap is the case it was built for: ~313 km in one
+   * update, which at `position_transition: 60` was a minute-long cruise
+   * across Florida, through Lake Okeechobee and the swamps and somebody's
+   * neighbourhood (Lee, 2026-09-20).
+   *
+   * ⚠ Only a JSON `true` counts. A string "true", 1, or "yes" is NOT a flag
+   * and is ignored, the same strictness rule 2 applies to colours - a
+   * mistyped attribute must not silently disable animation.
+   * @returns {boolean}
+   */
+  get positionJump() {
+    return this.attributes?.position_jump === true;
+  }
+
+  /**
    * Move the marker, over position_transition seconds if configured.
    *
    * The threshold in updateMarkerPosition() decides WHETHER to move; this
    * decides HOW, so jitter below the threshold never animates. With no
    * previous position there is nothing to slide from and the marker is
-   * placed. A slide starts from where the marker is DRAWN, so a position that
+   * placed; `position_jump: true` places it too, see positionJump. A slide
+   * starts from where the marker is DRAWN, so a position that
    * arrives mid-slide carries on from there instead of jumping.
    * @private
    * @param {LatLng|null} from the last position the marker was sent to
@@ -867,7 +888,7 @@ export default class Entity {
   _moveMarkerTo(from, to) {
     const seconds = this._transitionSeconds();
     this._cancelTransition();
-    if (!from || !seconds) {
+    if (!from || !seconds || this.positionJump) {
       this.marker.setLatLng(to);
       return;
     }
@@ -890,6 +911,9 @@ export default class Entity {
    */
   _catchUpPlan() {
     if (!this._transitionConfigured() || Entity._prefersReducedMotion()) return null;
+    // A declared jump is not a segment to catch up along, even if the emitter
+    // sent previous_* with it.
+    if (this.positionJump) return null;
     if (this.config.fixedX && this.config.fixedY) return null;
     if (this.currentTimelineEntry || this._currentLatLng) return null;
     const attrs = this.attributes;

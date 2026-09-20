@@ -279,3 +279,21 @@ describe('the recovery path in update()', () => {
     expect(requestAnimationFrame).not.toHaveBeenCalled();
   });
 });
+
+// position_jump on a FIRST sighting: no catch-up along a segment the emitter
+// has just declared discontinuous, even when previous_* rode along with it.
+describe('first sight with position_jump', () => {
+  it('is placed at the current position, with no catch-up slide', () => {
+    const { entity, at } = makeEntity({ attrs: { ...segment(), position_jump: true } });
+    entity.setup();
+    expect(at()).toEqual(new LatLng(41.1, -88.0));
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
+  });
+
+  it('still catches up when the flag is anything other than a JSON true', () => {
+    const { entity, at } = makeEntity({ attrs: { ...segment(), position_jump: 'true' } });
+    entity.setup();
+    expect(at().lat).toBeCloseTo(41.04, 9);
+    expect(requestAnimationFrame).toHaveBeenCalled();
+  });
+});
