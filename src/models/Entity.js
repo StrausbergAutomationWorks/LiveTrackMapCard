@@ -14,6 +14,65 @@ import TimelineEntry from "./TimelineEntry.js";
  */
 export const MARKER_TAG = "live-track-map-card-entity-marker";
 
+/**
+ * @param {unknown} v
+ * @returns {boolean} true for a number that is not NaN or infinite
+ */
+const isFiniteNumber = (v) => typeof v === "number" && Number.isFinite(v);
+
+/**
+ * Where a marker seen for the FIRST time should start, so that a card opened
+ * mid-segment shows the object where a card open all along would have it,
+ * instead of holding it still until the integration's next update.
+ *
+ * The entity publishes the segment it has just completed
+ * (06_MAP_CONTRACT.md D3c): `previous_latitude`/`previous_longitude`, the
+ * newest fix (its position) observed at `observed_at`, and
+ * `segment_duration_s` between them. A card open all along started sliding
+ * previous -> current when that fix arrived and finishes one segment later.
+ * So, with f = (now - observed_at) / segment_duration_s clamped to 0..1:
+ * start at previous + f * (current - previous), slide the remaining
+ * (1 - f) * segment_duration_s. f >= 1 means that slide is already over:
+ * no catch-up, the marker is placed at current.
+ *
+ * CLOCKS. `now` is the BROWSER's wall clock and `observed_at` was stamped by
+ * the SERVER, or by the source behind it; the two can disagree by seconds or
+ * more. The clamp absorbs it: a browser behind the server gives a negative
+ * elapsed time and f = 0, a slide over the whole segment; a browser ahead
+ * gives a larger f, a shorter slide, or none. Neither draws the object
+ * anywhere off the segment between its two observed fixes.
+ *
+ * Returns null - place the marker at current and do not move it, which is
+ * what the contract requires when previous_* is absent - when any of
+ * previous_latitude, previous_longitude, segment_duration_s is missing, not
+ * a number or not finite; when either coordinate is out of range; when
+ * segment_duration_s is not positive; when observed_at is missing or does not
+ * parse; or when f >= 1. previous_observed_at is NOT read: segment_duration_s
+ * is the interval, and the formula needs nothing else.
+ * @param {{[key: string]: unknown}} attributes the entity's attributes
+ * @param {number} nowMs browser wall clock, ms since the epoch
+ * @returns {{previous: {lat: number, lng: number}, fraction: number,
+ *   elapsedSeconds: number, remainingSeconds: number}|null}
+ */
+export function catchUpFromPrevious(attributes, nowMs) {
+  const a = attributes ?? {};
+  const lat = a.previous_latitude, lng = a.previous_longitude;
+  const seg = a.segment_duration_s;
+  if (!isFiniteNumber(lat) || !isFiniteNumber(lng) || !isFiniteNumber(seg)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180 || seg <= 0) return null;
+  if (typeof a.observed_at !== "string" || !isFiniteNumber(nowMs)) return null;
+  const observedMs = Date.parse(a.observed_at);
+  if (!Number.isFinite(observedMs)) return null;
+  const fraction = Math.min(1, Math.max(0, (nowMs - observedMs) / 1000 / seg));
+  if (fraction >= 1) return null;
+  return {
+    previous: { lat, lng },
+    fraction,
+    elapsedSeconds: fraction * seg,
+    remainingSeconds: (1 - fraction) * seg,
+  };
+}
+
 export default class Entity {
   /** @type {EntityConfig} */
   config;
@@ -260,7 +319,8 @@ export default class Entity {
     // position. Missing/unknown coords used to throw here and abort the rest
     // of the card (#91, #173).
     if (!this.config.geoJsonConfig?.hideMarker && this.latLng) {
-      this.marker = this.createMapMarker();
+      const catchUp = this._catchUpPlan();
+      this.marker = this.createMapMarker(catchUp?.start);
 
       // Bind distance tooltip if configured
       if (this.config.distanceEntity) {
@@ -282,6 +342,9 @@ export default class Entity {
       }
       // Initialize last set position to prevent immediate update
       this._lastSetLatLng = this.latLng;
+      // Added to the map or cluster group first, so the slide moves a marker
+      // that is already there.
+      if (catchUp) this._startCatchUp(catchUp);
       // Track the current place so update() can recreate the pill on zone change
       this._currentPlaceIcon = this.placeIcon;
       this._clusterGroup = clusterGroup;
@@ -487,14 +550,26 @@ export default class Entity {
   async update(clusterGroup = null) {
     if (this.removed) return;
     // Entity recovered a position after being unknown/unavailable.
+    //
+    // This is first sight too, and gets the same catch-up as setup(): the
+    // viewer has seen no marker for this entity, exactly as when setup()
+    // makes one. Which of the two paths an entity takes depends on the
+    // DASHBOARD, not on the object - a map that lists unavailable entities
+    // meets a recovery here; one that excludes them (railair-map, backlog
+    // 234) meets the same recovery as a new entity in setup(). Treating the
+    // two differently would make motion depend on a filter. The recreate
+    // paths below and in _recreateMarker() are NOT first sight - they
+    // replace a marker the viewer is already watching - and get no catch-up.
     if (!this.marker && !this.config.geoJsonConfig?.hideMarker && this.latLng) {
-      this.marker = this.createMapMarker();
+      const catchUp = this._catchUpPlan();
+      this.marker = this.createMapMarker(catchUp?.start);
       if (clusterGroup) {
         clusterGroup.addLayer(this.marker);
       } else {
         this.marker.addTo(this.map);
       }
       this._lastSetLatLng = this.latLng;
+      if (catchUp) this._startCatchUp(catchUp);
       this._currentPlaceIcon = this.placeIcon;
     }
 
@@ -631,6 +706,77 @@ export default class Entity {
       this.marker.setLatLng(to);
       return;
     }
+    this._slide(from, to, seconds);
+  }
+
+  /**
+   * The first-sight catch-up for a marker about to be created, or null to
+   * place it at its current position and hold it there.
+   *
+   * Only when position_transition is configured and the user has not asked
+   * for reduced motion - the same gate as any other slide - and only when the
+   * position comes from the entity's own latitude/longitude attributes,
+   * which is what previous_* describes. A fixed position, a history-playback
+   * entry or a device_tracker's position gets none. The fraction itself is
+   * catchUpFromPrevious(); a start within positionUpdateThreshold of the
+   * current position is not worth a slide.
+   * @private
+   * @returns {{start: LatLng, elapsedSeconds: number, remainingSeconds: number}|null}
+   */
+  _catchUpPlan() {
+    if (!this._transitionConfigured() || Entity._prefersReducedMotion()) return null;
+    if (this.config.fixedX && this.config.fixedY) return null;
+    if (this.currentTimelineEntry || this._currentLatLng) return null;
+    const attrs = this.attributes;
+    if (!(attrs.latitude && attrs.longitude)) return null;
+    const plan = catchUpFromPrevious(attrs, Date.now());
+    if (!plan) return null;
+    const to = this.latLng;
+    const start = new LatLng(
+      plan.previous.lat + (to.lat - plan.previous.lat) * plan.fraction,
+      plan.previous.lng + (to.lng - plan.previous.lng) * plan.fraction,
+    );
+    const threshold = this.config.positionUpdateThreshold;
+    if (Number.isFinite(threshold) && this.map.distance(start, to) <= threshold) return null;
+    return { start, elapsedSeconds: plan.elapsedSeconds, remainingSeconds: plan.remainingSeconds };
+  }
+
+  /**
+   * Run a catch-up planned by _catchUpPlan() on the marker just created at
+   * its start. For 'auto', the segment is recorded as having begun when the
+   * fix was observed, so the NEXT update's slide is measured over a real
+   * segment rather than over the time since the page opened.
+   * @private
+   * @param {{start: LatLng, elapsedSeconds: number, remainingSeconds: number}} plan
+   */
+  _startCatchUp(plan) {
+    this._lastMoveAt = performance.now() - plan.elapsedSeconds * 1000;
+    this._cancelTransition();
+    this._slide(plan.start, this.latLng, plan.remainingSeconds);
+  }
+
+  /**
+   * position_transition is on: 'auto' or a positive number of seconds.
+   * The same reading as _transitionSeconds(), which EntityConfig has already
+   * normalised, without its side effect on _lastMoveAt.
+   * @private
+   * @returns {boolean}
+   */
+  _transitionConfigured() {
+    const cfg = this.config.positionTransition;
+    if (cfg === "auto") return true;
+    const n = Number(cfg);
+    return Number.isFinite(n) && n > 0;
+  }
+
+  /**
+   * Slide the marker from where it is DRAWN to `to` over `seconds`.
+   * @private
+   * @param {LatLng} from used only when the marker cannot report its position
+   * @param {LatLng} to
+   * @param {number} seconds
+   */
+  _slide(from, to, seconds) {
     const start = this.marker.getLatLng?.() ?? from;
     const startLat = start.lat, startLng = start.lng;
     const duration = seconds * 1000;
@@ -676,7 +822,8 @@ export default class Entity {
     if (Entity._prefersReducedMotion()) return 0;
     const cfg = this.config.positionTransition;
     if (cfg === "auto") {
-      if (!previous) return 0;
+      // undefined, not falsy: _startCatchUp() can set it to 0 or below.
+      if (previous === undefined) return 0;
       const gap = (now - previous) / 1000;
       if (gap < 0.5) return 0;
       return Math.min(gap, 30);
@@ -695,10 +842,12 @@ export default class Entity {
   }
 
   /**
-   * @private 
+   * @private
+   * @param {LatLng} [at] where to create it; the current position if omitted.
+   *   Only the first-sight catch-up passes one.
    * @returns {Marker}
    */
-  createMapMarker() {
+  createMapMarker(at = this.latLng) {
     Logger.debug("[MarkerEntity] Creating marker for " + this.id + " with display mode " + this.display);
     let icon = this.icon;
     const picture = this.markerPicture;
@@ -732,7 +881,7 @@ export default class Entity {
     const boxH = pillH + off;
     const callout = placeIcon != null && this.map.getZoom() >= this.config.pillCalloutMinZoom;
 
-    const marker = new Marker(this.latLng, {
+    const marker = new Marker(at, {
       icon: new DivIcon({
         html: `
           <${MARKER_TAG}
