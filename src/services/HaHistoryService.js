@@ -53,21 +53,29 @@ export default class HaHistoryService {
       if(this.connection[entityId]) this.unsubscribeEntity(entityId);
 
       this.connection[entityId] = this.hass.connection.subscribeMessage(
+        // Runs inside the websocket library's per-frame loop, which has no
+        // try/catch: a throw here abandons every later message in the frame.
+        // Each state is handled on its own so one bad one loses only itself.
         (message) => {
+          if (!message?.states) return;
           // entities providing results
-          Object.entries(message.states).map(([messageEntityId, value]) => {
+          Object.entries(message.states).forEach(([messageEntityId, value]) => {
             // Each entity can return own results
-            value?.map((state) => {
-              // Get states from each
-              if(state.a.latitude && state.a.longitude) {
-                Logger.debug("[HaHistoryService]: received new msg for entity id: " + messageEntityId + " for entity: " + entityId);
-                f(new TimelineEntry(new Date(state.lu * 1000), entityId, messageEntityId, state));
-              } else {
-                Logger.warn("[HaHistoryService]: received new msg without latitude/longitude for entity id: " + entityId);
+            if (!Array.isArray(value)) return;
+            value.forEach((state) => {
+              try {
+                // Get states from each
+                if(state?.a?.latitude && state?.a?.longitude) {
+                  Logger.debug("[HaHistoryService]: received new msg for entity id: " + messageEntityId + " for entity: " + entityId);
+                  f(new TimelineEntry(new Date(state.lu * 1000), entityId, messageEntityId, state));
+                } else {
+                  Logger.warn("[HaHistoryService]: received new msg without latitude/longitude for entity id: " + entityId);
+                }
+              } catch (e) {
+                Logger.error(`[HaHistoryService] history entry for ${messageEntityId} could not be handled`, e);
               }
             });
           });
-          
         },
         params);
       this.connection[entityId].catch((error) => {
