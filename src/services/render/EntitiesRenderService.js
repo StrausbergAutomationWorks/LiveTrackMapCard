@@ -41,7 +41,15 @@ export default class EntitiesRenderService {
   /** @type {boolean} */
   _isAutoFitting = false;
 
-  constructor(map, hass, focusFollowConfig, entityConfigs, linkedEntityService, dateRangeManager, historyService, isDarkMode, clusterMarkers = true) {
+  /**
+   * Is the page's copy of this entity one Home Assistant no longer has?
+   * See HaStaleStateService. Such an entity is not drawn.
+   * @type {(id: string) => boolean}
+   */
+  isStale = () => false;
+
+  constructor(map, hass, focusFollowConfig, entityConfigs, linkedEntityService, dateRangeManager, historyService, isDarkMode, clusterMarkers = true, isStale = null) {
+    if (isStale) this.isStale = isStale;
     this.map = map;
     this.hass = hass;
     this.focusFollowConfig = focusFollowConfig;
@@ -212,6 +220,10 @@ export default class EntitiesRenderService {
         if (this.hass) {
           ent.hass = this.hass;
         }
+        if (this.isStale(ent.id)) {
+          ent.hide(this.markerClusterGroup);
+          return;
+        }
         ent.update(this.markerClusterGroup);
       } catch (e) {
         Logger.error("Entity: " + ent.id + " failed to update", e);
@@ -262,7 +274,7 @@ export default class EntitiesRenderService {
     if(this.isFollowPaused) {
       return;
     }
-    const points = this.entities.filter(e => e.config.focusOnFit).map((e) => e.latLng);
+    const points = this.entities.filter(e => e.config.focusOnFit && !this.isStale(e.id)).map((e) => e.latLng);
     if(points.length === 0) {
       return;
     }
@@ -282,7 +294,7 @@ export default class EntitiesRenderService {
   }
 
   setInitialView() {
-    const points = this.entities.filter(e => e.config.focusOnFit).map((e) => e.latLng);
+    const points = this.entities.filter(e => e.config.focusOnFit && !this.isStale(e.id)).map((e) => e.latLng);
     if(points.length === 0) {
       return;
     }

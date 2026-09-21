@@ -223,7 +223,12 @@ export default class Entity {
 
   /** @returns {object} */
   get state() {
-    return this.hass.formatEntityState(this.hass.states[this.id], this.currentTimelineEntry?.state.s) ?? this.hass.formatEntityState(this.hass.states[this.id]);
+    const stateObj = this.hass.states[this.id];
+    // An entity Home Assistant has just removed is still in the card's list
+    // until auto-entities catches up; formatEntityState() reads .attributes
+    // off what it is given and throws on undefined.
+    if (!stateObj) return this.currentTimelineEntry?.state.s ?? "";
+    return this.hass.formatEntityState(stateObj, this.currentTimelineEntry?.state.s) ?? this.hass.formatEntityState(stateObj);
   }
 
   /** @returns {{[key: string]: object}} */
@@ -533,7 +538,11 @@ export default class Entity {
       return this.state;
     }
     if (this.display == "attribute") {
-      return this.hass.formatEntityAttributeValue(this.hass.states[this.id], this.config.attribute);
+      const stateObj = this.hass.states[this.id];
+      // Same guard as `state`: formatEntityAttributeValue() reads
+      // .attributes and throws on a removed entity.
+      if (!stateObj) return "";
+      return this.hass.formatEntityAttributeValue(stateObj, this.config.attribute);
     }
     const title = this.friendlyName;
     if (title.length < 5) {
@@ -670,6 +679,29 @@ export default class Entity {
     this.circle.remove();
     this.geoJson.remove();
     this.historyManager.remove({ unsubscribe: unsubscribeHistory });
+  }
+
+  /**
+   * Take the marker off the map, keeping the entity usable.
+   *
+   * For an entity the page still holds but Home Assistant no longer has
+   * (HaStaleStateService). Unlike remove(), nothing is torn down for good:
+   * if the entity returns, the next update() finds no marker and builds one
+   * through the same first-sight path as an entity recovering from
+   * unavailable, catch-up included. The last position is forgotten so a
+   * returning entity is placed, not slid from where it vanished.
+   * @param {object|null} clusterGroup the cluster group markers currently live in
+   */
+  hide(clusterGroup = null) {
+    if (!this.marker) return;
+    this._cancelTransition();
+    if (clusterGroup?.hasLayer?.(this.marker)) {
+      clusterGroup.removeLayer(this.marker);
+    }
+    this.marker.remove();
+    this.marker = null;
+    this._lastSetLatLng = null;
+    this._lastMoveAt = undefined;
   }
 
   async update(clusterGroup = null) {

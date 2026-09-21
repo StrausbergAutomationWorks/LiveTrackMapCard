@@ -15,6 +15,7 @@ import InitialViewRenderService from '../services/render/InitialViewRenderServic
 import TileLayer from '../leaflet/TileLayer.js';
 import PluginsRenderService from '../services/render/PluginsRenderService.js';
 import GeoJsonRenderService from '../services/render/GeoJsonRenderService.js';
+import HaStaleStateService from '../services/HaStaleStateService.js';
 
 export default class MapCard extends LitElement {
   static get properties() {
@@ -74,7 +75,11 @@ export default class MapCard extends LitElement {
       this.dateRangeManager = new HaDateRangeService(this.hass);
     }
     this.tileLayersService = new TileLayersService(this.map, this._config.tileLayers, this._config.wms, this.urlResolver, this.linkedEntityService, this.dateRangeManager);
-    this.entitiesRenderService = new EntitiesRenderService(this.map, this.hass, this._config.focusFollow, this._config.entities, this.linkedEntityService, this.dateRangeManager, this.historyService, this._isDarkMode(), this._config.clusterMarkers);
+    // Entities the page still holds after Home Assistant removed them - a
+    // reconnect merges instead of replacing (HaStaleStateService). A change
+    // to the record redraws, which hides or restores the markers.
+    this.staleStateService = new HaStaleStateService(() => this.hass, () => this.requestUpdate());
+    this.entitiesRenderService = new EntitiesRenderService(this.map, this.hass, this._config.focusFollow, this._config.entities, this.linkedEntityService, this.dateRangeManager, this.historyService, this._isDarkMode(), this._config.clusterMarkers, (id) => this.staleStateService.isStale(id));
     this.initialViewRenderService = new InitialViewRenderService(this.map, this._config, this.hass, this.entitiesRenderService);
 
     this.pluginsRenderService = new PluginsRenderService(this.map, this._config.plugins);
@@ -86,6 +91,8 @@ export default class MapCard extends LitElement {
       this.geoJsonRenderService.setup();
       this.entitiesRenderService.setup();
       this.initialViewRenderService.setup();
+      // After the entities exist: a check that finds stale ones redraws.
+      this.staleStateService.start();
 
       this.setupNeeded = false;
       this.hasError = false;
@@ -271,6 +278,7 @@ export default class MapCard extends LitElement {
   _teardown() {
     this.resizeObserver?.disconnect();
     this.resizeObserver = undefined;
+    this.staleStateService?.stop();
     this.historyService?.unsubscribe();
     this.dateRangeManager?.disconnect();
     this.linkedEntityService?.disconnect();
