@@ -483,12 +483,13 @@ export default class Entity {
       }
       // Initialize last set position to prevent immediate update
       this._lastSetLatLng = this.latLng;
+      // Known before the catch-up starts, so its slide takes the cluster path.
+      this._clusterGroup = clusterGroup;
       // Added to the map or cluster group first, so the slide moves a marker
       // that is already there.
       if (catchUp) this._startCatchUp(catchUp);
       // Track the current place so update() can recreate the pill on zone change
       this._currentPlaceIcon = this.placeIcon;
-      this._clusterGroup = clusterGroup;
       // For `display: pill`, the offset callout + leader only show at/above
       // pillCalloutMinZoom; recreate the marker when zoom crosses that boundary
       // so it isn't obtrusive when zoomed out region-wide.
@@ -516,6 +517,7 @@ export default class Entity {
    */
   _recreateMarker() {
     const cg = this._clusterGroup;
+    this._settleSlide();
     this.marker.remove();
     this.marker = this.createMapMarker();
     if (cg) {
@@ -674,8 +676,8 @@ export default class Entity {
    *   when another marker of the same entity still uses the history stream
    */
   remove(clusterGroup = null, { unsubscribeHistory = true } = {}) {
+    this._settleSlide();
     this.removed = true;
-    this._cancelTransition();
     if (this._onZoomEnd) {
       this.map.off("zoomend", this._onZoomEnd);
       this._onZoomEnd = null;
@@ -705,7 +707,7 @@ export default class Entity {
    */
   hide(clusterGroup = null) {
     if (!this.marker) return;
-    this._cancelTransition();
+    this._settleSlide();
     if (clusterGroup?.hasLayer?.(this.marker)) {
       clusterGroup.removeLayer(this.marker);
     }
@@ -736,6 +738,7 @@ export default class Entity {
       } else {
         this.marker.addTo(this.map);
       }
+      this._clusterGroup = clusterGroup;
       this._lastSetLatLng = this.latLng;
       if (catchUp) this._startCatchUp(catchUp);
       this._currentPlaceIcon = this.placeIcon;
@@ -751,6 +754,7 @@ export default class Entity {
         Logger.debug("[Entity] recreating marker for " + this.id + " (title/place change)");
         // When recreating marker, we need to track if it was in a cluster
         const wasInCluster = clusterGroup && clusterGroup.hasLayer(this.marker);
+        this._settleSlide();
         this.marker.remove();
         this.marker = this.createMapMarker();
         if (wasInCluster) {
@@ -946,6 +950,7 @@ export default class Entity {
     this._cancelTransition();
     if (!from || !seconds || this.positionJump) {
       this.marker.setLatLng(to);
+      this._endClusterMove();
       return;
     }
     this._slide(from, to, seconds);
@@ -1026,12 +1031,14 @@ export default class Entity {
     const startLat = start.lat, startLng = start.lng;
     const duration = seconds * 1000;
     const started = performance.now();
+    this._beginClusterMove();
     const step = (now) => {
       this._transitionFrame = null;
       if (!this.marker || this.removed) return;
       const f = Math.min(1, Math.max(0, (now - started) / duration));
       if (f >= 1) {
         this.marker.setLatLng(to);
+        this._endClusterMove();
         return;
       }
       this.marker.setLatLng([
@@ -1049,6 +1056,50 @@ export default class Entity {
       cancelAnimationFrame(this._transitionFrame);
       this._transitionFrame = null;
     }
+  }
+
+  /**
+   * Backlog 231. markercluster answers every `move` of a member marker with
+   * removeLayer + addLayer (its _childMarkerMoved -> _moveChild), which
+   * rebuilds the marker's DOM - on every frame of a slide, ~17 times a
+   * second, and the rotation transition never ran. The library has a path
+   * for a marker that moves continuously and is re-indexed once: a DRAG.
+   * While `__dragStart` holds the position the group indexed, moves are
+   * ignored; `dragend` re-indexes from there to wherever the marker is.
+   * A slide uses exactly that path. Nothing happens off a cluster group.
+   * @private
+   */
+  _beginClusterMove() {
+    const m = this.marker;
+    const cg = this._clusterGroup;
+    if (!m || !cg || !cg.hasLayer?.(m)) return;
+    // Kept across an interrupted slide: it is where the GROUP last indexed
+    // the marker, not where the marker is drawn.
+    if (m.__dragStart === undefined) m.__dragStart = m.getLatLng();
+  }
+
+  /**
+   * Re-index a marker moved by _beginClusterMove() at its current position,
+   * once, through the library's own dragend handler. A no-op otherwise.
+   * @private
+   */
+  _endClusterMove() {
+    const m = this.marker;
+    if (!m || m.__dragStart === undefined) return;
+    m.fire?.("dragend");
+    // Off the group (its handler detached) the flag would linger.
+    if (m.__dragStart !== undefined) delete m.__dragStart;
+  }
+
+  /**
+   * Stop any slide and re-index the marker where it is drawn. Before the
+   * marker leaves its group: markercluster finds a member in its distance
+   * grid by POSITION, so removing one indexed elsewhere leaves a stale entry.
+   * @private
+   */
+  _settleSlide() {
+    this._cancelTransition();
+    this._endClusterMove();
   }
 
   /**
