@@ -3,7 +3,7 @@ import { DivIcon, LatLng, Map, Marker } from "leaflet";
 import Circle from "./Circle.js";
 import GeoJson from "./GeoJson.js";
 import Logger from "../util/Logger.js"
-import EntityConfig, { parseMarkerColor, parseRingWidth } from "../configs/EntityConfig.js";
+import EntityConfig, { layerOffset, parseMarkerColor, parseRingWidth } from "../configs/EntityConfig.js";
 import EntityHistoryManager from "./EntityHistoryManager.js";
 import TimelineEntry from "./TimelineEntry.js";
 
@@ -341,6 +341,17 @@ export default class Entity {
    * held`), so the card draws exactly what the attribute says.
    * @returns {number|null}
    */
+  /**
+   * The marker's stacking offset (06_MAP_CONTRACT.md D10): a dashboard
+   * `z_index_offset` wins; else the offset of the entity's `map_layer`;
+   * else 0. Read from the attributes on every update, so it follows the
+   * entity rather than being fixed when the marker was built.
+   * @returns {number}
+   */
+  get zIndexOffset() {
+    return this.config.zIndexOffset ?? layerOffset(this.attributes?.map_layer);
+  }
+
   arrowDegrees() {
     const attr = this.config.arrowAttribute;
     if (!attr) return null;
@@ -759,6 +770,7 @@ export default class Entity {
       this.refreshMarkerLabelColor();
       this.refreshMarkerArrow();
       this.refreshMarkerStyling();
+      this.refreshMarkerZIndex();
       this.updateMarkerPosition();
     }
 
@@ -831,6 +843,18 @@ export default class Entity {
    * Give an existing marker the entity's current styling (markerStyling).
    * In place, as the fill; only the attributes that changed are written.
    */
+  /**
+   * Give an existing marker the entity's current stacking offset, in place.
+   * Leaflet's setZIndexOffset only re-orders; the marker is not rebuilt, so
+   * a slide in flight carries on.
+   */
+  refreshMarkerZIndex() {
+    const offset = this.zIndexOffset;
+    if (offset === this._currentZIndex) return;
+    this._currentZIndex = offset;
+    this.marker?.setZIndexOffset?.(offset);
+  }
+
   refreshMarkerStyling() {
     if (!this.marker) return;
     const wanted = this.markerStyling;
@@ -1086,6 +1110,8 @@ export default class Entity {
     this._currentArrow = arrow;
     const styling = this.markerStyling;
     this._currentStyling = styling;
+    const zIndexOffset = this.zIndexOffset;
+    this._currentZIndex = zIndexOffset;
 
     const extraCssClasses = this.darkMode ? "dark" : "";
     // Pill mode (opt-in via display: pill): zone icon + initials when the entity
@@ -1142,7 +1168,7 @@ export default class Entity {
         iconAnchor: placeIcon ? (callout ? [boxW - 2, boxH - 2] : [pillW / 2, pillH / 2]) : [s / 2, s / 2],
         className: ''
       }),
-      zIndexOffset: this.config.zIndexOffset
+      zIndexOffset
     });
     // Instant hover label: a Leaflet tooltip opens on mouseover with no delay,
     // unlike the native `title` attribute (which the browser holds ~1s). The

@@ -47,6 +47,43 @@ export function parseRingWidth(value) {
     && value >= RING_WIDTH_MIN && value <= RING_WIDTH_MAX ? value : null;
 }
 
+/**
+ * 06_MAP_CONTRACT.md D10: an integration names its layer, the card owns the
+ * numbers. Leaflet stacks a marker at its screen y plus zIndexOffset, so a
+ * class is lifted only by a step larger than any screen height.
+ */
+export const MAP_LAYER_OFFSETS = Object.freeze({
+  fixed: 0,
+  water: 10000,
+  rail: 20000,
+  air_low: 30000,
+  air: 40000,
+});
+
+/**
+ * The offset for a `map_layer` attribute. Absent or unknown is `fixed`'s 0,
+ * never an error: a third-party entity simply sits at the bottom.
+ * @param {*} name
+ * @returns {number}
+ */
+export function layerOffset(name) {
+  return typeof name === "string" && Object.prototype.hasOwnProperty.call(MAP_LAYER_OFFSETS, name)
+    ? MAP_LAYER_OFFSETS[name] : 0;
+}
+
+/**
+ * A `z_index_offset` written in the DASHBOARD config: any finite number,
+ * 0 and negatives included, else null. Upstream wrote
+ * `config.z_index_offset ? config.z_index_offset : 1`, which turned an
+ * explicit 0 into 1 and made "absent" 1 as well. D10 needs the explicit
+ * value to win, whatever it is, and "absent" to fall through to map_layer.
+ * @param {*} value
+ * @returns {number|null}
+ */
+export function parseZIndexOffset(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 export default class EntityConfig {
   /** @type {string} */
   id;
@@ -117,7 +154,7 @@ export default class EntityConfig {
   tapAction;
   /** @type {boolean} */
   focusOnFit;
-  /** @type {number} */
+  /** @type {number|null} dashboard override; null means use map_layer (D10) */
   zIndexOffset;
   /** @type {boolean} */
   useBaseEntityOnly;
@@ -224,7 +261,7 @@ export default class EntityConfig {
     this.tapAction = (typeof config.tap_action == 'object') ? this.parseAction(config.tap_action) : { action: 'more-info' };
 
     this.focusOnFit = config.focus_on_fit ?? true;
-    this.zIndexOffset = config.z_index_offset ? config.z_index_offset : 1;
+    this.zIndexOffset = parseZIndexOffset(config.z_index_offset);
 
     this.useBaseEntityOnly = config.use_base_entity_only ?? false;
     this.positionUpdateThreshold = config.position_update_threshold ?? 10;

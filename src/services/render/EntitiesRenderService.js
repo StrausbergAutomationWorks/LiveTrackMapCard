@@ -8,6 +8,7 @@ import HaDateRangeService from "../HaDateRangeService";
 import HaLinkedEntityService from "../HaLinkedEntityService";
 import HaHistoryService from "../HaHistoryService";
 import FocusFollowConfig from "../../configs/FocusFollowConfig";
+import { mergedAway } from "../ObjectMergeService";
 
 
 export default class EntitiesRenderService {
@@ -48,6 +49,57 @@ export default class EntitiesRenderService {
    */
   isStale = () => false;
 
+  /**
+   * Entities not drawn because another source already draws the same
+   * object (06_MAP_CONTRACT.md D11). Recomputed on every render: a
+   * proximity pair can form or part as positions move.
+   * @type {Set<string>}
+   */
+  merged = new Set();
+
+  /**
+   * Recompute `merged` from the entities about to be drawn: not stale, and
+   * with a position.
+   */
+  computeMerged() {
+    const candidates = [];
+    for (const ent of this.entities) {
+      try {
+        if (this.isStale(ent.id)) continue;
+        const ll = ent.latLng;
+        if (!ll) continue;
+        candidates.push({ id: ent.id, attributes: ent.attributes, lat: ll.lat, lng: ll.lng });
+      } catch (e) {
+        Logger.error("[EntitiesRenderService] merge check skipped " + ent.id, e);
+      }
+    }
+    try {
+      this.merged = mergedAway(candidates);
+    } catch (e) {
+      // Never let the merge stop the map drawing: fall back to drawing all.
+      Logger.error("[EntitiesRenderService] merge failed", e);
+      this.merged = new Set();
+    }
+  }
+
+  /** Hide every entity D11 has merged away. */
+  hideMerged() {
+    for (const ent of this.entities) {
+      if (this.merged.has(ent.id)) {
+        try { ent.hide(this.markerClusterGroup); } catch (e) { Logger.error("hide failed " + ent.id, e); }
+      }
+    }
+  }
+
+  /**
+   * Is this entity kept off the map: stale, or merged away?
+   * @param {string} id entity id
+   * @returns {boolean}
+   */
+  isHidden(id) {
+    return this.isStale(id) || this.merged.has(id);
+  }
+
   constructor(map, hass, focusFollowConfig, entityConfigs, linkedEntityService, dateRangeManager, historyService, isDarkMode, clusterMarkers = true, isStale = null) {
     if (isStale) this.isStale = isStale;
     this.map = map;
@@ -87,6 +139,9 @@ export default class EntitiesRenderService {
     })
     // Remove skipped entities.
     .filter(v => v);
+
+    this.computeMerged();
+    this.hideMerged();
 
     if (!this.focusFollowConfig.isNone && this.focusFollowConfig.hasPause) {
       this._setupFollowPauseListeners();
@@ -189,6 +244,8 @@ export default class EntitiesRenderService {
 
     this.entities = plan.map((p) => p.entity).filter((e) => e);
     this.entityConfigs = plan.map((p) => p.config);
+    this.computeMerged();
+    this.hideMerged();
   }
 
   cleanup() {
@@ -212,6 +269,10 @@ export default class EntitiesRenderService {
     if (hass) {
       this.hass = hass;
     }
+    for (const ent of this.entities) {
+      if (this.hass) ent.hass = this.hass;
+    }
+    this.computeMerged();
     this.entities.forEach((ent) => {
       // Entity keeps the hass object from setup(); Lovelace replaces hass on
       // every state change, so without this the marker reads a stale snapshot
@@ -220,7 +281,7 @@ export default class EntitiesRenderService {
         if (this.hass) {
           ent.hass = this.hass;
         }
-        if (this.isStale(ent.id)) {
+        if (this.isHidden(ent.id)) {
           ent.hide(this.markerClusterGroup);
           return;
         }
@@ -274,7 +335,7 @@ export default class EntitiesRenderService {
     if(this.isFollowPaused) {
       return;
     }
-    const points = this.entities.filter(e => e.config.focusOnFit && !this.isStale(e.id)).map((e) => e.latLng);
+    const points = this.entities.filter(e => e.config.focusOnFit && !this.isHidden(e.id)).map((e) => e.latLng);
     if(points.length === 0) {
       return;
     }
@@ -294,7 +355,7 @@ export default class EntitiesRenderService {
   }
 
   setInitialView() {
-    const points = this.entities.filter(e => e.config.focusOnFit && !this.isStale(e.id)).map((e) => e.latLng);
+    const points = this.entities.filter(e => e.config.focusOnFit && !this.isHidden(e.id)).map((e) => e.latLng);
     if(points.length === 0) {
       return;
     }
