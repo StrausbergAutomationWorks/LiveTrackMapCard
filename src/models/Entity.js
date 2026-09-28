@@ -21,6 +21,35 @@ export const MARKER_TAG = "live-track-map-card-entity-marker";
 const isFiniteNumber = (v) => typeof v === "number" && Number.isFinite(v);
 
 /**
+ * The shortest drawn segment, in metres, whose direction a picture faces
+ * while it slides (Ships item 270, the turn order). Below it a bearing
+ * between two points is noise and none is used (06_MAP_CONTRACT.md D3c-iii:
+ * omit rather than approximate); the picture keeps the emitter's angle.
+ *
+ * MEASURED on the Chicago River capture of 2026-09-28 (bin\ltmc270_jitter.py,
+ * 1,001 moving pairs): the bearing of a segment against the heading the
+ * vessel reported differs by a median 78 deg under 10 m, 56 deg at 10-20 m,
+ * 29 deg at 20-30 m, and 14-15 deg from 30 m up - the same as at 50-100 m.
+ */
+export const TRAVEL_BEARING_MIN_M = 30;
+
+/**
+ * Initial great-circle bearing from `a` to `b`, degrees clockwise from north,
+ * 0 <= result < 360. Across the antimeridian as well: only differences of
+ * longitude enter, through sin and cos.
+ * @param {{lat: number, lng: number}} a
+ * @param {{lat: number, lng: number}} b
+ * @returns {number}
+ */
+export function initialBearing(a, b) {
+  const rad = Math.PI / 180;
+  const p1 = a.lat * rad, p2 = b.lat * rad, dl = (b.lng - a.lng) * rad;
+  const y = Math.sin(dl) * Math.cos(p2);
+  const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+  return ((Math.atan2(y, x) / rad) % 360 + 360) % 360;
+}
+
+/**
  * Where a marker seen for the FIRST time should start, so that a card opened
  * mid-segment shows the object where a card open all along would have it,
  * instead of holding it still until the integration's next update.
@@ -109,6 +138,14 @@ export default class Entity {
    * @type {number|undefined}
    */
   _rotation;
+  /**
+   * The bearing of the slide in progress (0..360), or null: no slide, or a
+   * drawn segment under TRAVEL_BEARING_MIN_M. Set by _slide(), cleared when
+   * the slide ends or is settled. rotationDegrees() decides whether to use it.
+   * @private
+   * @type {number|null}
+   */
+  _travel = null;
   /**
    * The angle the marker element was last given.
    * @private
@@ -397,23 +434,62 @@ export default class Entity {
    * turn the marker 340 degrees backwards. Each call adds the shortest delta
    * to the last angle instead, giving 370. A missing value returns null but
    * keeps the last angle, so the turn stays short when the value returns.
+   *
+   * TURN ORDER (Ships item 270). While the marker slides, the picture faces
+   * the way it is being drawn moving - the bearing of the segment - and on
+   * arrival turns to the emitter's angle. Before this a vessel turned to its
+   * final heading when the update arrived and then travelled, sideways or
+   * backwards when heading and travel disagreed (by more than 45 deg on 14%
+   * of the river capture's moving pairs). The travel bearing replaces the
+   * emitter's angle only when the picture is being turned at all (the
+   * attribute holds a number: a picture the emitter does not rotate is never
+   * turned by the card) and travelFacingAllowed() says so.
    * @returns {number|null}
    */
   rotationDegrees() {
     const attr = this.config.rotationAttribute;
     if (!attr) return null;
-    const value = this.attributes[attr];
-    if (typeof value !== "number" && !(typeof value === "string" && value.trim() !== "")) {
-      return null;
-    }
-    const raw = Number(value);
-    if (!Number.isFinite(raw)) return null;
-    if (this._rotation === undefined) {
-      this._rotation = ((raw % 360) + 360) % 360;
-    } else {
-      this._rotation += ((((raw - this._rotation) % 360) + 540) % 360) - 180;
-    }
+    const reported = Entity._angleOf(this.attributes[attr]);
+    if (reported === null) return null;
+    const raw = this._travel !== null && this.travelFacingAllowed ? this._travel : reported;
+    this._rotation = Entity._continue(this._rotation, raw);
     return this._rotation;
+  }
+
+  /**
+   * May the picture face the direction of travel while it slides? Not when
+   * the emitter says:
+   *
+   * - `icon_rotation_basis: "held"` - the object is at rest by the emitter's
+   *   own floor (06_MAP_CONTRACT.md D4: the emitter decides "at rest", the
+   *   card never infers it), so a displacement is jitter, not travel. On the
+   *   river capture this caught 95 of the 103 pairs of 30 m or more from a
+   *   vessel reporting under 1 km/h;
+   * - `icon_counter_rotated: true` - the picture carries something drawn
+   *   upright FOR the published angle (Live Track Ships' medical and SAR
+   *   symbols, the sailboat's rig: `icons.UPRIGHT`, the `s=` in the picture
+   *   URL). Turned to any other angle it tips. Only a JSON true counts, the
+   *   same strictness as position_jump.
+   * @returns {boolean}
+   */
+  get travelFacingAllowed() {
+    const a = this.attributes ?? {};
+    return a.icon_rotation_basis !== "held" && a.icon_counter_rotated !== true;
+  }
+
+  /**
+   * The bearing a slide from `from` to `to` faces, or null when the segment
+   * is shorter than TRAVEL_BEARING_MIN_M.
+   * @private
+   * @param {{lat: number, lng: number}} from
+   * @param {{lat: number, lng: number}} to
+   * @returns {number|null}
+   */
+  _segmentBearing(from, to) {
+    if (!from || !to) return null;
+    const d = this.map?.distance?.(from, to);
+    if (!Number.isFinite(d) || d < TRAVEL_BEARING_MIN_M) return null;
+    return initialBearing(from, to);
   }
 
   /** @returns {LatLng} */
@@ -461,6 +537,9 @@ export default class Entity {
     // of the card (#91, #173).
     if (!this.config.geoJsonConfig?.hideMarker && this.latLng) {
       const catchUp = this._catchUpPlan();
+      // Built already facing the catch-up's travel, rather than built at the
+      // emitter's angle and turned the moment its slide starts.
+      if (catchUp) this._travel = this._segmentBearing(catchUp.start, this.latLng);
       this.marker = this.createMapMarker(catchUp?.start);
 
       // Bind distance tooltip if configured
@@ -732,6 +811,7 @@ export default class Entity {
     // replace a marker the viewer is already watching - and get no catch-up.
     if (!this.marker && !this.config.geoJsonConfig?.hideMarker && this.latLng) {
       const catchUp = this._catchUpPlan();
+      if (catchUp) this._travel = this._segmentBearing(catchUp.start, this.latLng);
       this.marker = this.createMapMarker(catchUp?.start);
       if (clusterGroup) {
         clusterGroup.addLayer(this.marker);
@@ -951,6 +1031,8 @@ export default class Entity {
     if (!from || !seconds || this.positionJump) {
       this.marker.setLatLng(to);
       this._endClusterMove();
+      // A slide cut short by a placement leaves no travel to face.
+      this._arrive();
       return;
     }
     this._slide(from, to, seconds);
@@ -1032,6 +1114,11 @@ export default class Entity {
     const duration = seconds * 1000;
     const started = performance.now();
     this._beginClusterMove();
+    // Face the way the marker is DRAWN moving, from where it is to the fix.
+    // Two attribute writes per slide (here and on arrival), never one per
+    // frame: the picture's own CSS transition does the turning.
+    this._travel = this._segmentBearing(start, to);
+    this.refreshMarkerRotation();
     const step = (now) => {
       this._transitionFrame = null;
       if (!this.marker || this.removed) return;
@@ -1039,6 +1126,7 @@ export default class Entity {
       if (f >= 1) {
         this.marker.setLatLng(to);
         this._endClusterMove();
+        this._arrive();
         return;
       }
       this.marker.setLatLng([
@@ -1048,6 +1136,17 @@ export default class Entity {
       this._transitionFrame = requestAnimationFrame(step);
     };
     this._transitionFrame = requestAnimationFrame(step);
+  }
+
+  /**
+   * The slide is over, or there was none: the picture turns to the
+   * emitter's angle. A write only if that differs from what is drawn.
+   * @private
+   */
+  _arrive() {
+    if (this._travel === null) return;
+    this._travel = null;
+    this.refreshMarkerRotation();
   }
 
   /** @private */
@@ -1100,6 +1199,9 @@ export default class Entity {
   _settleSlide() {
     this._cancelTransition();
     this._endClusterMove();
+    // No write: the marker is about to leave, or be rebuilt at the
+    // emitter's angle.
+    this._travel = null;
   }
 
   /**
