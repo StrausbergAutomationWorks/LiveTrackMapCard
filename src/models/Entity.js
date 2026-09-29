@@ -460,21 +460,22 @@ export default class Entity {
    * May the picture face the direction of travel while it slides? Not when
    * the emitter says:
    *
-   * - `icon_rotation_basis: "held"` - the object is at rest by the emitter's
-   *   own floor (06_MAP_CONTRACT.md D4: the emitter decides "at rest", the
-   *   card never infers it), so a displacement is jitter, not travel. On the
-   *   river capture this caught 95 of the 103 pairs of 30 m or more from a
-   *   vessel reporting under 1 km/h;
    * - `icon_counter_rotated: true` - the picture carries something drawn
    *   upright FOR the published angle (Live Track Ships' medical and SAR
    *   symbols, the sailboat's rig: `icons.UPRIGHT`, the `s=` in the picture
    *   URL). Turned to any other angle it tips. Only a JSON true counts, the
    *   same strictness as position_jump.
+   *
+   * `icon_rotation_basis: "held"` no longer stops it (Lee, 2026-09-29): a boat
+   * reports held while it eases into or out of its slip, and a move of 30 m or
+   * more is that, not jitter (river capture: 148 held or sub-1 km/h moves of
+   * 30 m or more, 85 of them 100-965 m). Under 30 m the floor in
+   * _segmentBearing already keeps mooring jitter from turning the picture.
    * @returns {boolean}
    */
   get travelFacingAllowed() {
     const a = this.attributes ?? {};
-    return a.icon_rotation_basis !== "held" && a.icon_counter_rotated !== true;
+    return a.icon_counter_rotated !== true;
   }
 
   /**

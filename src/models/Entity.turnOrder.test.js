@@ -199,9 +199,15 @@ describe('when the picture keeps the emitter angle while sliding', () => {
     expect(drawnAngle()).toBeCloseTo(90, 0);
   });
 
-  it("icon_rotation_basis 'held': the emitter says at rest, so the move is jitter", () => {
-    const { update, writes } = makeEntity({ attrs: { icon_rotation_basis: 'held' } });
+  it("icon_rotation_basis 'held', a move of 30 m or more: an arrival, so it faces travel (Lee, 2026-09-29)", () => {
+    const { update, drawnAngle } = makeEntity({ attrs: { icon_rotation_basis: 'held' } });
     update(41.0, -87.99);
+    expect(drawnAngle()).toBeCloseTo(90, 1);
+  });
+
+  it("icon_rotation_basis 'held', a move under 30 m: jitter, no turn", () => {
+    const { update, writes } = makeEntity({ attrs: { icon_rotation_basis: 'held' } });
+    update(41.0, -88.0 + 25 * M);
     tick(10000);
     expect(writes).toEqual([]);
   });

@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  */
-import { PathFollower, AT_REST_KMH } from "./PathFollower.js";
+import { PathFollower, AT_REST_KMH, REST_MAX_CHORD_M } from "./PathFollower.js";
 import { parsePathOptions, DEFAULT_SOURCES, DEFAULT_MIN_ZOOM } from "./options.js";
 import { at, xy, makeGrid, lRiver } from "./testWater.testhelper.js";
 
@@ -112,17 +112,41 @@ describe("PathFollower", () => {
     expect(store.requested).toEqual([]);
   });
 
-  test.each([
-    ["held", { map_layer: "water", icon_rotation_basis: "held", speed_kmh: 10 }],
-    ["under 1 km/h", { map_layer: "water", speed_kmh: AT_REST_KMH - 0.1 }],
-  ])("at rest (%s): no routing, a straight slide ending in the water", (_, attrs) => {
-    const f = new PathFollower(stubMap(), opts(), stubStore());
-    const p = f.plan(at(200, 0), at(460, 250), attrs);
-    expect(p).toHaveLength(2);
-    expect(Math.abs(xy(p[1]).x - 400)).toBeLessThanOrEqual(21);
-    expect(f.stats.rest).toBe(1);
-    expect(f.stats.paths).toBe(0);
+  const HELD = { map_layer: "water", icon_rotation_basis: "held", speed_kmh: 10 };
+  const SLOW = { map_layer: "water", speed_kmh: AT_REST_KMH - 0.1 };
+
+  test("an at-rest move is jitter only under 30 m (Lee, 2026-09-29)", () => {
+    expect(REST_MAX_CHORD_M).toBe(30);
   });
+
+  test.each([["held", HELD], ["under 1 km/h", SLOW]])(
+    "at rest (%s), a move under 30 m: no routing, a straight slide ending in the water", (_, attrs) => {
+      const f = new PathFollower(stubMap(), opts(), stubStore());
+      const p = f.plan(at(100, 10), at(110, 30), attrs); // 22 m; the fix 10 m up the bank
+      expect(p).toHaveLength(2);
+      expect(xy(p[1]).y).toBeLessThanOrEqual(21);
+      expect(f.stats.rest).toBe(1);
+      expect(f.stats.paths).toBe(0);
+    });
+
+  test.each([["held", HELD], ["under 1 km/h", SLOW]])(
+    "at rest (%s), a move of 30 m or more is an arrival: routed round the corner", (_, attrs) => {
+      const f = new PathFollower(stubMap(), opts(), stubStore());
+      const p = f.plan(at(200, 0), at(460, 250), attrs);
+      expect(p.length).toBeGreaterThan(2);
+      expect(f.stats.paths).toBe(1);
+      expect(f.stats.rest).toBe(0);
+    });
+
+  test.each([["held", HELD], ["under 1 km/h", SLOW]])(
+    "at rest (%s): 29 m is jitter, 31 m is not", (_, attrs) => {
+      const f = new PathFollower(stubMap(), opts(), stubStore());
+      f.plan(at(0, 0), at(29, 0), attrs);
+      expect(f.stats.rest).toBe(1);
+      f.plan(at(0, 0), at(31, 0), attrs);
+      expect(f.stats.rest).toBe(1);
+      expect(f.stats.straight).toBe(1);
+    });
 
   test("no speed at all is not 'at rest'", () => {
     const f = new PathFollower(stubMap(), opts(), stubStore());

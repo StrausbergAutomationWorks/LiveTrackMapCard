@@ -12,12 +12,20 @@
 import { TileStore } from "./TileStore.js";
 import { DEFAULT_MIN_ZOOM, DEFAULT_SOURCES, parsePathOptions } from "./options.js";
 import { routeWater, snapToWater, tilesForChord, DEFAULTS } from "./router.js";
-import { fromCell } from "./mercator.js";
+import { fromCell, haversine } from "./mercator.js";
 
 export { DEFAULT_MIN_ZOOM, DEFAULT_SOURCES, parsePathOptions };
 
 /** Below this reported speed a boat is at rest: its moves are jitter, not travel. */
 export const AT_REST_KMH = 1;
+
+/**
+ * An at-rest move shorter than this is jitter and is not routed; a longer one
+ * is a boat easing into or out of its slip, and is routed (Lee, 2026-09-29,
+ * after ROBERT H left its dock across the neighbourhood). River capture: 920
+ * at-rest moves under 30 m; 148 of 30 m or more, 85 of them 100-965 m.
+ */
+export const REST_MAX_CHORD_M = 30;
 
 const stores = new Map();
 
@@ -161,10 +169,12 @@ export class PathFollower {
     try {
       this.stats.plans++;
       const speed = Number(attributes.speed_kmh);
-      const atRest = attributes.icon_rotation_basis === "held"
-        || (attributes.speed_kmh !== undefined && attributes.speed_kmh !== null && Number.isFinite(speed) && speed < AT_REST_KMH);
+      const atRest = (attributes.icon_rotation_basis === "held"
+        || (attributes.speed_kmh !== undefined && attributes.speed_kmh !== null && Number.isFinite(speed) && speed < AT_REST_KMH))
+        && haversine(from, to) < REST_MAX_CHORD_M;
       if (atRest) {
         // Jitter at a mooring is not a journey: no routing, but drawn in the water.
+        // A longer move reported at rest is an arrival or a departure: routed below.
         this.stats.rest++;
         return [from, this.place(to, attributes)];
       }
