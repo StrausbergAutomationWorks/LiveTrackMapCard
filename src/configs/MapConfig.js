@@ -7,6 +7,7 @@ import GeoJsonLayerConfig from "./GeoJsonLayerConfig.js";
 import Logger from "../util/Logger.js";
 import Entity from "../models/Entity.js";
 import FocusFollowConfig from "./FocusFollowConfig.js";
+import { parsePathOptions } from "../services/path/options.js";
 
 
 export default class MapConfig {
@@ -66,6 +67,12 @@ export default class MapConfig {
 
     // Enable marker clustering (default: false)
     this.clusterMarkers = this._setConfigWithDefault(inputConfig.cluster_markers, false);
+
+    // Path-following (item 270 part 2): water markers slide along the water
+    // from zoom 14 up. ON by default (Lee, 2026-09-29); `path_following:
+    // false` turns it off, `path_min_zoom` moves the gate,
+    // `path_tile_sources` replaces the vector tile sources.
+    this.pathFollowing = parsePathOptions(inputConfig);
 
     // Enable debug messaging.
     // Card is quite chatty with this enabled.

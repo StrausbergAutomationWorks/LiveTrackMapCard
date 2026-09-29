@@ -987,6 +987,8 @@ export default class Entity {
     const threshold = this.config.positionUpdateThreshold;
     // Update position only if it has changed significantly (configurable threshold in meters)
     if (!this._lastSetLatLng || this.map.distance(this._lastSetLatLng, newLatLng) > threshold) {
+      // Water tiles round a fix on screen, for this slide or the next one.
+      try { this._pathFollower()?.want(newLatLng, this.attributes); } catch { /* never stops the map */ }
       this._moveMarkerTo(this._lastSetLatLng, newLatLng);
       this._lastSetLatLng = newLatLng;
     }
@@ -1028,14 +1030,68 @@ export default class Entity {
   _moveMarkerTo(from, to) {
     const seconds = this._transitionSeconds();
     this._cancelTransition();
+    const paths = this._pathFollower();
     if (!from || !seconds || this.positionJump) {
-      this.marker.setLatLng(to);
+      this.marker.setLatLng(this._drawnAt(to));
       this._endClusterMove();
       // A slide cut short by a placement leaves no travel to face.
       this._arrive();
       return;
     }
-    this._slide(from, to, seconds);
+    let route = null;
+    if (paths) {
+      try {
+        route = paths.plan(this.marker.getLatLng?.() ?? from, to, this.attributes);
+      } catch {
+        route = null;
+      }
+    }
+    this._slide(from, to, seconds, route);
+  }
+
+  /**
+   * The card's path-follower for this map (item 270 part 2), or null. Set on
+   * the Leaflet map by MapCard; absent in tests and when switched off.
+   * @private
+   * @returns {object|null}
+   */
+  _pathFollower() {
+    return this.map?.ltmcPathFollower ?? null;
+  }
+
+  /**
+   * Where to draw a fix: the fix, or the nearest water when a boat's fix sits
+   * on land (PathFollower.place). Display only.
+   * @private
+   * @param {LatLng} to
+   * @returns {LatLng}
+   */
+  _drawnAt(to) {
+    const paths = this._pathFollower();
+    if (!paths) return to;
+    try {
+      const at = paths.place(to, this.attributes);
+      return at && (at.lat !== to.lat || at.lng !== to.lng) ? new LatLng(at.lat, at.lng) : to;
+    } catch {
+      return to;
+    }
+  }
+
+  /**
+   * A marker standing still is redrawn where _drawnAt() puts its fix now:
+   * called when water tiles arrive or the zoom crosses path_min_zoom. Not
+   * during a slide, which ends where it planned to.
+   */
+  refreshDrawnPosition() {
+    if (!this.marker || this._transitionFrame || !this._lastSetLatLng) return;
+    // Only water objects are ever drawn off their fix; nothing else is touched.
+    if (!this._pathFollower() || this.attributes?.map_layer !== "water") return;
+    const at = this._drawnAt(this._lastSetLatLng);
+    const cur = this.marker.getLatLng?.();
+    if (!cur || (cur.lat === at.lat && cur.lng === at.lng)) return;
+    this._beginClusterMove();
+    this.marker.setLatLng(at);
+    this._endClusterMove();
   }
 
   /**
@@ -1102,40 +1158,91 @@ export default class Entity {
   }
 
   /**
-   * Slide the marker from where it is DRAWN to `to` over `seconds`.
+   * Slide the marker from where it is DRAWN to `to` over `seconds`: in a
+   * straight line, or along `route` when the path-follower gave one (item
+   * 270 part 2). A route's last point is where the marker ends - the fix, or
+   * the nearest water to it. While sliding the picture faces the leg it is
+   * on (a leg under TRAVEL_BEARING_MIN_M keeps the facing it had): a write
+   * per leg, never per frame.
    * @private
    * @param {LatLng} from used only when the marker cannot report its position
    * @param {LatLng} to
    * @param {number} seconds
+   * @param {Array<{lat: number, lng: number}>|null} [route]
    */
-  _slide(from, to, seconds) {
+  _slide(from, to, seconds, route = null) {
     const start = this.marker.getLatLng?.() ?? from;
-    const startLat = start.lat, startLng = start.lng;
+    let pts = Array.isArray(route) && route.length >= 2 ? route.slice() : [start, to];
+    // A route is planned from where the marker is drawn; if it starts
+    // elsewhere (a start snapped into water) the first leg joins it.
+    if (pts[0].lat !== start.lat || pts[0].lng !== start.lng) pts = [start, ...pts];
+    const end = pts[pts.length - 1];
+    const finalLatLng = (end.lat === to.lat && end.lng === to.lng) ? to : new LatLng(end.lat, end.lng);
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + (this._legLength(pts[i - 1], pts[i])));
+    const total = cum[cum.length - 1];
     const duration = seconds * 1000;
     const started = performance.now();
     this._beginClusterMove();
-    // Face the way the marker is DRAWN moving, from where it is to the fix.
-    // Two attribute writes per slide (here and on arrival), never one per
-    // frame: the picture's own CSS transition does the turning.
-    this._travel = this._segmentBearing(start, to);
+    // Face the way the marker is DRAWN moving. The picture's own CSS
+    // transition does the turning.
+    let leg = 0;
+    this._travel = pts.length > 2 ? this._routeBearing(pts, 0) : this._segmentBearing(start, finalLatLng);
     this.refreshMarkerRotation();
     const step = (now) => {
       this._transitionFrame = null;
       if (!this.marker || this.removed) return;
       const f = Math.min(1, Math.max(0, (now - started) / duration));
       if (f >= 1) {
-        this.marker.setLatLng(to);
+        this.marker.setLatLng(finalLatLng);
         this._endClusterMove();
         this._arrive();
         return;
       }
-      this.marker.setLatLng([
-        startLat + (to.lat - startLat) * f,
-        startLng + (to.lng - startLng) * f,
-      ]);
+      if (pts.length === 2 || !(total > 0)) {
+        const a = pts[0], b = pts[pts.length - 1];
+        this.marker.setLatLng([a.lat + (b.lat - a.lat) * f, a.lng + (b.lng - a.lng) * f]);
+      } else {
+        const d = f * total;
+        while (leg < pts.length - 2 && cum[leg + 1] <= d) {
+          leg++;
+          const b = this._routeBearing(pts, leg);
+          if (b !== null && b !== this._travel) { this._travel = b; this.refreshMarkerRotation(); }
+        }
+        const span = cum[leg + 1] - cum[leg];
+        const g = span > 0 ? (d - cum[leg]) / span : 1;
+        const a = pts[leg], b = pts[leg + 1];
+        this.marker.setLatLng([a.lat + (b.lat - a.lat) * g, a.lng + (b.lng - a.lng) * g]);
+      }
       this._transitionFrame = requestAnimationFrame(step);
     };
     this._transitionFrame = requestAnimationFrame(step);
+  }
+
+  /**
+   * Metres along one leg; the map's own distance when it has one.
+   * @private
+   * @param {{lat: number, lng: number}} a
+   * @param {{lat: number, lng: number}} b
+   * @returns {number}
+   */
+  _legLength(a, b) {
+    const d = this.map?.distance?.(a, b);
+    if (Number.isFinite(d)) return d;
+    return Math.hypot(b.lat - a.lat, (b.lng - a.lng) * Math.cos(a.lat * Math.PI / 180)) * 111320;
+  }
+
+  /**
+   * The bearing of leg i of a route, or, if that leg is shorter than
+   * TRAVEL_BEARING_MIN_M, the facing already held (null for none yet).
+   * @private
+   * @param {Array<{lat: number, lng: number}>} pts
+   * @param {number} i
+   * @returns {number|null}
+   */
+  _routeBearing(pts, i) {
+    const b = this._segmentBearing(pts[i], pts[i + 1]);
+    return b === null ? this._travel ?? null : b;
   }
 
   /**

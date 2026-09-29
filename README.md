@@ -58,6 +58,9 @@ y: 3.652
 | `focus_follow_pause`  | 0                                     | Number of seconds to suspend `focus_follow` after the user pans (mouse down/drag) or zooms the map. `0` disables pausing (default, existing behavior).                                  |
 | `map_options`          | {}                                                                                                                           | The `options` for the default [Leaflet Map](https://leafletjs.com/reference.html#map) |
 | `cluster_markers`      | false                                                                                                                        | Enable marker clustering to group nearby entities together. Click the group icon button to toggle clustering on/off. |
+| `path_following`       | true                                                                                                                         | Boats slide along the water instead of in a straight line across land. See [Path-following](#path-following). `false` turns it off. |
+| `path_min_zoom`        | 14                                                                                                                           | Path-following works from this zoom up. Below it a slide is straight, as without the feature. |
+| `path_tile_sources`    | OpenStreetMap, then OpenFreeMap                                                                                              | The vector tile sources the water comes from, tried in order. See [Path-following](#path-following). |
 | `debug` | false                                                                                                                        | Enable debug messages in console.
 | `plugins`            | []                                                                                                                           | An array of plugin definitions, see: [Plugin Options](#plugin-options), [Available plugins](#available-plugins) and [Developing plugins](#developing-plugins)     |
 
@@ -80,6 +83,28 @@ entities:
 
 
 If `x` & `y` or `focus_entity` is not set it will take the lat/long from the __first entity__.
+
+### Path-following
+
+When an entity slides from its previous position to a new one (`position_transition`), a straight line can cross land: a boat between two fixes on a winding river cuts across the bank, through buildings and over piers. With path-following the card slides it along the water instead, and a boat whose reported position sits on land (a mooring against a seawall, a GPS or map error) is drawn in the nearest water.
+
+* **What follows paths:** entities with `map_layer: water`. Nothing else changes.
+* **When:** from `path_min_zoom` (14) up, where a crossing is big enough to see. Below it every slide is straight.
+* **What the card fetches:** vector map tiles at zoom 14, only for moving boats on screen, kept in the browser for 7 days. Nothing is fetched ahead of viewing.
+* **Sources, in order:** [OpenStreetMap's vector tiles](https://vector.openstreetmap.org/) (Shortbread schema), then [OpenFreeMap](https://openfreemap.org/) (OpenMapTiles schema) if the first fails. An HTTP 429 from either stops all tile fetching for that page; if both fail, slides are straight. The attribution of a source is added to the map once its data has been used.
+* **What it does not do:** it never changes the entity's state or what the recorder stores. A slide that cannot be routed (no water nearby, or a route more than twice the straight line) is straight, as before.
+
+Both tile services are run on donated or volunteer infrastructure; please keep their terms in mind ([OpenStreetMap vector tile policy](https://operations.osmfoundation.org/policies/vector/), [OpenFreeMap](https://openfreemap.org/)).
+
+```yaml
+path_following: true        # the default; false turns it off
+path_min_zoom: 14
+path_tile_sources:          # optional; replaces the list
+  - id: my-tiles
+    tiles: https://tiles.example.com/{z}/{x}/{y}.pbf
+    schema: openmaptiles    # or shortbread
+    attribution: '&copy; Example, data &copy; OpenStreetMap contributors'
+```
 
 ### URL Entity lookup
 

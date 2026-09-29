@@ -293,6 +293,23 @@ export default class EntitiesRenderService {
     this.updateInitialView();
   }
 
+  /**
+   * Water tiles arrived, or the zoom crossed path_min_zoom: redraw every
+   * marker that is standing still where it should be drawn now (a boat on
+   * land into the water, or back to its fix below the gate). A marker mid-
+   * slide is left alone; its slide ends where it planned to.
+   */
+  refreshDrawnPositions() {
+    for (const ent of this.entities ?? []) {
+      if (this.isHidden(ent.id)) continue;
+      try {
+        ent.refreshDrawnPosition?.();
+      } catch (e) {
+        Logger.error("Entity: " + ent.id + " failed to redraw", e);
+      }
+    }
+  }
+
   toggleClustering() {
     this.clusterMarkers = !this.clusterMarkers;
 

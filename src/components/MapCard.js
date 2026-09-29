@@ -16,6 +16,7 @@ import TileLayer from '../leaflet/TileLayer.js';
 import PluginsRenderService from '../services/render/PluginsRenderService.js';
 import GeoJsonRenderService from '../services/render/GeoJsonRenderService.js';
 import HaStaleStateService from '../services/HaStaleStateService.js';
+import { PathFollower } from '../services/path/PathFollower.js';
 
 export default class MapCard extends LitElement {
   static get properties() {
@@ -65,6 +66,7 @@ export default class MapCard extends LitElement {
 
     this.themeMode = this._config.themeMode;
     this.map = this._setupMap();
+    this._setupPathFollower();
     // redraw the map every time it resizes
     this.resizeObserver = this._setupResizeObserver();
 
@@ -276,6 +278,8 @@ export default class MapCard extends LitElement {
   }
 
   _teardown() {
+    this.pathFollower?.dispose();
+    this.pathFollower = undefined;
     this.resizeObserver?.disconnect();
     this.resizeObserver = undefined;
     this.staleStateService?.stop();
@@ -295,6 +299,30 @@ export default class MapCard extends LitElement {
     if (this.map) {
       this._teardown();
       this.setupNeeded = true;
+    }
+  }
+
+  /**
+   * Path-following (item 270 part 2): water markers slide along the water
+   * from path_min_zoom up. The follower hangs off the Leaflet map, where
+   * each Entity finds it; a card with `path_following: false` has none.
+   * Nothing here may stop the map: any failure leaves straight slides.
+   */
+  _setupPathFollower() {
+    try {
+      const opts = this._config.pathFollowing;
+      if (!opts?.enabled || !this.map) return;
+      const follower = new PathFollower(this.map, opts);
+      this.pathFollower = follower;
+      this.map.ltmcPathFollower = follower;
+      const redraw = () => {
+        if (this.map && this.pathFollower === follower) this.entitiesRenderService?.refreshDrawnPositions();
+      };
+      follower.onTiles(redraw);
+      this.map.on("zoomend", redraw);
+    } catch (e) {
+      Logger.error("[MapCard] path-following disabled", e);
+      this.pathFollower = undefined;
     }
   }
 
