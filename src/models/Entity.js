@@ -1,5 +1,6 @@
 
 import { DivIcon, LatLng, Map, Marker } from "leaflet";
+import { PLACE } from "../services/path/place.js";
 import Circle from "./Circle.js";
 import GeoJson from "./GeoJson.js";
 import Logger from "../util/Logger.js"
@@ -1046,6 +1047,13 @@ export default class Entity {
       } catch {
         route = null;
       }
+    }
+    if (route === PLACE) {
+      // No way round over water: placed at its fix, never slid across land.
+      this.marker.setLatLng(this._drawnAt(to));
+      this._endClusterMove();
+      this._arrive();
+      return;
     }
     this._slide(from, to, seconds, route);
   }

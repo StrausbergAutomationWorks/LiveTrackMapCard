@@ -103,6 +103,17 @@ function follower(over = {}) {
 }
 const near = (p, q, metres = 1) => Math.hypot(p.lat - q.lat, p.lng - q.lng) * 111000 <= metres;
 
+describe('when the follower finds no way round over water', () => {
+  it('the marker is placed at its fix at once, never slid across land', () => {
+    const f = follower({ plan: jest.fn(() => 'place') });
+    const { update, drawn } = makeEntity({ follower: f });
+    update(...FIX);
+    expect(f.plan).toHaveBeenCalledTimes(1);
+    expect(near(drawn(), { lat: FIX[0], lng: FIX[1] })).toBe(true);
+    expect(frames.size).toBe(0);
+  });
+});
+
 describe('sliding along a planned route', () => {
   it('passes through the corner and ends where the follower draws the fix', () => {
     const f = follower();

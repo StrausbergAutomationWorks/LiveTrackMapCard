@@ -13,6 +13,9 @@ import { TileStore } from "./TileStore.js";
 import { DEFAULT_MIN_ZOOM, DEFAULT_SOURCES, parsePathOptions } from "./options.js";
 import { routeWater, snapToWater, tilesForChord, DEFAULTS } from "./router.js";
 import { fromCell, haversine } from "./mercator.js";
+import { PLACE } from "./place.js";
+
+export { PLACE };
 
 export { DEFAULT_MIN_ZOOM, DEFAULT_SOURCES, parsePathOptions };
 
@@ -26,6 +29,14 @@ export const AT_REST_KMH = 1;
  * at-rest moves under 30 m; 148 of 30 m or more, 85 of them 100-965 m.
  */
 export const REST_MAX_CHORD_M = 30;
+
+/**
+ * The second, wider look when the first finds no water path (Lee, 2026-09-29):
+ * DuSable Harbor's opening is some 400 m north of its south end, outside the
+ * first window of max(300 m, 0.6 x chord) for a boat coming in from the lake.
+ * Only on refusal; 20-50 ms in plain node on the river tiles.
+ */
+export const WIDE_MARGIN_M = 1200;
 
 const stores = new Map();
 
@@ -67,7 +78,7 @@ export class PathFollower {
     this.map = map;
     this.options = options;
     this.store = store ?? sharedStore(options.sources);
-    this.stats = { plans: 0, paths: 0, straight: 0, refused: 0, missing: 0, rest: 0, ms: [] };
+    this.stats = { plans: 0, paths: 0, straight: 0, refused: 0, missing: 0, rest: 0, wide: 0, ms: [] };
     this._attributed = new Set();
     this._onSource = (id) => this._attribute(id);
     this.store.listeners?.add(this._onSource);
@@ -161,7 +172,8 @@ export class PathFollower {
    * @param {{lat: number, lng: number}} from
    * @param {{lat: number, lng: number}} to
    * @param {object} attributes
-   * @returns {Array<{lat: number, lng: number}>|null}
+   * @returns {Array<{lat: number, lng: number}>|string|null} PLACE when there
+   * is no way round over water: place the marker, never slide it across land
    */
   plan(from, to, attributes) {
     if (!from || !to || !this.applies(attributes) || !this._inView([from, to])) return null;
@@ -178,7 +190,17 @@ export class PathFollower {
         this.stats.rest++;
         return [from, this.place(to, attributes)];
       }
-      const r = routeWater(from, to, this.store);
+      let r = routeWater(from, to, this.store);
+      if (r.status === "refused" && r.reason === "no water path") {
+        // The way round can lie outside the first window: look once more, wider.
+        this.stats.wide++;
+        const wide = routeWater(from, to, this.store, { marginM: WIDE_MARGIN_M, marginMaxM: WIDE_MARGIN_M });
+        if (wide.status === "missing") {
+          if (this.store.running) this.store.request(wide.tiles);
+        } else {
+          r = wide;
+        }
+      }
       if (r.status === "missing") {
         this.stats.missing++;
         if (this.store.running) this.store.request(r.tiles);
@@ -186,7 +208,12 @@ export class PathFollower {
       }
       if (r.status === "path") this.stats.paths++;
       else if (r.status === "straight") this.stats.straight++;
-      else this.stats.refused++;
+      else {
+        // No way round over water within the cap: never slide across land
+        // (a refused chord is one that crosses it). The marker is placed.
+        this.stats.refused++;
+        return PLACE;
+      }
       return r.points ?? null;
     } catch {
       return null;

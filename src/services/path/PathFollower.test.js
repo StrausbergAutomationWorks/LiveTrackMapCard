@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  */
-import { PathFollower, AT_REST_KMH, REST_MAX_CHORD_M } from "./PathFollower.js";
+import { PathFollower, AT_REST_KMH, REST_MAX_CHORD_M, WIDE_MARGIN_M, PLACE } from "./PathFollower.js";
 import { parsePathOptions, DEFAULT_SOURCES, DEFAULT_MIN_ZOOM } from "./options.js";
 import { at, xy, makeGrid, lRiver } from "./testWater.testhelper.js";
 
@@ -147,6 +147,49 @@ describe("PathFollower", () => {
       expect(f.stats.rest).toBe(1);
       expect(f.stats.straight).toBe(1);
     });
+
+  // A harbour behind a breakwater: lake east of x = 15 m, harbour west of x = 0,
+  // the wall between them open only north of y = gap.
+  const harbour = (gap) => (x, y) => Math.abs(y) <= 1500 && x >= -600 && x <= 800 && (x < 0 || x > 15 || y >= gap);
+  const harbourStore = (gap) => {
+    const g = makeGrid(harbour(gap));
+    return Object.assign(g, {
+      running: true, used: new Set(), listeners: new Set(), tileListeners: new Set(),
+      requested: [], request(tiles) { this.requested.push(...tiles); },
+    });
+  };
+
+  test("the wider look is 1,200 m and 'place' is the placement answer", () => {
+    expect(WIDE_MARGIN_M).toBe(1200);
+    expect(PLACE).toBe("place");
+  });
+
+  test("the way into a harbour outside the first window is found by the wider look", () => {
+    const f = new PathFollower(stubMap(), opts(), harbourStore(500));
+    const p = f.plan(at(400, 0), at(-400, 0), WATER);
+    expect(Array.isArray(p) && p.length).toBeGreaterThan(2);
+    expect(Math.max(...p.map((q) => xy(q).y))).toBeGreaterThan(480);
+    expect(f.stats.wide).toBe(1);
+    expect(f.stats.paths).toBe(1);
+  });
+
+  test("no way round within the cap: placed, never slid across the breakwater", () => {
+    const f = new PathFollower(stubMap(), opts(), harbourStore(1000));
+    expect(f.plan(at(400, 0), at(-400, 0), WATER)).toBe(PLACE);
+    expect(f.stats.refused).toBe(1);
+    expect(f.stats.wide).toBe(1);
+  });
+
+  test("a sealed harbour: placed", () => {
+    const f = new PathFollower(stubMap(), opts(), harbourStore(99999));
+    expect(f.plan(at(400, 0), at(-400, 0), WATER)).toBe(PLACE);
+  });
+
+  test("the wider look happens only on refusal", () => {
+    const f = new PathFollower(stubMap(), opts(), stubStore());
+    f.plan(at(200, 0), at(400, 250), WATER);
+    expect(f.stats.wide).toBe(0);
+  });
 
   test("no speed at all is not 'at rest'", () => {
     const f = new PathFollower(stubMap(), opts(), stubStore());
