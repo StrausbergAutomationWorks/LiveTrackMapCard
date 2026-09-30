@@ -26,7 +26,9 @@ import { DEFAULT_SOURCES } from "./options.js";
 export { DEFAULT_SOURCES };
 
 /** Bump when an adapter or the rasteriser changes what a stored tile means. */
-export const WATER_TILE_VERSION = 1;
+// 2 since 2026-09-29: piers and breakwaters are HARD cells and the store keeps
+// (value, length) pairs; version 1 records are never read again.
+export const WATER_TILE_VERSION = 2;
 export const CACHE_DAYS = 7;
 export const PIER_LINE_HALF_WIDTH_M = 3;
 
@@ -129,7 +131,7 @@ export class TileStore {
   hasTile(tx, ty) { return this.grids.has(`${tx}/${ty}`); }
 
   /**
-   * 1 water, 0 land, -1 tile not loaded.
+   * 1 water, 0 land, HARD (2) a pier or breakwater, -1 tile not loaded.
    * @param {number} gx integer global cell
    * @param {number} gy
    * @returns {number}

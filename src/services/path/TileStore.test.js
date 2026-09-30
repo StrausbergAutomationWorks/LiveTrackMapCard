@@ -221,3 +221,7 @@ describe("TileStore", () => {
     expect(seen.every((i) => i.credentials === "omit" && i.referrerPolicy === "origin")).toBe(true);
   });
 });
+
+test("the stored tile format is version 2 (HARD cells, value-length pairs)", () => {
+  expect(WATER_TILE_VERSION).toBe(2);
+});

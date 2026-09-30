@@ -2,7 +2,9 @@
  * @jest-environment node
  */
 import { routeWater, snapToWater, landAlong, simplify, distanceToLand, astar, tilesForChord, marginFor, allWet } from "./router.js";
-import { toCell, metresPerCell, haversine } from "./mercator.js";
+import { HARD, rasteriseTile, strokeLines, MIN_LINE_RADIUS_CELLS } from "./rasterize.js";
+import { TileStore } from "./TileStore.js";
+import { toCell, fromCell, metresPerCell, haversine, CELLS_PER_TILE } from "./mercator.js";
 import { at, xy, makeGrid, lRiver } from "./testWater.testhelper.js";
 
 const wetAll = (grid, pts) => {
@@ -200,5 +202,61 @@ describe("pieces", () => {
     const cost = new Float32Array(5).fill(1);
     expect(astar(new Uint8Array([1, 1, 1, 1, 1]), cost, w, h, 0, 4)).toEqual({ cells: [0, 1, 2, 3, 4], reached: true });
     expect(astar(new Uint8Array([1, 1, 0, 1, 1]), cost, w, h, 0, 4)).toEqual({ cells: [0, 1], reached: false });
+  });
+});
+
+
+describe("piers and breakwaters are never crossed (HARD, 2026-09-29)", () => {
+  // Open water with a band exactly one cell wide (3.6 m here) and 600 m long at x = 0:
+  // a line-mapped breakwater as the rasteriser draws it.
+  const bandGrid = (value) => {
+    const col = Math.floor(toCell(at(0, 0).lat, at(0, 0).lng).gx);
+    return {
+      hasTile: () => true,
+      cell(gx, gy) {
+        const p = xy(fromCell(gx + 0.5, gy + 0.5));
+        return gx === col && Math.abs(p.y) <= 300 ? value : 1;
+      },
+    };
+  };
+
+  test("landAlong: a HARD cell is never forgiven", () => {
+    const g = bandGrid(HARD);
+    const a = toCell(at(-50, 0).lat, at(-50, 0).lng), b = toCell(at(50, 0).lat, at(50, 0).lng);
+    expect(landAlong(g, a.gx, a.gy, b.gx, b.gy, metresPerCell(41.88))).toBe(Infinity);
+  });
+
+  test("a chord across a thin breakwater is not straight; the same band as plain land still is", () => {
+    expect(routeWater(at(-50, 0), at(50, 0), bandGrid(HARD)).status).not.toBe("straight");
+    expect(routeWater(at(-50, 0), at(50, 0), bandGrid(0)).status).toBe("straight");
+  });
+
+  test("a tile store's window: HARD is land to the search, not water", () => {
+    const c = toCell(41.88, -87.63);
+    const tx = Math.floor(c.gx / CELLS_PER_TILE), ty = Math.floor(c.gy / CELLS_PER_TILE);
+    const g = new Uint8Array(CELLS_PER_TILE * CELLS_PER_TILE).fill(1);
+    for (let y = 100; y < 400; y++) g[y * CELLS_PER_TILE + 256] = HARD;   // one cell wide, 300 cells long
+    const store = new TileStore({ storage: null, fetchImpl: () => { throw new Error("offline"); } });
+    store.grids.set(`${tx}/${ty}`, g);
+    const row = ty * CELLS_PER_TILE + 256.5;
+    const a = fromCell(tx * CELLS_PER_TILE + 226.5, row), b = fromCell(tx * CELLS_PER_TILE + 286.5, row);
+    const r = routeWater(a, b, store);
+    expect(r.status).toBe("refused");
+  });
+
+  test("a diagonal line: too thin it can be squeezed through; as the rasteriser draws it, it cannot", () => {
+    const S = 64;
+    const water = () => new Uint8Array(S * S).fill(1);
+    const line = [[{ x: 0, y: S }, { x: S, y: 0 }]];
+    const crosses = (g) => {
+      const mask = Uint8Array.from(g, (v) => (v === 1 ? 1 : 0));
+      return astar(mask, new Float32Array(S * S).fill(1), S, S, 0, S * S - 1).reached;
+    };
+    const thin = water();
+    strokeLines(thin, S, S, line, 0.63, HARD);           // 3 m at the equator
+    expect(crosses(thin)).toBe(true);
+    expect(MIN_LINE_RADIUS_CELLS).toBe(1);
+    const drawn = rasteriseTile({ extent: S, water: [[[{ x: 0, y: 0 }, { x: S, y: 0 }, { x: S, y: S }, { x: 0, y: S }]]], structurePolygons: [], structureLines: line }, S, 0.63);
+    expect(crosses(drawn)).toBe(false);
   });
 });

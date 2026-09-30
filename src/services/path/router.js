@@ -19,6 +19,7 @@
  *    paths; nearly all moored boats jittering across a seawall).
  */
 import { fromCell, toCell, metresPerCell, haversine, CELLS_PER_TILE } from "./mercator.js";
+import { HARD } from "./rasterize.js";
 
 export const DEFAULTS = Object.freeze({
   maxSnapM: 300,        // furthest a fix on land is moved to water (max seen: 268 m)
@@ -127,7 +128,8 @@ export function snapToWater(ll, grid, maxM = DEFAULTS.maxSnapM) {
  * @param {number} x1
  * @param {number} y1
  * @param {number} mpc metres per cell
- * @returns {number} metres, or -1 if it touches a cell not loaded
+ * @returns {number} metres, or -1 if it touches a cell not loaded, or Infinity if
+ *   it touches a pier or breakwater (HARD), which no tolerance forgives
  */
 export function landAlong(grid, x0, y0, x1, y1, mpc) {
   const len = Math.hypot(x1 - x0, y1 - y0);
@@ -137,6 +139,7 @@ export function landAlong(grid, x0, y0, x1, y1, mpc) {
     const t = i / n;
     const v = grid.cell(Math.floor(x0 + (x1 - x0) * t), Math.floor(y0 + (y1 - y0) * t));
     if (v === -1) return -1;
+    if (v === HARD) return Infinity;
     if (v !== 1) land++;
   }
   return land * (len / n) * mpc;
@@ -343,6 +346,9 @@ export function routeWater(a, b, grid, options = {}) {
   // A tile store copies whole rows (fillWindow); anything else answers per cell.
   if (!(typeof grid.fillWindow === "function" && grid.fillWindow(x0, y0, w, h, mask))) {
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) mask[y * w + x] = grid.cell(x0 + x, y0 + y) === 1 ? 1 : 0;
+  } else {
+    // The store's rows carry HARD for piers and breakwaters: land, to the search.
+    for (let i = 0; i < mask.length; i++) if (mask[i] !== 1) mask[i] = 0;
   }
   mark("mask");
   const dist = distanceToLand(mask, w, h);

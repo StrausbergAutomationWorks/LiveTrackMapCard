@@ -7,6 +7,23 @@
  */
 
 /**
+ * A pier or breakwater cell (Lee, 2026-09-29). Land, but land the router never
+ * forgives: its 5 m tolerance is for the ragged edge of water polygons, and a
+ * breakwater mapped as a line is drawn only 3 m either side, so after rounding
+ * to cells a chord across one often counted as wet - 15-29% of crossings in a
+ * synthetic test at three latitudes (card SSOT 42).
+ */
+export const HARD = 2;
+
+/**
+ * A structure LINE is drawn at least this many cells either side, whatever
+ * its width in metres: thinner, a diagonal line leaves corner gaps that the
+ * router's diagonal steps squeeze through (at the equator 3 m is 0.63 cells:
+ * 15 of 756 crossings still slid through and 489 routed through the line).
+ */
+export const MIN_LINE_RADIUS_CELLS = 1;
+
+/**
  * Fill a polygon feature by the even-odd rule over ALL its rings, which is
  * what an MVT polygon means: holes sit inside their outer ring. Each FEATURE
  * is filled on its own, so two overlapping water features never cancel.
@@ -93,49 +110,53 @@ export function strokeLines(grid, size, extent, lines, radius, value) {
 
 /**
  * Build one tile's water grid from adapter output: water polygons painted,
- * then structure polygons and structure lines cleared.
+ * then structure polygons and structure lines painted HARD.
  * @param {{extent: number, water: Array, structurePolygons: Array, structureLines: Array}} geom
  * @param {number} size
  * @param {number} lineRadiusCells half-width of a pier or breakwater LINE, in cells
+ *   (never less than MIN_LINE_RADIUS_CELLS)
  * @returns {Uint8Array}
  */
 export function rasteriseTile(geom, size, lineRadiusCells) {
   const grid = new Uint8Array(size * size);
   for (const rings of geom.water) fillPolygon(grid, size, geom.extent, rings, 1);
-  for (const rings of geom.structurePolygons) fillPolygon(grid, size, geom.extent, rings, 0);
-  strokeLines(grid, size, geom.extent, geom.structureLines, lineRadiusCells, 0);
+  for (const rings of geom.structurePolygons) fillPolygon(grid, size, geom.extent, rings, HARD);
+  strokeLines(grid, size, geom.extent, geom.structureLines, Math.max(MIN_LINE_RADIUS_CELLS, lineRadiusCells), HARD);
   return grid;
 }
 
 /**
- * Run-length encode a 0/1 grid, for the 7-day store: water and land come in
- * long runs, so a tile shrinks from 256 KB to a few KB.
+ * Run-length encode a grid of 0 (land), 1 (water) and HARD, for the 7-day
+ * store: they come in long runs, so a tile shrinks from 256 KB to a few KB.
  * @param {Uint8Array} grid
- * @returns {Uint32Array} run lengths, alternating, starting with a run of 0s
+ * @returns {Uint32Array} pairs: value, run length, value, run length...
  */
 export function encodeRuns(grid) {
   const runs = [];
-  let cur = 0, n = 0;
+  let cur = grid.length ? grid[0] : 0, n = 0;
   for (let i = 0; i < grid.length; i++) {
     if (grid[i] === cur) { n++; continue; }
-    runs.push(n); cur = grid[i]; n = 1;
+    runs.push(cur, n); cur = grid[i]; n = 1;
   }
-  runs.push(n);
+  runs.push(cur, n);
   return Uint32Array.from(runs);
 }
 
 /**
  * @param {Uint32Array|Array<number>} runs
  * @param {number} length
- * @returns {Uint8Array|null} null when the runs do not add up to `length`
+ * @returns {Uint8Array|null} null when the runs do not add up to `length`,
+ *   come unpaired, or carry a value that is not 0, 1 or HARD
  */
 export function decodeRuns(runs, length) {
   const grid = new Uint8Array(length);
-  let i = 0, v = 0;
-  for (const n of runs) {
-    if (i + n > length) return null;
-    if (v) grid.fill(1, i, i + n);
-    i += n; v ^= 1;
+  if (runs.length % 2) return null;
+  let i = 0;
+  for (let k = 0; k < runs.length; k += 2) {
+    const v = runs[k], n = runs[k + 1];
+    if (v > HARD || i + n > length) return null;
+    if (v) grid.fill(v, i, i + n);
+    i += n;
   }
   return i === length ? grid : null;
 }
