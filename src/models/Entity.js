@@ -7,6 +7,7 @@ import Logger from "../util/Logger.js"
 import EntityConfig, { layerOffset, parseMarkerColor, parseRingWidth } from "../configs/EntityConfig.js";
 import EntityHistoryManager from "./EntityHistoryManager.js";
 import TimelineEntry from "./TimelineEntry.js";
+import { escapeHtml, nextStopLine, NEXT_STOP_REFRESH_MS } from "../util/NextStop.js";
 
 /**
  * The custom element every marker is built from. index.js registers it under
@@ -664,6 +665,51 @@ export default class Entity {
     return this.friendlyName ?? "";
   }
 
+  /**
+   * The hover label as HTML: the tooltip text, and under it the next
+   * station when the emitter publishes one (util/NextStop.js). Both lines
+   * are escaped; a Leaflet tooltip renders its content as HTML.
+   * @param {number} nowMs epoch milliseconds
+   * @returns {string}
+   */
+  tooltipHtml(nowMs = Date.now()) {
+    const first = escapeHtml(this.tooltip);
+    const line = nextStopLine(this.attributes, nowMs);
+    return line ? `${first}<br>${escapeHtml(line)}` : first;
+  }
+
+  /** Redraw the hover label if it is open: new attributes, or the clock. */
+  refreshTooltip() {
+    const marker = this.marker;
+    if (marker?.isTooltipOpen?.()) marker.getTooltip()?.update();
+  }
+
+  /**
+   * Redraw the open hover label every NEXT_STOP_REFRESH_MS.
+   * @private
+   * @param {object} marker the marker whose label opened
+   */
+  _startTooltipClock(marker) {
+    this._stopTooltipClock();
+    this._tooltipClock = setInterval(() => {
+      // The marker may have been replaced or removed without a close event
+      // reaching us; a clock for a marker no longer ours stops itself.
+      if (this.marker !== marker || !marker.isTooltipOpen()) {
+        this._stopTooltipClock();
+        return;
+      }
+      marker.getTooltip()?.update();
+    }, NEXT_STOP_REFRESH_MS);
+  }
+
+  /** @private */
+  _stopTooltipClock() {
+    if (this._tooltipClock) {
+      clearInterval(this._tooltipClock);
+      this._tooltipClock = null;
+    }
+  }
+
   get icon() {
     return this.config.icon ?? this.attributes.icon;
   }
@@ -758,6 +804,7 @@ export default class Entity {
    */
   remove(clusterGroup = null, { unsubscribeHistory = true } = {}) {
     this._settleSlide();
+    this._stopTooltipClock();
     this.removed = true;
     if (this._onZoomEnd) {
       this.map.off("zoomend", this._onZoomEnd);
@@ -789,6 +836,7 @@ export default class Entity {
   hide(clusterGroup = null) {
     if (!this.marker) return;
     this._settleSlide();
+    this._stopTooltipClock();
     if (clusterGroup?.hasLayer?.(this.marker)) {
       clusterGroup.removeLayer(this.marker);
     }
@@ -857,6 +905,7 @@ export default class Entity {
       this.refreshMarkerArrow();
       this.refreshMarkerStyling();
       this.refreshMarkerZIndex();
+      this.refreshTooltip();
       this.updateMarkerPosition();
     }
 
@@ -1442,11 +1491,15 @@ export default class Entity {
     // Instant hover label: a Leaflet tooltip opens on mouseover with no delay,
     // unlike the native `title` attribute (which the browser holds ~1s). The
     // distance feature (setup) rebinds a permanent tooltip when configured.
+    // Content is a FUNCTION: Leaflet calls it on every open and update(), so
+    // the next-station minutes are worked out when shown, not when bound.
     if (!this.config.distanceEntity) {
-      marker.bindTooltip(this.tooltip, {
+      marker.bindTooltip(() => this.tooltipHtml(), {
         direction: "top",
         offset: [0, -this.config.size / 2 - 4]
       });
+      marker.on("tooltipopen", () => this._startTooltipClock(marker));
+      marker.on("tooltipclose", () => this._stopTooltipClock());
     }
     return marker;
   }
