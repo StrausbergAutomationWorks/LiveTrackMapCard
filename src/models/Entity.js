@@ -7,7 +7,7 @@ import Logger from "../util/Logger.js"
 import EntityConfig, { layerOffset, parseMarkerColor, parseRingWidth } from "../configs/EntityConfig.js";
 import EntityHistoryManager from "./EntityHistoryManager.js";
 import TimelineEntry from "./TimelineEntry.js";
-import { escapeHtml, nextStopLine, NEXT_STOP_REFRESH_MS } from "../util/NextStop.js";
+import { hoverHtml, HOVER_REFRESH_MS } from "../util/HoverLabel.js";
 
 /**
  * The custom element every marker is built from. index.js registers it under
@@ -666,16 +666,14 @@ export default class Entity {
   }
 
   /**
-   * The hover label as HTML: the tooltip text, and under it the next
-   * station when the emitter publishes one (util/NextStop.js). Both lines
-   * are escaped; a Leaflet tooltip renders its content as HTML.
+   * The hover box as HTML (util/HoverLabel.js): callsign or line name, else
+   * the tooltip text, and under it the route or next station with its ETA.
+   * Both lines are escaped; a Leaflet tooltip renders its content as HTML.
    * @param {number} nowMs epoch milliseconds
    * @returns {string}
    */
   tooltipHtml(nowMs = Date.now()) {
-    const first = escapeHtml(this.tooltip);
-    const line = nextStopLine(this.attributes, nowMs);
-    return line ? `${first}<br>${escapeHtml(line)}` : first;
+    return hoverHtml(this.attributes, this.tooltip, nowMs);
   }
 
   /** Redraw the hover label if it is open: new attributes, or the clock. */
@@ -685,7 +683,7 @@ export default class Entity {
   }
 
   /**
-   * Redraw the open hover label every NEXT_STOP_REFRESH_MS.
+   * Redraw the open hover label every HOVER_REFRESH_MS.
    * @private
    * @param {object} marker the marker whose label opened
    */
@@ -699,7 +697,7 @@ export default class Entity {
         return;
       }
       marker.getTooltip()?.update();
-    }, NEXT_STOP_REFRESH_MS);
+    }, HOVER_REFRESH_MS);
   }
 
   /** @private */

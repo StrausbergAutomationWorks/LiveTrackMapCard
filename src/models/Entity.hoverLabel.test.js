@@ -1,6 +1,6 @@
 import Entity from './Entity.js';
 import { jest, describe, it, expect, afterEach } from '@jest/globals';
-import { NEXT_STOP_REFRESH_MS } from '../util/NextStop.js';
+import { HOVER_REFRESH_MS as NEXT_STOP_REFRESH_MS } from '../util/HoverLabel.js';
 
 jest.mock('./Circle.js');
 jest.mock('./GeoJson.js');
@@ -50,25 +50,42 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-describe('hover label: the next station under the train number', () => {
+const UPNW = 'Union Pacific Northwest';
+
+describe('hover box on a real entity (util/HoverLabel.js)', () => {
   it('is the friendly name alone with nothing published', () => {
     const { entity } = makeEntity();
     expect(entity.tooltipHtml(NOW)).toBe('Metra unit 8461');
   });
 
-  it('adds "<station> in <n> min" on a second line', () => {
-    const { entity } = makeEntity({ next_stop: 'Irving Park', arrival_estimated_at: at(240) });
-    expect(entity.tooltipHtml(NOW)).toBe('Metra unit 8461<br>Irving Park in 4 min');
+  it('a train: line name over "<station> in <n> min", no unit number', () => {
+    const { entity } = makeEntity({ line_name: UPNW, next_stop: 'Irving Park', arrival_estimated_at: at(240) });
+    expect(entity.tooltipHtml(NOW)).toBe(`${UPNW}<br>Irving Park in 4 min`);
   });
 
-  it('reads "Arriving <station>" under a minute', () => {
-    const { entity } = makeEntity({ next_stop: 'Irving Park', arrival_estimated_at: at(10) });
-    expect(entity.tooltipHtml(NOW)).toBe('Metra unit 8461<br>Arriving Irving Park');
+  it('a train: "Arriving <station>" under a minute', () => {
+    const { entity } = makeEntity({ line_name: UPNW, next_stop: 'Irving Park', arrival_estimated_at: at(10) });
+    expect(entity.tooltipHtml(NOW)).toBe(`${UPNW}<br>Arriving Irving Park`);
   });
 
-  it('is unchanged with only one of the two attributes', () => {
-    expect(makeEntity({ next_stop: 'Irving Park' }).entity.tooltipHtml(NOW)).toBe('Metra unit 8461');
+  it('a train: "Next: <station>" with no time; nothing for a time with no station', () => {
+    expect(makeEntity({ line_name: UPNW, next_stop: 'Irving Park' }).entity.tooltipHtml(NOW))
+      .toBe(`${UPNW}<br>Next: Irving Park`);
     expect(makeEntity({ arrival_estimated_at: at(240) }).entity.tooltipHtml(NOW)).toBe('Metra unit 8461');
+  });
+
+  it('an aircraft: callsign over "<ORIG>-<DEST> in <n> min", "?" when implausible', () => {
+    const base = { friendly_name: 'Aircraft A68336', callsign: 'DAL27', origin_icao: 'KATL',
+      destination_icao: 'KORD', arrival_estimated_at: at(12 * 60) };
+    expect(makeEntity(base).entity.tooltipHtml(NOW)).toBe('DAL27<br>KATL-KORD in 12 min');
+    expect(makeEntity({ ...base, route_check: 'implausible' }).entity.tooltipHtml(NOW))
+      .toBe('DAL27<br>KATL-KORD? in 12 min');
+  });
+
+  it('a person in a zone keeps "<person> is at <place>"', () => {
+    const { entity } = makeEntity();
+    Object.defineProperty(entity, 'tooltip', { get: () => 'Mom is at Work' });
+    expect(entity.tooltipHtml(NOW)).toBe('Mom is at Work');
   });
 
   it('escapes the station name and the first line: feed text never becomes HTML', () => {
