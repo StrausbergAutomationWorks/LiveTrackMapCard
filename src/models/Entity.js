@@ -18,6 +18,32 @@ import { lateness } from "../util/Lateness.js";
 export const MARKER_TAG = "live-track-map-card-entity-marker";
 
 /**
+ * Entity ids already warned about having no position, for the life of the
+ * page. `latLng` runs on every update for every entity, and warned EVERY time:
+ * 109,846 warnings in one tab (backlog 233, Lee's screenshot 2026-09-19).
+ * Kept per id, not per Entity object, because the card rebuilds Entity
+ * objects for the same id.
+ */
+const warnedNoPosition = new Set();
+
+/**
+ * Warn that an entity has no position, once per entity id.
+ * @param {string} id
+ * @returns {boolean} whether it warned this time
+ */
+export function warnNoPositionOnce(id) {
+  if (warnedNoPosition.has(id)) return false;
+  warnedNoPosition.add(id);
+  Logger.warn("Entity: " + id + " has no latitude & longitude; skipping marker (warned once per entity)");
+  return true;
+}
+
+/** Tests only: forget every warning given. */
+export function _resetNoPositionWarnings() {
+  warnedNoPosition.clear();
+}
+
+/**
  * @param {unknown} v
  * @returns {boolean} true for a number that is not NaN or infinite
  */
@@ -542,7 +568,7 @@ export default class Entity {
       return new LatLng(this.config.fallbackX, this.config.fallbackY);
     }
 
-    Logger.warn("Entity: " + this.id + " has no latitude & longitude; skipping marker");
+    warnNoPositionOnce(this.id);
     return null;
   }
 

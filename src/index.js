@@ -19,7 +19,11 @@ if (!customElements.get("live-track-map-card")) {
   )
 }
 
-// Register card so that it appears in the "Card Picker"
+// Register card so that it appears in the "Card Picker". Create the list
+// when no card loaded before us has: pushing to an undefined list threw
+// AFTER the elements were defined, so the card worked but was missing from
+// the picker (backlog 214).
+window.customCards = window.customCards || [];
 window.customCards.push({
     name: 'Live Track Map Card',
     description: 'Map card for the Live Track integrations. Derived from nathan-gs/ha-map-card.',
