@@ -80,6 +80,9 @@ export function latenessColor(level) {
 export const LATENESS_CSS = `
   .label-with-badge {
     position: relative;
+    display: inline-block;
+    text-align: center;
+    flex-shrink: 0;
   }
   .delay-badge {
     position: absolute;

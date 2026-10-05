@@ -145,6 +145,34 @@ export function ringStyle(color, ringColor, ringWidth) {
   return `border-color: ${r !== "" ? r : (color ?? "")};` + (w !== 1 ? ` border-width: ${w}px;` : "");
 }
 
+/**
+ * The arrow's drawn size in CSS px for a marker of `size`: width 0.45 x size,
+ * never under 8, and three quarters of that tall. One rule for the arrow and
+ * for the delay badge, which must clear it.
+ * @param {number} [size]
+ * @returns {{w: number, h: number}}
+ */
+export function arrowSize(size) {
+  const w = Math.max(8, Math.round((size || 24) * 0.45));
+  return { w, h: Math.round(w * 0.75) };
+}
+
+/**
+ * The narrowest the delay badge's label box may be, in CSS px: the disc, and
+ * where an arrow is drawn, the arrow's reach beyond the ring on BOTH sides,
+ * since the box is centred. The badge starts at the box's right edge, so it
+ * clears the fill and an arrow pointing east (NICTD 515, 2026-10-04).
+ * @param {number} size the disc
+ * @param {boolean} hasArrow whether an arrow is drawn
+ * @param {string} [ringWidth] the ring-width attribute
+ * @returns {number}
+ */
+export function badgeMinWidth(size, hasArrow, ringWidth) {
+  const disc = Number.isFinite(size) && size > 0 ? size : 0;
+  if (!hasArrow) return disc;
+  return disc + 2 * (arrowSize(size).h + drawnBorderPx(ringWidthPx(ringWidth)));
+}
+
 export default class MapCardEntityMarker extends LitElement {
   static get properties() {
     return {
@@ -268,8 +296,7 @@ export default class MapCardEntityMarker extends LitElement {
     const fill = own !== "" ? own : c !== "" && c.toLowerCase() !== "transparent" ? c : "currentColor";
     const ol = typeof this.arrowOutline === "string" ? this.arrowOutline.trim() : "";
     const stroke = ol !== "" ? ol : "rgba(0, 0, 0, 0.8)";
-    const w = Math.max(8, Math.round((this.size || 24) * 0.45));
-    const h = Math.round(w * 0.75);
+    const { w, h } = arrowSize(this.size);
     // The frame fills the PADDING box, inside the ring, so the arrow is lifted
     // by the ring's DRAWN width to sit on the disc's outer edge whatever the width.
     const ring = drawnBorderPx(ringWidthPx(this.ringWidth));
@@ -313,8 +340,9 @@ export default class MapCardEntityMarker extends LitElement {
 
   /**
    * The label with the delay badge after it: "835 +12" (backlog 275). The
-   * badge is placed just past the label's right edge, so the label itself
-   * stays where it was, centred on the disc. Its colour is the lateness
+   * badge is placed past the right edge of the label or of the disc,
+   * whichever is further out, so it is always on the map, never on the fill,
+   * and the label itself stays where it was, centred on the disc. Its colour is the lateness
    * level's, outlined with the DEFAULT dark outline whatever the emitter's
    * label outline: an orange outline round an amber badge would hide it.
    * Without a badge the label is returned untouched, so a train on time is
@@ -326,7 +354,15 @@ export default class MapCardEntityMarker extends LitElement {
     const text = typeof this.delayBadge === "string" ? this.delayBadge.trim() : "";
     const color = latenessColor(this.delayLevel);
     if (text === "" || color === "") return label;
-    return html`<span class="label-with-badge">${label}<span class="delay-badge" style="color: ${color}; text-shadow: ${LABEL_OUTLINE};">${text}</span></span>`;
+    // At least as wide as the disc and the arrow's reach, text centred: the
+    // badge then starts past both even when the label fits inside the disc.
+    // Without this a short label put the badge ON the fill - amber "+6" on
+    // Lakeshore orange, seen live 2026-10-04 on NICTD 515 - and the next try
+    // put it on that train's eastward arrow.
+    // (A picture marker never gets here: _inner() draws its own label.)
+    const hasArrow = Boolean(arrowStyle(this.arrow, this.rotationTransition));
+    const minW = badgeMinWidth(this.size, hasArrow, this.ringWidth);
+    return html`<span class="label-with-badge" style="min-width: ${minW}px;">${label}<span class="delay-badge" style="color: ${color}; text-shadow: ${LABEL_OUTLINE};">${text}</span></span>`;
   }
 
   /**

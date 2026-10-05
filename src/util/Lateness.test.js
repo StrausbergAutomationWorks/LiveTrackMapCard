@@ -115,6 +115,19 @@ describe("the pulse CSS", () => {
     expect(s).toBeGreaterThanOrEqual(1.4);
   });
 
+  it("the label's box is a centred inline block, so a min-width can widen it to the disc", () => {
+    const m = LATENESS_CSS.match(/\.label-with-badge\s*\{([^}]*)\}/);
+    expect(m[1]).toMatch(/display:\s*inline-block;/);
+    expect(m[1]).toMatch(/text-align:\s*center;/);
+    expect(m[1]).toMatch(/position:\s*relative;/);
+  });
+
+  it("the label's box never shrinks inside the disc's flex box, or the label slides under the badge", () => {
+    // Seen 2026-10-04: without it "2036" was squeezed to 28 px and "+12" covered its last digit.
+    const m = LATENESS_CSS.match(/\.label-with-badge\s*\{([^}]*)\}/);
+    expect(m[1]).toMatch(/flex-shrink:\s*0;/);
+  });
+
   it("never touches the disc's fill or halo", () => {
     expect(LATENESS_CSS).not.toMatch(/\.marker\b/);
     expect(LATENESS_CSS).not.toMatch(/background/);
