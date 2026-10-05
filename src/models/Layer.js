@@ -45,13 +45,20 @@ export default class Layer {
     return this.urlResolver.resolveUrl(this.config.url);
   }
 
-  render() {
+  /**
+   * Build the Leaflet layer and, unless it starts hidden, add it to the map.
+   * @param {boolean} [show] false to build it without adding it (a named
+   *   overlay the viewer has turned off)
+   * @returns {object} the Leaflet layer
+   */
+  render(show = true) {
     Logger.debug(`[Layer]: Setting up layer of type ${this.layerType}`);
     const layer = this.isWms ? 
       new WMS(this.url, this.config.options) :
       new TileLayer(this.url, this.config.options);
 
     this.urlResolver.registerLayer(layer, this.config.url);
-    layer.addTo(this.map);
+    if (show) layer.addTo(this.map);
+    return layer;
   }
 }

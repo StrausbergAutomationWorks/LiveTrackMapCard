@@ -128,6 +128,11 @@ describe("the pulse CSS", () => {
     expect(m[1]).toMatch(/flex-shrink:\s*0;/);
   });
 
+  it("the badge is 1.25x the label, so lateness reads first (Lee, 2026-10-05)", () => {
+    const m = LATENESS_CSS.match(/\.delay-badge\s*\{([^}]*)\}/);
+    expect(m[1]).toMatch(/font-size:\s*1\.25em;/);
+  });
+
   it("never touches the disc's fill or halo", () => {
     expect(LATENESS_CSS).not.toMatch(/\.marker\b/);
     expect(LATENESS_CSS).not.toMatch(/background/);

@@ -120,7 +120,12 @@ export default class MapConfig {
     // Allow as none array
     let tile_layers = this._setConfigWithDefault(inputConfig.tile_layers, []);
     this.tileLayers = (this._setConfigWithDefault(Array.isArray(tile_layers) ? tile_layers : [tile_layers], [])).map((tile) => {
-      return new TileLayerConfig(tile.url, tile.options, tile.history);
+      const layer = new TileLayerConfig(tile.url, tile.options, tile.history);
+      // A named overlay gets a checkbox in the card's layer control;
+      // `show: false` starts it unticked (Lee, 2026-10-05: rail overlay on/off).
+      layer.name = typeof tile.name === "string" && tile.name.trim() !== "" ? tile.name.trim() : null;
+      layer.show = tile.show !== false;
+      return layer;
     });
 
     // Allow as none array

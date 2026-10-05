@@ -90,7 +90,7 @@ export const LATENESS_CSS = `
     top: 50%;
     transform: translateY(-50%);
     margin-left: 0.3em;
-    font-size: 0.8em;
+    font-size: 1.25em;
     font-weight: 700;
     line-height: 1;
     white-space: nowrap;
