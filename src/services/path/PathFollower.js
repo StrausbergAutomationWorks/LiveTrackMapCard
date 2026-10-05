@@ -10,7 +10,7 @@
  * keep the real fix.
  */
 import { TileStore } from "./TileStore.js";
-import { DEFAULT_MIN_ZOOM, DEFAULT_SOURCES, parsePathOptions } from "./options.js";
+import { DEFAULT_MIN_ZOOM, DEFAULT_STRICT_ZOOM, DEFAULT_SOURCES, parsePathOptions } from "./options.js";
 import { routeWater, snapToWater, tilesForChord, DEFAULTS } from "./router.js";
 import { fromCell, haversine } from "./mercator.js";
 import { PLACE } from "./place.js";
@@ -127,6 +127,17 @@ export class PathFollower {
     return Number.isFinite(z) && z >= this.options.minZoom;
   }
 
+  /**
+   * Is the map at or above the strict zoom, where an unchecked move is
+   * placed rather than slid?
+   * @returns {boolean}
+   */
+  _strict() {
+    const z = this.map?.getZoom?.();
+    const strict = Number.isFinite(this.options.strictZoom) ? this.options.strictZoom : DEFAULT_STRICT_ZOOM;
+    return Number.isFinite(z) && z >= strict;
+  }
+
   _inView(points) {
     try {
       const b = this.map.getBounds().pad(0.25);
@@ -204,7 +215,10 @@ export class PathFollower {
       if (r.status === "missing") {
         this.stats.missing++;
         if (this.store.running) this.store.request(r.tiles);
-        return null;
+        // Water tiles not in yet: below the strict zoom slide straight as
+        // before; from it, never slide on a chord nobody checked - place the
+        // marker (Lee, 2026-10-05, "absolutely mandatory" from zoom 14).
+        return this._strict() ? PLACE : null;
       }
       if (r.status === "path") this.stats.paths++;
       else if (r.status === "straight") this.stats.straight++;

@@ -2,7 +2,7 @@
  * @jest-environment node
  */
 import { PathFollower, AT_REST_KMH, REST_MAX_CHORD_M, WIDE_MARGIN_M, PLACE } from "./PathFollower.js";
-import { parsePathOptions, DEFAULT_SOURCES, DEFAULT_MIN_ZOOM } from "./options.js";
+import { parsePathOptions, DEFAULT_SOURCES, DEFAULT_MIN_ZOOM, DEFAULT_STRICT_ZOOM } from "./options.js";
 import { at, xy, makeGrid, lRiver } from "./testWater.testhelper.js";
 
 /**
@@ -95,11 +95,41 @@ describe("PathFollower", () => {
     expect(store.calls.cell).toBe(0);
   });
 
-  test("tiles not loaded: no plan now, and the tiles are asked for", () => {
+  test("tiles not loaded, from the strict zoom (14): PLACED, never slid unchecked; tiles asked for", () => {
+    // Changed 2026-10-05 (Lee: "4 clicks on + is absolutely mandatory"): this
+    // pinned a straight slide at zoom 15 while the tiles loaded.
     const store = stubStore(() => false);
-    const f = new PathFollower(stubMap(), opts(), store);
+    const f = new PathFollower(stubMap(15), opts(), store);
+    expect(f.plan(at(200, 0), at(400, 250), WATER)).toBe(PLACE);
+    expect(store.requested.length).toBeGreaterThan(0);
+    const g = new PathFollower(stubMap(14), opts(), stubStore(() => false));
+    expect(g.plan(at(200, 0), at(400, 250), WATER)).toBe(PLACE);
+  });
+
+  test("tiles not loaded below the strict zoom (13, min zoom 13): a straight slide as before", () => {
+    const store = stubStore(() => false);
+    const f = new PathFollower(stubMap(13), opts({ minZoom: 13 }), store);
     expect(f.plan(at(200, 0), at(400, 250), WATER)).toBeNull();
     expect(store.requested.length).toBeGreaterThan(0);
+    const g = new PathFollower(stubMap(13.9), opts({ minZoom: 13 }), stubStore(() => false));
+    expect(g.plan(at(200, 0), at(400, 250), WATER)).toBeNull();
+  });
+
+  test("at zoom 13 with min zoom 13, water IS followed when the tiles are there", () => {
+    const f = new PathFollower(stubMap(13), opts({ minZoom: 13 }), stubStore());
+    expect(f.applies(WATER)).toBe(true);
+    expect(f.plan(at(200, 0), at(400, 250), WATER).length).toBeGreaterThan(2);
+  });
+
+  test("path_strict_zoom moves the strict line; nonsense keeps 14; an options object without it means 14", () => {
+    expect(parsePathOptions({}).strictZoom).toBe(14);
+    expect(DEFAULT_STRICT_ZOOM).toBe(14);
+    expect(parsePathOptions({ path_strict_zoom: 16 }).strictZoom).toBe(16);
+    expect(parsePathOptions({ path_strict_zoom: "x" }).strictZoom).toBe(14);
+    const old = { enabled: true, minZoom: 14, sources: parsePathOptions({}).sources };
+    expect(new PathFollower(stubMap(14), old, stubStore(() => false)).plan(at(200, 0), at(400, 250), WATER)).toBe(PLACE);
+    const raised = new PathFollower(stubMap(15), opts({ strictZoom: 16 }), stubStore(() => false));
+    expect(raised.plan(at(200, 0), at(400, 250), WATER)).toBeNull();
   });
 
   test("tiles not loaded and the store stopped (429): nothing is asked for", () => {
