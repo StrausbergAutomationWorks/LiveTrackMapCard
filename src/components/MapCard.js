@@ -127,6 +127,7 @@ export default class MapCard extends LitElement {
     }
 
     if (this.map) {
+      this._healSize();
       this.pluginsRenderService.render();
       this.tileLayersService.render();
       this.geoJsonRenderService.render(this.hass);
@@ -178,6 +179,30 @@ export default class MapCard extends LitElement {
 
   _toggleClustering() {
     this.entitiesRenderService.toggleClustering();
+  }
+
+  /**
+   * Re-measure the map when Leaflet's remembered size is not the box's.
+   * A map built while its box had no size (0 x 0) draws a single tile in a
+   * corner and stays that way; the resize observer was seen NOT to catch it
+   * (getSize() 0 x 0 long after load in a hidden tab, 2026-10-04/05, and the
+   * same picture in Lee's visible tab; why the observer missed it is not known).
+   * Called on every render, which Home Assistant's state updates drive every
+   * few seconds, so the map heals within one update whatever was missed.
+   * @returns {boolean} whether it re-measured
+   */
+  _healSize() {
+    try {
+      const box = this.map?.getContainer?.();
+      const size = this.map?.getSize?.();
+      if (!box || !size) return false;
+      const w = box.clientWidth, h = box.clientHeight;
+      if (w > 0 && h > 0 && (w !== size.x || h !== size.y)) {
+        this.map.invalidateSize();
+        return true;
+      }
+    } catch { /* never stops the render */ }
+    return false;
   }
 
   _setupResizeObserver() {
