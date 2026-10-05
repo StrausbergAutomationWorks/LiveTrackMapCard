@@ -60,6 +60,7 @@ y: 3.652
 | `cluster_markers`      | false                                                                                                                        | Enable marker clustering to group nearby entities together. Click the group icon button to toggle clustering on/off. |
 | `path_following`       | true                                                                                                                         | Boats slide along the water instead of in a straight line across land. See [Path-following](#path-following). `false` turns it off. |
 | `path_min_zoom`        | 14                                                                                                                           | Path-following works from this zoom up. Below it a slide is straight, as without the feature. |
+| `path_strict_zoom`     | 14                                                                                                                           | From this zoom a boat is never slid on a move the card has not checked: while the water tiles for a move are still loading, the boat is placed at its new position instead of sliding straight. |
 | `path_tile_sources`    | OpenStreetMap, then OpenFreeMap                                                                                              | The vector tile sources the water comes from, tried in order. See [Path-following](#path-following). |
 | `debug` | false                                                                                                                        | Enable debug messages in console.
 | `plugins`            | []                                                                                                                           | An array of plugin definitions, see: [Plugin Options](#plugin-options), [Available plugins](#available-plugins) and [Developing plugins](#developing-plugins)     |
@@ -89,16 +90,17 @@ If `x` & `y` or `focus_entity` is not set it will take the lat/long from the __f
 When an entity slides from its previous position to a new one (`position_transition`), a straight line can cross land: a boat between two fixes on a winding river cuts across the bank, through buildings and over piers. With path-following the card slides it along the water instead, and a boat whose reported position sits on land (a mooring against a seawall, a GPS or map error) is drawn in the nearest water.
 
 * **What follows paths:** entities with `map_layer: water`. Nothing else changes.
-* **When:** from `path_min_zoom` (14) up, where a crossing is big enough to see. Below it every slide is straight.
+* **When:** from `path_min_zoom` (14) up, where a crossing is big enough to see. Below it every slide is straight. From `path_strict_zoom` (14) a move whose water tiles have not arrived yet is placed, not slid.
 * **What the card fetches:** vector map tiles at zoom 14, only for moving boats on screen, kept in the browser for 7 days. Nothing is fetched ahead of viewing.
 * **Sources, in order:** [OpenStreetMap's vector tiles](https://vector.openstreetmap.org/) (Shortbread schema), then [OpenFreeMap](https://openfreemap.org/) (OpenMapTiles schema) if the first fails. An HTTP 429 from either stops all tile fetching for that page; if both fail, slides are straight. The attribution of a source is added to the map once its data has been used.
-* **What it does not do:** it never changes the entity's state or what the recorder stores. A slide that cannot be routed (no water nearby, or a route more than twice the straight line) is straight, as before.
+* **What it does not do:** it never changes the entity's state or what the recorder stores, and it never slides a boat across land: a move that cannot be routed over water (no way round, or a route more than twice the straight line) places the boat at its new position instead. Piers and breakwaters are never crossed.
 
 Both tile services are run on donated or volunteer infrastructure; please keep their terms in mind ([OpenStreetMap vector tile policy](https://operations.osmfoundation.org/policies/vector/), [OpenFreeMap](https://openfreemap.org/)).
 
 ```yaml
 path_following: true        # the default; false turns it off
 path_min_zoom: 14
+path_strict_zoom: 14
 path_tile_sources:          # optional; replaces the list
   - id: my-tiles
     tiles: https://tiles.example.com/{z}/{x}/{y}.pbf
@@ -350,6 +352,18 @@ The GeoJSON data in the entity attribute can be either:
 | `url`     | The url of the layer, see [URL Entity lookup](#url-entity-lookup).                                                                                          |
 | `options` | The leaflet layer [WMS options](https://leafletjs.com/reference.html#tilelayer-wms) or [Tile Layer options](https://leafletjs.com/reference.html#tilelayer) |
 | `history` | The name of the layer option which controls the dat, if it supports a date or time option. Set history to the name of this property. The `history_start` value, state or date range picker will then set this property on the layer and update it as necessary. |
+| `name`    | `tile_layers` only. Gives the layer a checkbox in a layer control at the map's top right, so viewers can turn it on and off. Each viewer's choice is kept in their own browser. |
+| `show`    | `tile_layers` only, with `name`. `false` starts the layer off; the default is on. A viewer's own choice wins. |
+
+```yaml
+tile_layers:
+  - url: https://tiles.example.com/overlay/{z}/{x}/{y}.png
+    name: Rail lines
+    show: true
+    options:
+      opacity: 0.4
+      attribution: 'Overlay &copy; Example'
+```
 
 #### Zooming & `tile_layer_options.maxZoom`
 
