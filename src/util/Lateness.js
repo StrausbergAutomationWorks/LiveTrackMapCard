@@ -73,7 +73,9 @@ export function latenessColor(level) {
  * The pulse's CSS, kept as a string so a test can read the reduced-motion
  * rule (jest mocks lit's `css`). The ring sits outside the disc and its halo,
  * so neither the fill nor the halo changes colour (Lee); it grows and fades
- * once every 3 s. With reduced motion it holds still as a static ring.
+ * once every 3 s. With reduced motion it holds still as a DASHED ring set
+ * well clear of the disc: a solid ring close in read as a recoloured halo
+ * (seen 2026-10-04, bin\ltmc275_look_rm.png).
  */
 export const LATENESS_CSS = `
   .label-with-badge {
@@ -84,7 +86,7 @@ export const LATENESS_CSS = `
     left: 100%;
     top: 50%;
     transform: translateY(-50%);
-    margin-left: 0.15em;
+    margin-left: 0.3em;
     font-size: 0.8em;
     font-weight: 700;
     line-height: 1;
@@ -108,7 +110,8 @@ export const LATENESS_CSS = `
   @media (prefers-reduced-motion: reduce) {
     .stall-pulse {
       animation: none;
-      transform: scale(1.25);
+      border-style: dashed;
+      transform: scale(1.4);
       opacity: 1;
     }
   }

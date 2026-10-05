@@ -108,6 +108,13 @@ describe("the pulse CSS", () => {
     expect(m[1]).toMatch(/opacity:\s*1;/);
   });
 
+  it("the static ring is dashed and set clear of the disc, so it cannot read as the halo", () => {
+    const m = LATENESS_CSS.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*)\}\s*$/);
+    expect(m[1]).toMatch(/border-style:\s*dashed;/);
+    const s = Number(m[1].match(/transform:\s*scale\(([\d.]+)\)/)[1]);
+    expect(s).toBeGreaterThanOrEqual(1.4);
+  });
+
   it("never touches the disc's fill or halo", () => {
     expect(LATENESS_CSS).not.toMatch(/\.marker\b/);
     expect(LATENESS_CSS).not.toMatch(/background/);
