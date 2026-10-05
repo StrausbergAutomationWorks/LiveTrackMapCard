@@ -8,6 +8,7 @@ import EntityConfig, { layerOffset, parseMarkerColor, parseRingWidth } from "../
 import EntityHistoryManager from "./EntityHistoryManager.js";
 import TimelineEntry from "./TimelineEntry.js";
 import { hoverHtml, HOVER_REFRESH_MS } from "../util/HoverLabel.js";
+import { lateness } from "../util/Lateness.js";
 
 /**
  * The custom element every marker is built from. index.js registers it under
@@ -368,6 +369,17 @@ export default class Entity {
       "ring-color": this._emitterColor("marker_ring_color") ?? "",
       "ring-width": width == null ? "" : String(width),
     };
+  }
+
+  /**
+   * The delay badge and the stall pulse, as the marker element's attribute
+   * names -> values (06_MAP_CONTRACT.md D4c, backlog 275; util/Lateness.js).
+   * Data, not styling: unlike markerStyling it is NOT dropped under a
+   * dashboard `color:`, since a train is just as late in someone else's fill.
+   * @returns {{"delay-badge": string, "delay-level": string, "pulse": string}}
+   */
+  get markerLateness() {
+    return lateness(this.attributes);
   }
 
   /**
@@ -902,6 +914,7 @@ export default class Entity {
       this.refreshMarkerLabelColor();
       this.refreshMarkerArrow();
       this.refreshMarkerStyling();
+      this.refreshMarkerLateness();
       this.refreshMarkerZIndex();
       this.refreshTooltip();
       this.updateMarkerPosition();
@@ -996,6 +1009,21 @@ export default class Entity {
       if (had[name] !== value) this._setMarkerAttribute(name, value);
     }
     this._currentStyling = wanted;
+  }
+
+  /**
+   * Give an existing marker the entity's current lateness (markerLateness),
+   * re-decided on every update: in place, only what changed, never a rebuild,
+   * so a slide in flight carries on.
+   */
+  refreshMarkerLateness() {
+    if (!this.marker) return;
+    const wanted = this.markerLateness;
+    const had = this._currentLateness ?? {};
+    for (const [name, value] of Object.entries(wanted)) {
+      if (had[name] !== value) this._setMarkerAttribute(name, value);
+    }
+    this._currentLateness = wanted;
   }
 
   /**
@@ -1426,6 +1454,8 @@ export default class Entity {
     this._currentArrow = arrow;
     const styling = this.markerStyling;
     this._currentStyling = styling;
+    const late = this.markerLateness;
+    this._currentLateness = late;
     const zIndexOffset = this.zIndexOffset;
     this._currentZIndex = zIndexOffset;
 
@@ -1474,6 +1504,9 @@ export default class Entity {
             arrow-outline="${styling["arrow-outline"]}"
             ring-color="${styling["ring-color"]}"
             ring-width="${styling["ring-width"]}"
+            delay-badge="${late["delay-badge"]}"
+            delay-level="${late["delay-level"]}"
+            pulse="${late["pulse"]}"
             style="${this.config.css}"
             size="${this.config.size}"
             extra-css-classes="${extraCssClasses}"

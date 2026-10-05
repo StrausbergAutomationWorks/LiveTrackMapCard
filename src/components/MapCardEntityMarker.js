@@ -1,4 +1,5 @@
-import { LitElement, html, css } from "lit";
+import { LitElement, html, css, unsafeCSS } from "lit";
+import { latenessColor, LATENESS_CSS } from "../util/Lateness.js";
 
 /**
  * Picture markers only get a text overlay when the user asked for one.
@@ -167,6 +168,9 @@ export default class MapCardEntityMarker extends LitElement {
       'arrowOutline': {type: String, attribute: 'arrow-outline'},
       'ringColor': {type: String, attribute: 'ring-color'},
       'ringWidth': {type: String, attribute: 'ring-width'},
+      'delayBadge': {type: String, attribute: 'delay-badge'},
+      'delayLevel': {type: String, attribute: 'delay-level'},
+      'pulse': {type: String, attribute: 'pulse'},
       'size': {type: Number},
       'tapAction': {type: Object, attribute: 'tap-action'},
       'extraCssClasses': {type: String, attribute: 'extra-css-classes'},
@@ -225,6 +229,7 @@ export default class MapCardEntityMarker extends LitElement {
           style="background-color: ${this.color}; ${ringStyle(this.color, this.ringColor, this.ringWidth)} ${labelTextStyle(this.color, this.labelColor, this.labelOutline)} height: ${this.size}px; width: ${this.size}px;"
           @click=${this._badgeTap}
           >
+          ${this._pulse()}
           ${this._arrow()}
           ${this._inner()}
         </div>
@@ -296,18 +301,53 @@ export default class MapCardEntityMarker extends LitElement {
       return html`<ha-icon icon="${this.icon}" style="color: ${this.color}; --icon-primary-color: ${this.color}; --mdc-icon-size: ${this.size - 10}px;">icon</ha-icon>`
     }
     if (!this.prefix && !this.suffix) {
-      return this.title;
+      return this._withBadge(this.title);
     } else {
-      return html`
+      return this._withBadge(html`
         <span class="prefix" style="display: ${this.prefix ? 'initial' : 'none'}">${this.prefix}</span>
         ${this.title}
         <span class="suffix" style="display: ${this.suffix ? 'initial' : 'none'}">${this.suffix}</span>
-      `;
+      `);
     }
   }
 
+  /**
+   * The label with the delay badge after it: "835 +12" (backlog 275). The
+   * badge is placed just past the label's right edge, so the label itself
+   * stays where it was, centred on the disc. Its colour is the lateness
+   * level's, outlined with the DEFAULT dark outline whatever the emitter's
+   * label outline: an orange outline round an amber badge would hide it.
+   * Without a badge the label is returned untouched, so a train on time is
+   * drawn exactly as before.
+   * @param {unknown} label
+   * @returns {unknown}
+   */
+  _withBadge(label) {
+    const text = typeof this.delayBadge === "string" ? this.delayBadge.trim() : "";
+    const color = latenessColor(this.delayLevel);
+    if (text === "" || color === "") return label;
+    return html`<span class="label-with-badge">${label}<span class="delay-badge" style="color: ${color}; text-shadow: ${LABEL_OUTLINE};">${text}</span></span>`;
+  }
+
+  /**
+   * The slow pulse on a train that is late AND stalled (backlog 275): a ring
+   * outside the disc and its halo, in the lateness colour, growing and fading;
+   * a still ring under prefers-reduced-motion. The fill and the halo do not
+   * change. Not on a picture marker, which clips its overflow.
+   * @returns {unknown}
+   */
+  _pulse() {
+    if (this.pulse !== "true" || this.picture) return "";
+    const color = latenessColor(this.delayLevel);
+    if (color === "") return "";
+    // The ring is inside the border box: start the pulse 2 px outside the
+    // DRAWN halo, whatever its width.
+    const out = drawnBorderPx(ringWidthPx(this.ringWidth)) + 2;
+    return html`<div class="stall-pulse" style="inset: ${-out}px; border-color: ${color};"></div>`;
+  }
+
   static get styles() {
-    return css`
+    return [css`
       .marker {
         display: flex;
         justify-content: center;
@@ -411,6 +451,6 @@ export default class MapCardEntityMarker extends LitElement {
         color: #ffffff;
         background: #1c1c1c;
       }
-    `;
+    `, unsafeCSS(LATENESS_CSS)];
   }
 }
