@@ -128,6 +128,12 @@ export default class MapConfig {
       return layer;
     });
 
+    // Shapes on the map (06_MAP_CONTRACT.md D12, backlog 277): absent or
+    // `auto` finds publishers by attribute shape, `false` turns it off, a
+    // list names them. Parsed by ShapeLayersRenderService.
+    this.shapeLayers = inputConfig.shape_layers;
+    this.shapeStyle = inputConfig.shape_style;
+
     // Allow as none array
     let plugins = this._setConfigWithDefault(inputConfig.plugins, []);
     this.plugins = (this._setConfigWithDefault(Array.isArray(plugins) ? plugins : [plugins], [])).map((plugin) => {

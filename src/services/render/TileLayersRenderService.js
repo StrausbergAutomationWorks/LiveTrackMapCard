@@ -108,14 +108,54 @@ export default class TileLayersService {
    */
   _addControl(named) {
     if (!named || Object.keys(named).length === 0) return;
+    this._ensureControl(named);
+  }
+
+  /**
+   * The control, created on first use with the given overlays.
+   * @param {{[name: string]: object}} [named]
+   * @returns {object}
+   */
+  _ensureControl(named = {}) {
+    if (this.control) return this.control;
     this.control = new L.Control.Layers(null, named, { collapsed: false, position: "topright" });
     this.control.addTo(this.map);
-    const byLayer = new globalThis.Map(Object.entries(named).map(([n, layer]) => [layer, n]));
+    this.byLayer = new globalThis.Map(Object.entries(named).map(([n, layer]) => [layer, n]));
     const remember = (shown) => (e) => {
-      const n = byLayer.get(e.layer);
+      const n = this.byLayer.get(e.layer);
       if (n) storeOverlayChoice(n, shown, this.storage);
     };
     this.map.on("overlayadd", remember(true));
     this.map.on("overlayremove", remember(false));
+    return this.control;
+  }
+
+  /**
+   * A checkbox for a layer added after setup (shapes on the map, D12 rule 4).
+   * The viewer's stored choice wins over `show`. Creates the control if no
+   * tile layer was named.
+   * @param {object} layer a Leaflet layer
+   * @param {string} name the checkbox label
+   * @param {boolean} [show] the default when the viewer has made no choice
+   * @returns {boolean} whether the layer is on the map
+   */
+  addOverlay(layer, name, show = true) {
+    const stored = storedOverlayChoice(name, this.storage);
+    const on = stored ?? show !== false;
+    if (on) layer.addTo(this.map);
+    const control = this._ensureControl();
+    this.byLayer.set(layer, name);
+    control.addOverlay(layer, name);
+    return on;
+  }
+
+  /**
+   * Drop a layer's checkbox (its publisher went away).
+   * @param {object} layer
+   */
+  removeOverlay(layer) {
+    if (!this.control) return;
+    this.control.removeLayer(layer);
+    this.byLayer?.delete(layer);
   }
 }

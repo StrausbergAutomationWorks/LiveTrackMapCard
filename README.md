@@ -62,6 +62,8 @@ y: 3.652
 | `path_min_zoom`        | 14                                                                                                                           | Path-following works from this zoom up. Below it a slide is straight, as without the feature. |
 | `path_strict_zoom`     | 14                                                                                                                           | From this zoom a boat is never slid on a move the card has not checked: while the water tiles for a move are still loading, the boat is placed at its new position instead of sliding straight. |
 | `path_tile_sources`    | OpenStreetMap, then OpenFreeMap                                                                                              | The vector tile sources the water comes from, tried in order. See [Path-following](#path-following). |
+| `shape_layers`         | auto                                                                                                                         | Filled areas published by an integration, such as weather alerts. See [Shapes on the map](#shapes-on-the-map). `false` turns them off. |
+| `shape_style`          | fill 0.25, outline 2 px at 0.9                                                                                               | How those areas are drawn. See [Shapes on the map](#shapes-on-the-map). |
 | `debug` | false                                                                                                                        | Enable debug messages in console.
 | `plugins`            | []                                                                                                                           | An array of plugin definitions, see: [Plugin Options](#plugin-options), [Available plugins](#available-plugins) and [Developing plugins](#developing-plugins)     |
 
@@ -106,6 +108,29 @@ path_tile_sources:          # optional; replaces the list
     tiles: https://tiles.example.com/{z}/{x}/{y}.pbf
     schema: openmaptiles    # or shortbread
     attribution: '&copy; Example, data &copy; OpenStreetMap contributors'
+```
+
+### Shapes on the map
+
+Some integrations publish areas rather than points: weather alerts by forecast zone and county, for example. The card finds any entity that publishes them (a `shapes_url` naming a file of shapes, and `zones` naming which to fill now, each with an event), fetches that file once, and fills each area in its event's colour over the map and under every marker. The most important event is drawn on top. Each publisher gets a checkbox in the layer control at the top right, on by default; a viewer's own choice is kept in their browser. The publisher's credit appears in the map's attribution line while its areas are shown.
+
+* **The file** is fetched from your Home Assistant and kept in memory for the page, never in browser storage. A new file has a new address, so an update is fetched once and the old one dropped.
+* **If the file cannot be loaded**, only the areas the publisher sends with their own outline are drawn, and the card tries again after 10 minutes.
+* **If the publisher is unavailable**, nothing is drawn for it.
+
+```yaml
+shape_layers: auto          # the default: every publisher found
+# shape_layers: false       # none
+# shape_layers:             # exactly these, with your own label
+#   - entity: sensor.my_alerts
+#     name: Warnings
+#     show: false           # start unticked
+shape_style:                # optional; each key optional
+  fill_opacity: 0.25
+  weight: 2                 # outline, px
+  opacity: 0.9              # outline
+  renderer: svg             # or canvas
+  by_priority: false        # true: stronger fill for more important events
 ```
 
 ### URL Entity lookup

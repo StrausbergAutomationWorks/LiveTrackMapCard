@@ -15,6 +15,7 @@ import InitialViewRenderService from '../services/render/InitialViewRenderServic
 import TileLayer from '../leaflet/TileLayer.js';
 import PluginsRenderService from '../services/render/PluginsRenderService.js';
 import GeoJsonRenderService from '../services/render/GeoJsonRenderService.js';
+import ShapeLayersService from '../services/render/ShapeLayersRenderService.js';
 import HaStaleStateService from '../services/HaStaleStateService.js';
 import { PathFollower } from '../services/path/PathFollower.js';
 
@@ -86,6 +87,8 @@ export default class MapCard extends LitElement {
 
     this.pluginsRenderService = new PluginsRenderService(this.map, this._config.plugins);
     this.geoJsonRenderService = new GeoJsonRenderService(this.map, this.hass, this._config.geojson);
+    // Shapes on the map (D12): filled by key from a publisher's file.
+    this.shapeLayersService = new ShapeLayersService(this.map, this._config.shapeLayers, this._config.shapeStyle, this.tileLayersService);
 
     try {
       this.pluginsRenderService.setup();
@@ -131,6 +134,7 @@ export default class MapCard extends LitElement {
       this.pluginsRenderService.render();
       this.tileLayersService.render();
       this.geoJsonRenderService.render(this.hass);
+      this.shapeLayersService?.render(this.hass);
       this.entitiesRenderService.render(this.hass);
       this.initialViewRenderService.render();
 
@@ -313,6 +317,7 @@ export default class MapCard extends LitElement {
     this.linkedEntityService?.disconnect();
     this.pluginsRenderService?.cleanup();
     this.geoJsonRenderService?.cleanup();
+    this.shapeLayersService?.cleanup();
     this.entitiesRenderService?.cleanup();
     this.map.remove();
     this.map = undefined;
