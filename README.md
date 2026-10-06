@@ -64,6 +64,7 @@ y: 3.652
 | `path_tile_sources`    | OpenStreetMap, then OpenFreeMap                                                                                              | The vector tile sources the water comes from, tried in order. See [Path-following](#path-following). |
 | `shape_layers`         | auto                                                                                                                         | Filled areas published by an integration, such as weather alerts. See [Shapes on the map](#shapes-on-the-map). `false` turns them off. |
 | `shape_style`          | fill 0.25, outline 2 px at 0.9                                                                                               | How those areas are drawn. See [Shapes on the map](#shapes-on-the-map). |
+| `weather_radar`        | on, ticked                                                                                                                   | The weather radar overlay. See [Weather radar](#weather-radar). `false` removes it. |
 | `debug` | false                                                                                                                        | Enable debug messages in console.
 | `plugins`            | []                                                                                                                           | An array of plugin definitions, see: [Plugin Options](#plugin-options), [Available plugins](#available-plugins) and [Developing plugins](#developing-plugins)     |
 
@@ -131,6 +132,34 @@ shape_style:                # optional; each key optional
   opacity: 0.9              # outline
   renderer: svg             # or canvas
   by_priority: false        # true: stronger fill for more important events
+```
+
+### Weather radar
+
+One radar layer with a checkbox, "Weather radar", in the layer control, on by default. For each map tile the card uses the sharpest radar that covers the whole tile, and [RainViewer](https://www.rainviewer.com/) everywhere else. Only the newest frame is shown; it is refreshed every few minutes while the box is ticked and the layer is on screen. The radar sits over the map tiles and under filled areas and every marker, and is not darkened by the dark theme.
+
+| Where | Source | Licence / terms |
+|---|---|---|
+| North America, inside its published box (170.3°W–50°W, 16.9°N–67.2°N) | [Environment and Climate Change Canada GeoMet](https://eccc-msc.github.io/open-data/) | Open Government Licence – Canada |
+| Guam, the Aleutians from 176°W to 170.3°W, the Caribbean south of 16.9°N | [NOAA nowCOAST](https://nowcoast.noaa.gov/) | no access constraints or fees (its capabilities) |
+| Finland | [Finnish Meteorological Institute](https://en.ilmatieteenlaitos.fi/open-data) | CC BY 4.0 |
+| Germany | [Deutscher Wetterdienst](https://www.dwd.de/) | CC BY 4.0 |
+| Japan | [Japan Meteorological Agency](https://www.jma.go.jp/) | Public Data License 1.0 |
+| everywhere else | [RainViewer](https://www.rainviewer.com/) (to zoom 7, enlarged beyond) | free for personal use, credit required |
+
+* **Credits:** each source's credit appears in the map's attribution line while one of its tiles is on screen.
+* **When a source is down** or its newest frame is over 30 minutes old, its tiles fall to the next source; if RainViewer's is too, no radar is drawn.
+* **Relays:** an integration may offer a radar it fetches on your behalf (one that needs your own key). The card finds it by its `radar_relay` attribute and loads its tiles through a signed Home Assistant address. Nothing needs configuring.
+* **No radar is stored** in the browser beyond its normal image cache; only the viewer's checkbox choice is kept, as for the other overlays. Requests go only to the sources on screen.
+
+```yaml
+weather_radar: true         # the default
+# weather_radar: false      # no radar, no checkbox, no requests
+# weather_radar:            # each key optional
+#   opacity: 0.65
+#   show: false             # start unticked
+#   rainviewer_scheme: 2    # RainViewer colour scheme, 0-8
+#   sources: [rainviewer]   # only these, in this order (fmi, dwd, jma, geomet, nowcoast, rainviewer, or a relay's id)
 ```
 
 ### URL Entity lookup

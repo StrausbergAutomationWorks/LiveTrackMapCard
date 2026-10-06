@@ -134,6 +134,11 @@ export default class MapConfig {
     this.shapeLayers = inputConfig.shape_layers;
     this.shapeStyle = inputConfig.shape_style;
 
+    // The weather radar overlay (06_MAP_CONTRACT_OVERLAYS.md D13, backlog
+    // 280): absent offers it, ticked; `false` removes it; a mapping sets
+    // opacity, show, rainviewer_scheme, sources. Parsed by RadarOverlayService.
+    this.weatherRadar = inputConfig.weather_radar;
+
     // Allow as none array
     let plugins = this._setConfigWithDefault(inputConfig.plugins, []);
     this.plugins = (this._setConfigWithDefault(Array.isArray(plugins) ? plugins : [plugins], [])).map((plugin) => {

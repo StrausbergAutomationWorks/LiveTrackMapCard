@@ -16,6 +16,7 @@ import TileLayer from '../leaflet/TileLayer.js';
 import PluginsRenderService from '../services/render/PluginsRenderService.js';
 import GeoJsonRenderService from '../services/render/GeoJsonRenderService.js';
 import ShapeLayersService from '../services/render/ShapeLayersRenderService.js';
+import RadarOverlayService from '../services/render/RadarOverlayService.js';
 import HaStaleStateService from '../services/HaStaleStateService.js';
 import { PathFollower } from '../services/path/PathFollower.js';
 
@@ -89,10 +90,14 @@ export default class MapCard extends LitElement {
     this.geoJsonRenderService = new GeoJsonRenderService(this.map, this.hass, this._config.geojson);
     // Shapes on the map (D12): filled by key from a publisher's file.
     this.shapeLayersService = new ShapeLayersService(this.map, this._config.shapeLayers, this._config.shapeStyle, this.tileLayersService);
+    // The weather radar overlay (D13): one layer, its own pane under the fills.
+    this.radarOverlayService = new RadarOverlayService(this.map, this._config.weatherRadar, this.tileLayersService);
 
     try {
       this.pluginsRenderService.setup();
       this.tileLayersService.setup();
+      // After the named tile overlays, so its checkbox follows theirs.
+      this.radarOverlayService.setup();
       this.geoJsonRenderService.setup();
       this.entitiesRenderService.setup();
       this.initialViewRenderService.setup();
@@ -135,6 +140,7 @@ export default class MapCard extends LitElement {
       this.tileLayersService.render();
       this.geoJsonRenderService.render(this.hass);
       this.shapeLayersService?.render(this.hass);
+      this.radarOverlayService?.render(this.hass);
       this.entitiesRenderService.render(this.hass);
       this.initialViewRenderService.render();
 
@@ -318,6 +324,7 @@ export default class MapCard extends LitElement {
     this.pluginsRenderService?.cleanup();
     this.geoJsonRenderService?.cleanup();
     this.shapeLayersService?.cleanup();
+    this.radarOverlayService?.cleanup();
     this.entitiesRenderService?.cleanup();
     this.map.remove();
     this.map = undefined;
