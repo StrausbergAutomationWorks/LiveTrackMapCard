@@ -1,6 +1,7 @@
 /**
  * @jest-environment jsdom
  */
+/* global require */
 import { describe, expect, it, jest, beforeEach } from "@jest/globals";
 
 // Backlog 214: index.js pushed to window.customCards without creating it, so
