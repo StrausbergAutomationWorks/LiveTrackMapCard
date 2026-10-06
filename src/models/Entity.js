@@ -182,6 +182,15 @@ export default class Entity {
    */
   _currentRotation;
   /**
+   * The picture's turn in progress on screen (card SSOT section 53): the
+   * linear CSS transition from `from` to `to`, started at `at`
+   * (performance.now()), lasting `ms`. Null before the first angle is
+   * written and after the angle is cleared.
+   * @private
+   * @type {{from: number, to: number, at: number, ms: number}|null}
+   */
+  _turn = null;
+  /**
    * The continuous angle last computed by arrowDegrees().
    * @private
    * @type {number|undefined}
@@ -492,8 +501,44 @@ export default class Entity {
     const reported = Entity._angleOf(this.attributes[attr]);
     if (reported === null) return null;
     const raw = this._travel !== null && this.travelFacingAllowed ? this._travel : reported;
-    this._rotation = Entity._continue(this._rotation, raw);
+    // From the angle the picture is AT, not the last number written (section
+    // 53): an update writes the reported angle and a slide starting in the
+    // same moment writes the travel bearing; a picture still turning toward
+    // the first must take the short way from where it is.
+    const from = this._turn ? Entity._shownAngle(this._turn, performance.now()) : this._rotation;
+    this._rotation = Entity._continue(from, raw);
     return this._rotation;
+  }
+
+  /**
+   * Where a linear turn is at `now`: `from` before it starts, `to` once done.
+   * @private
+   * @param {{from: number, to: number, at: number, ms: number}} turn
+   * @param {number} now performance.now()
+   * @returns {number}
+   */
+  static _shownAngle(turn, now) {
+    if (!(turn.ms > 0)) return turn.to;
+    const f = Math.min(1, Math.max(0, (now - turn.at) / turn.ms));
+    return turn.from + (turn.to - turn.from) * f;
+  }
+
+  /**
+   * Record that the element was just given `to`: the turn now runs from
+   * the angle on screen to `to` over rotation-transition seconds. A cleared
+   * angle (no transform) ends it. `fresh`: a newly built element, which
+   * shows `to` at once.
+   * @private
+   * @param {number|null} to
+   * @param {boolean} [fresh]
+   */
+  _noteTurn(to, fresh = false) {
+    if (to === null || to === undefined || to === "") { this._turn = null; return; }
+    const now = performance.now();
+    const secs = Number(this.config.rotationTransition);
+    const ms = !fresh && Number.isFinite(secs) && secs > 0 ? secs * 1000 : 0;
+    const from = this._turn && !fresh ? Entity._shownAngle(this._turn, now) : to;
+    this._turn = { from, to, at: now, ms };
   }
 
   /**
@@ -984,6 +1029,7 @@ export default class Entity {
     if (wanted == this._currentRotation) return;
     this._setMarkerAttribute("rotation", wanted ?? "");
     this._currentRotation = wanted;
+    this._noteTurn(wanted);
   }
 
   /**
@@ -1472,6 +1518,7 @@ export default class Entity {
     this._currentPicture = picture;
     const rotation = this.rotationDegrees();
     this._currentRotation = rotation;
+    this._noteTurn(rotation, true);
     const color = this.markerColor;
     this._currentColor = color;
     const labelColor = this.markerLabelColor;
