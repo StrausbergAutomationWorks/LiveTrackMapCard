@@ -156,7 +156,7 @@ One radar layer with a checkbox, "Weather radar", in the layer control, on by de
 weather_radar: true         # the default
 # weather_radar: false      # no radar, no checkbox, no requests
 # weather_radar:            # each key optional
-#   opacity: 0.65
+#   opacity: 0.5
 #   show: false             # start unticked
 #   rainviewer_scheme: 2    # RainViewer colour scheme, 0-8
 #   sources: [rainviewer]   # only these, in this order (fmi, dwd, jma, geomet, nowcoast, rainviewer, or a relay's id)

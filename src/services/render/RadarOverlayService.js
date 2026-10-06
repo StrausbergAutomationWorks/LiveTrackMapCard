@@ -34,11 +34,11 @@ export const FETCH_TIMEOUT_MS = 20 * 1000;
 export const SIGN_SECONDS = 600;
 
 /**
- * Defaults; `weather_radar` in the card config overrides each. Opacity is
- * provisional until Lee picks from pictures (D13 "Drawing" item 2). The
- * scheme is RainViewer's URL colour parameter (D13 item 6).
+ * Defaults; `weather_radar` in the card config overrides each. Opacity 0.5
+ * and RainViewer scheme 2 chosen by Lee from pictures of 0.5 / 0.65 / 0.8 and
+ * schemes 2 / 4 / 6 with alerts and rail on, 2026-10-06 (D13 "Drawing" 2, 6).
  */
-export const DEFAULT_RADAR = Object.freeze({ enabled: true, opacity: 0.65, show: true, scheme: 2, order: null });
+export const DEFAULT_RADAR = Object.freeze({ enabled: true, opacity: 0.5, show: true, scheme: 2, order: null });
 
 /**
  * @param {*} v

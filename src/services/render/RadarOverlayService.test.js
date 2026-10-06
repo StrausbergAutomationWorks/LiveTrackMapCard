@@ -145,14 +145,15 @@ describe("weather_radar option", () => {
     for (const v of [undefined, null, true, "auto"]) expect(parseRadarOption(v)).toEqual({ ...DEFAULT_RADAR });
     expect(DEFAULT_RADAR.show).toBe(true);
     expect(DEFAULT_RADAR.scheme).toBe(2);
+    expect(DEFAULT_RADAR.opacity).toBe(0.5); // Lee, 2026-10-06, from pictures
   });
   it("false or off: disabled", () => {
     expect(parseRadarOption(false).enabled).toBe(false);
     expect(parseRadarOption("off").enabled).toBe(false);
   });
   it("a mapping overrides opacity, show, scheme, sources; bad values ignored", () => {
-    expect(parseRadarOption({ opacity: 0.5, show: false, rainviewer_scheme: 4, sources: ["rainviewer", " geomet ", "rainviewer", 3] }))
-      .toEqual({ enabled: true, opacity: 0.5, show: false, scheme: 4, order: ["rainviewer", "geomet"] });
+    expect(parseRadarOption({ opacity: 0.3, show: false, rainviewer_scheme: 4, sources: ["rainviewer", " geomet ", "rainviewer", 3] }))
+      .toEqual({ enabled: true, opacity: 0.3, show: false, scheme: 4, order: ["rainviewer", "geomet"] });
     expect(parseRadarOption({ opacity: 2, show: "no", rainviewer_scheme: 9 })).toEqual({ ...DEFAULT_RADAR });
     expect(parseRadarOption("weird")).toEqual({ ...DEFAULT_RADAR });
   });
