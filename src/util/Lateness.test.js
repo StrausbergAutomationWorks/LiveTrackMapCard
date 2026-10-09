@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
-import { lateness, latenessColor, LATE_MIN, VERY_LATE_MIN, LATE_COLOR, VERY_LATE_COLOR, NO_LATENESS, LATENESS_CSS } from "./Lateness.js";
+import { lateness, latenessColor, thresholds, LATE_MIN, VERY_LATE_MIN, LATE_COLOR, VERY_LATE_COLOR, NO_LATENESS, LATENESS_CSS } from "./Lateness.js";
 
 // Backlog 275, 06_MAP_CONTRACT.md D4c. Late = delay_min >= 6 (Metra's
 // standard, the emitter truncates); red from 15; on time or absent shows
@@ -57,6 +57,46 @@ describe("delay_min", () => {
   it("is never read from the label", () => {
     expect(lateness({ marker_label: "835 +12" })).toEqual(NONE);
     expect(lateness({ marker_label: "835", delay_min: 12 })["delay-badge"]).toBe("+12");
+  });
+});
+
+describe("each railroad's own thresholds (D4c, Lee 2026-10-09)", () => {
+  const AMTRAK = { late_threshold_min: 16, very_late_threshold_min: 30 };
+
+  it("Amtrak: 15 minutes is on time, 16 amber, 29 amber, 30 red", () => {
+    for (const d of [6, 10, 15]) expect(lateness({ ...AMTRAK, delay_min: d })).toEqual(NONE);
+    expect(lateness({ ...AMTRAK, delay_min: 16 })).toEqual({ "delay-badge": "+16", "delay-level": "amber", "pulse": "" });
+    expect(lateness({ ...AMTRAK, delay_min: 29 })["delay-level"]).toBe("amber");
+    expect(lateness({ ...AMTRAK, delay_min: 30 })["delay-level"]).toBe("red");
+  });
+
+  it("the pulse follows the train's own threshold", () => {
+    expect(lateness({ ...AMTRAK, delay_min: 12, stalled: true })).toEqual(NONE);
+    expect(lateness({ ...AMTRAK, delay_min: 16, stalled: true })["pulse"]).toBe("true");
+  });
+
+  it("absent: the defaults, so Metra and South Shore are unchanged", () => {
+    expect(thresholds({})).toEqual({ late: LATE_MIN, veryLate: VERY_LATE_MIN });
+    expect(thresholds(undefined)).toEqual({ late: 6, veryLate: 15 });
+  });
+
+  it.each(["16", 16.5, 0, -3, 1441, true, null, NaN, [16]])("late %p is ignored: the default 6", (v) => {
+    expect(thresholds({ late_threshold_min: v }).late).toBe(6);
+  });
+
+  it.each(["30", 30.5, 0, 1441, false, null])("very late %p is ignored: the default", (v) => {
+    expect(thresholds({ late_threshold_min: 16, very_late_threshold_min: v })).toEqual({ late: 16, veryLate: 16 });
+    expect(thresholds({ very_late_threshold_min: v })).toEqual({ late: 6, veryLate: 15 });
+  });
+
+  it("very late below late is ignored; a late above 15 with no very late is red from the late", () => {
+    expect(thresholds({ late_threshold_min: 16, very_late_threshold_min: 10 })).toEqual({ late: 16, veryLate: 16 });
+    expect(thresholds({ late_threshold_min: 20 })).toEqual({ late: 20, veryLate: 20 });
+    expect(thresholds({ late_threshold_min: 3 })).toEqual({ late: 3, veryLate: 15 });
+  });
+
+  it("bounds: 1 and 1440 are accepted", () => {
+    expect(thresholds({ late_threshold_min: 1, very_late_threshold_min: 1440 })).toEqual({ late: 1, veryLate: 1440 });
   });
 });
 

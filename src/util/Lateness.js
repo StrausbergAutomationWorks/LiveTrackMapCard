@@ -12,14 +12,32 @@
  */
 
 /**
- * Late from here: Metra's published on-time standard is "within 5:59 of
- * schedule". The emitter truncates, so `>= 6` is exactly that. Do not round
- * again.
+ * Late from here, when the train does not say: Metra's published on-time
+ * standard is "within 5:59 of schedule" (South Shore's is the same). The
+ * emitter truncates, so `>= 6` is exactly that. Do not round again.
  */
 export const LATE_MIN = 6;
 
-/** Red from here (Lee, 2026-10-04 03:31). */
+/** Red from here, when the train does not say (Lee, 2026-10-04 03:31). */
 export const VERY_LATE_MIN = 15;
+
+/**
+ * The thresholds a train's own railroad uses (06_MAP_CONTRACT.md D4c, Lee
+ * 2026-10-09: "Change lateness based on how each system defines late").
+ * `late_threshold_min` and `very_late_threshold_min` are JSON integers from
+ * 1 to 1440; anything else, or a very-late below the late, is ignored and the
+ * defaults above apply. Amtrak's on-time rule is 15 minutes (49 CFR 273.5),
+ * so an Amtrak train says 16.
+ * @param {object} [attributes]
+ * @returns {{late: number, veryLate: number}}
+ */
+export function thresholds(attributes) {
+  const ok = (v) => Number.isInteger(v) && v >= 1 && v <= 1440;
+  const late = ok(attributes?.late_threshold_min) ? attributes.late_threshold_min : LATE_MIN;
+  const vl = attributes?.very_late_threshold_min;
+  const veryLate = ok(vl) && vl >= late ? vl : Math.max(VERY_LATE_MIN, late);
+  return { late, veryLate };
+}
 
 /** The badge and pulse colour for `delay_min` 6 to 14. */
 export const LATE_COLOR = "#FFB300";
@@ -49,10 +67,11 @@ export const NO_LATENESS = Object.freeze({ "delay-badge": "", "delay-level": "",
  */
 export function lateness(attributes) {
   const d = attributes?.delay_min;
-  if (!Number.isInteger(d) || d < LATE_MIN) return { ...NO_LATENESS };
+  const { late, veryLate } = thresholds(attributes);
+  if (!Number.isInteger(d) || d < late) return { ...NO_LATENESS };
   return {
     "delay-badge": `+${d}`,
-    "delay-level": d >= VERY_LATE_MIN ? "red" : "amber",
+    "delay-level": d >= veryLate ? "red" : "amber",
     "pulse": attributes.stalled === true ? "true" : "",
   };
 }
