@@ -180,6 +180,15 @@ export function badgeMinWidth(size, hasArrow, ringWidth) {
 export const STAR_INNER = 0.5;
 /** The inside star's scale: half the star's AREA (Lee: the border "take up 1/2 the star"). */
 export const STAR_CORE = Math.SQRT1_2;
+/**
+ * How far above the star's centre its label sits, as a fraction of the
+ * marker's size. A horizontal box fits a five-pointed star best a little
+ * above the centre, between the two side points: computed for a 4-digit
+ * label (27 x 11 px with its outline) in the fuller star, the smallest star
+ * that holds it is 57 px centred and 50 px raised 3.5 px (7%).
+ */
+export const STAR_LABEL_LIFT = 0.07;
+
 /** The star's thin white outline (Lee 16:43), drawn outside its edge. */
 export const STAR_EDGE_COLOR = "#FFFFFF";
 
@@ -322,7 +331,7 @@ export default class MapCardEntityMarker extends LitElement {
       return html`
         <div
           class="marker star ${this.extraCssClasses ? this.extraCssClasses : ""}"
-          style="${starLabelStyle(this.labelColor, this.labelOutline)} height: ${this.size}px; width: ${this.size}px;"
+          style="${starLabelStyle(this.labelColor, this.labelOutline)} height: ${this.size}px; width: ${this.size}px; padding-bottom: ${+(2 * STAR_LABEL_LIFT * this.size).toFixed(2)}px;"
           @click=${this._badgeTap}
           >
           ${this._pulse()}

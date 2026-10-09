@@ -7,7 +7,7 @@ jest.mock("lit", () => {
 });
 
 import MapCardEntityMarker, {
-  starPoints, starEdgeWidth, starLabelOutline, starLabelStyle, STAR_INNER, STAR_CORE, STAR_EDGE_COLOR,
+  starPoints, starEdgeWidth, starLabelOutline, starLabelStyle, STAR_INNER, STAR_CORE, STAR_EDGE_COLOR, STAR_LABEL_LIFT,
 } from "./MapCardEntityMarker.js";
 
 // The star (06_MAP_CONTRACT.md D4a `marker_shape`; Lee 2026-10-09 16:43):
@@ -87,6 +87,16 @@ describe("the star marker", () => {
     expect(out).toContain('<svg class="arrow"');
     expect(out).toContain("2150");
     expect(out).toContain("delay-badge");
+  });
+
+  it("the label sits 7% of the size above the centre (padding twice that below)", () => {
+    expect(STAR_LABEL_LIFT).toBe(0.07);
+    expect(render({ size: 50 })).toContain("padding-bottom: 7px;");
+    expect(render({ size: 28 })).toContain("padding-bottom: 3.92px;");
+  });
+
+  it("the disc has no such padding", () => {
+    expect(render({ shape: "" })).not.toContain("padding-bottom");
   });
 
   it("the outline grows with the marker, never under 2", () => {
