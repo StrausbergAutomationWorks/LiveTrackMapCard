@@ -48,6 +48,22 @@ export function parseRingWidth(value) {
 }
 
 /**
+ * Marker shapes an emitter may ask for with `marker_shape` (06_MAP_CONTRACT.md
+ * D4a). Absent or anything else: the disc, as every marker was before.
+ */
+export const MARKER_SHAPES = Object.freeze(["star"]);
+
+/**
+ * An emitted `marker_shape`: one of MARKER_SHAPES exactly, or null. The same
+ * strictness as rule 2 for colours: no case folding, no whitespace.
+ * @param {*} value the attribute value
+ * @returns {string|null}
+ */
+export function parseMarkerShape(value) {
+  return typeof value === "string" && MARKER_SHAPES.includes(value) ? value : null;
+}
+
+/**
  * 06_MAP_CONTRACT.md D10: an integration names its layer, the card owns the
  * numbers. Leaflet stacks a marker at its screen y plus zIndexOffset, so a
  * class is lifted only by a step larger than any screen height.

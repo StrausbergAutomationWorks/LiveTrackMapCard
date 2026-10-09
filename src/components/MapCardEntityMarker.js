@@ -173,6 +173,70 @@ export function badgeMinWidth(size, hasArrow, ringWidth) {
   return disc + 2 * (arrowSize(size).h + drawnBorderPx(ringWidthPx(ringWidth)));
 }
 
+/**
+ * The star (06_MAP_CONTRACT.md D4a `marker_shape`; Lee 2026-10-09 16:43:
+ * "use the fuller star"). Inner points at half the outer radius.
+ */
+export const STAR_INNER = 0.5;
+/** The inside star's scale: half the star's AREA (Lee: the border "take up 1/2 the star"). */
+export const STAR_CORE = Math.SQRT1_2;
+/** The star's thin white outline (Lee 16:43), drawn outside its edge. */
+export const STAR_EDGE_COLOR = "#FFFFFF";
+
+/**
+ * A five-pointed star centred on 0,0, one point straight up, as an SVG
+ * polygon `points` string.
+ * @param {number} r outer radius
+ * @param {number} [k] inner radius as a fraction of r
+ * @returns {string}
+ */
+export function starPoints(r, k = STAR_INNER) {
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const rr = i % 2 === 0 ? r : r * k;
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    pts.push(`${(rr * Math.cos(a)).toFixed(2)},${(rr * Math.sin(a)).toFixed(2)}`);
+  }
+  return pts.join(" ");
+}
+
+/**
+ * The width of the star's white outline stroke: half of it is under the
+ * fill (paint-order stroke), so it shows about 1 px at size 24 and 2 px at 48.
+ * @param {number} size the marker's size, CSS px
+ * @returns {number}
+ */
+export function starEdgeWidth(size) {
+  return Math.max(2, size / 12);
+}
+
+/**
+ * The star's label outline: HEAVIER than the disc's (Lee 16:43: "Increase
+ * the white outline of numbers"), eight directions at 1.5 px instead of four
+ * at 1, so a number that crosses the star's coloured edge stays readable.
+ * @param {string} [outlineColor] empty or absent for the default dark
+ * @returns {string} a text-shadow value
+ */
+export function starLabelOutline(outlineColor) {
+  const o = typeof outlineColor === "string" ? outlineColor.trim() : "";
+  const c = o !== "" ? o : "rgba(0, 0, 0, 0.8)";
+  const d = 1.5;
+  return [[-d, -d], [0, -d], [d, -d], [-d, 0], [d, 0], [-d, d], [0, d], [d, d]]
+    .map(([x, y]) => `${x}px ${y}px 0 ${c}`).join(", ");
+}
+
+/**
+ * The star's label style: the emitter's label colour, else dark (the star's
+ * inside is the FILL, which a star emitter sets light), with starLabelOutline.
+ * @param {string} [labelColor]
+ * @param {string} [outlineColor]
+ * @returns {string}
+ */
+export function starLabelStyle(labelColor, outlineColor) {
+  const l = typeof labelColor === "string" ? labelColor.trim() : "";
+  return `color: ${l !== "" ? l : "#212121"}; text-shadow: ${starLabelOutline(outlineColor)};`;
+}
+
 export default class MapCardEntityMarker extends LitElement {
   static get properties() {
     return {
@@ -196,6 +260,7 @@ export default class MapCardEntityMarker extends LitElement {
       'arrowOutline': {type: String, attribute: 'arrow-outline'},
       'ringColor': {type: String, attribute: 'ring-color'},
       'ringWidth': {type: String, attribute: 'ring-width'},
+      'shape': {type: String, attribute: 'shape'},
       'delayBadge': {type: String, attribute: 'delay-badge'},
       'delayLevel': {type: String, attribute: 'delay-level'},
       'pulse': {type: String, attribute: 'pulse'},
@@ -248,6 +313,22 @@ export default class MapCardEntityMarker extends LitElement {
             <circle cx="${dotX}" cy="${dotY}" r="2.5" fill="${this.color}"></circle>
           </svg>
           ${pill}
+        </div>
+      `;
+    }
+    if (this.shape === "star" && !this.picture && !this.icon) {
+      // The star: no disc, no CSS ring. Arrow, pulse and delay badge as on
+      // the disc, around the same box.
+      return html`
+        <div
+          class="marker star ${this.extraCssClasses ? this.extraCssClasses : ""}"
+          style="${starLabelStyle(this.labelColor, this.labelOutline)} height: ${this.size}px; width: ${this.size}px;"
+          @click=${this._badgeTap}
+          >
+          ${this._pulse()}
+          ${this._star()}
+          ${this._arrow()}
+          ${this._inner()}
         </div>
       `;
     }
@@ -308,6 +389,24 @@ export default class MapCardEntityMarker extends LitElement {
                 stroke="${stroke}" stroke-width="1" stroke-linejoin="round"></path>
         </svg>
       </div>`;
+  }
+
+  /**
+   * The star itself, under the label: the outer star in the ring colour (the
+   * emitter's `marker_ring_color`, else the fill) with a thin white outline,
+   * and the inside star, half its area, in the fill (`marker_color`).
+   * @returns {unknown}
+   */
+  _star() {
+    const r = this.size / 2;
+    const ring = typeof this.ringColor === "string" ? this.ringColor.trim() : "";
+    const band = ring !== "" ? ring : this.color;
+    return html`
+      <svg class="star-shape" width="${this.size}" height="${this.size}" viewBox="${-r} ${-r} ${2 * r} ${2 * r}">
+        <polygon points="${starPoints(r)}" fill="${band}" stroke="${STAR_EDGE_COLOR}"
+                 stroke-width="${starEdgeWidth(this.size)}" stroke-linejoin="round" paint-order="stroke"></polygon>
+        <polygon points="${starPoints(r * STAR_CORE)}" fill="${this.color}"></polygon>
+      </svg>`;
   }
 
   _inner() {
@@ -410,6 +509,20 @@ export default class MapCardEntityMarker extends LitElement {
       }
       .marker.picture {
         overflow: hidden;
+      }
+      .marker.star {
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        font-weight: 700;
+        isolation: isolate;
+      }
+      .star-shape {
+        position: absolute;
+        inset: 0;
+        overflow: visible;
+        pointer-events: none;
+        z-index: -1;
       }
       .entity-picture {
         background-size: cover;

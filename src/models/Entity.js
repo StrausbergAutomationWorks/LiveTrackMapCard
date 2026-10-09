@@ -4,7 +4,7 @@ import { PLACE } from "../services/path/place.js";
 import Circle from "./Circle.js";
 import GeoJson from "./GeoJson.js";
 import Logger from "../util/Logger.js"
-import EntityConfig, { layerOffset, parseMarkerColor, parseRingWidth } from "../configs/EntityConfig.js";
+import EntityConfig, { layerOffset, parseMarkerColor, parseMarkerShape, parseRingWidth } from "../configs/EntityConfig.js";
 import EntityHistoryManager from "./EntityHistoryManager.js";
 import TimelineEntry from "./TimelineEntry.js";
 import { hoverHtml, HOVER_REFRESH_MS } from "../util/HoverLabel.js";
@@ -392,12 +392,16 @@ export default class Entity {
    * (`marker_ring_color`, default the fill - the ring is there today, in the
    * fill's own colour, and so unseen) and ring-width (`marker_ring_width`,
    * CSS px, fractions allowed, default 1). The width belongs to the same set, so it too is
-   * ignored under a dashboard `color:`.
+   * ignored under a dashboard `color:`. So is shape (`marker_shape`, "star" or
+   * the disc): a star is drawn in the emitter's colours, which a dashboard
+   * fill has replaced.
    * @returns {{[attr: string]: string}}
    */
   get markerStyling() {
     const width = this.config.configuredColor ? null : parseRingWidth(this.attributes.marker_ring_width);
+    const shape = this.config.configuredColor ? null : parseMarkerShape(this.attributes.marker_shape);
     return {
+      "shape": shape ?? "",
       "label-outline": this._emitterColor("marker_label_outline_color") ?? "",
       "arrow-color": this._emitterColor("marker_arrow_color") ?? "",
       "arrow-outline": this._emitterColor("marker_arrow_outline_color") ?? "",
@@ -1577,6 +1581,7 @@ export default class Entity {
             arrow-outline="${styling["arrow-outline"]}"
             ring-color="${styling["ring-color"]}"
             ring-width="${styling["ring-width"]}"
+            shape="${styling["shape"]}"
             delay-badge="${late["delay-badge"]}"
             delay-level="${late["delay-level"]}"
             pulse="${late["pulse"]}"
