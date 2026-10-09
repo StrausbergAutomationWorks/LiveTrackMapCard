@@ -9,6 +9,7 @@ import EntityHistoryManager from "./EntityHistoryManager.js";
 import TimelineEntry from "./TimelineEntry.js";
 import { hoverHtml, HOVER_REFRESH_MS } from "../util/HoverLabel.js";
 import { lateness } from "../util/Lateness.js";
+import { trackRoute } from "../util/TrackPath.js";
 
 /**
  * The custom element every marker is built from. index.js registers it under
@@ -445,8 +446,13 @@ export default class Entity {
   arrowDegrees() {
     const attr = this.config.arrowAttribute;
     if (!attr) return null;
-    const raw = Entity._angleOf(this.attributes[attr]);
-    if (raw === null) return null;
+    const reported = Entity._angleOf(this.attributes[attr]);
+    if (reported === null) return null;
+    // TURN ORDER for the arrow too (Lee 2026-10-09 17:44: "the headings are
+    // changed to the heading they will have when they are done
+    // transitioning"): while the marker slides the arrow points along the
+    // leg it is drawn moving on; on arrival, the emitter's angle.
+    const raw = this._travel !== null ? this._travel : reported;
     this._arrow = Entity._continue(this._arrow, raw);
     return this._arrow;
   }
@@ -1199,6 +1205,11 @@ export default class Entity {
         route = null;
       }
     }
+    if (!route) {
+      // The emitter's own line, when it publishes one (06_MAP_CONTRACT.md
+      // D3c-v route hint; util/TrackPath.js): along the track, not across.
+      route = trackRoute(this.attributes?.track_path, this.marker.getLatLng?.() ?? from, to);
+    }
     if (route === PLACE) {
       // No way round over water: placed at its fix, never slid across land.
       this.marker.setLatLng(this._drawnAt(to));
@@ -1349,6 +1360,7 @@ export default class Entity {
     let leg = 0;
     this._travel = pts.length > 2 ? this._routeBearing(pts, 0) : this._segmentBearing(start, finalLatLng);
     this.refreshMarkerRotation();
+    this.refreshMarkerArrow();
     const step = (now) => {
       this._transitionFrame = null;
       if (!this.marker || this.removed) return;
@@ -1367,7 +1379,7 @@ export default class Entity {
         while (leg < pts.length - 2 && cum[leg + 1] <= d) {
           leg++;
           const b = this._routeBearing(pts, leg);
-          if (b !== null && b !== this._travel) { this._travel = b; this.refreshMarkerRotation(); }
+          if (b !== null && b !== this._travel) { this._travel = b; this.refreshMarkerRotation(); this.refreshMarkerArrow(); }
         }
         const span = cum[leg + 1] - cum[leg];
         const g = span > 0 ? (d - cum[leg]) / span : 1;
@@ -1414,6 +1426,7 @@ export default class Entity {
     if (this._travel === null) return;
     this._travel = null;
     this.refreshMarkerRotation();
+    this.refreshMarkerArrow();
   }
 
   /** @private */
