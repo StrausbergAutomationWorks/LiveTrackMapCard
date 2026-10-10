@@ -385,6 +385,20 @@ export default class Entity {
   }
 
   /**
+   * `marker_label_outline_color`: a colour as _emitterColor, or "none" for
+   * no outline on the label at all (06_MAP_CONTRACT.md D4a; Lee 2026-10-10
+   * 00:46: "Drop number outlines on Surfliner, Caltrans").
+   * @private
+   * @returns {string|null}
+   */
+  _labelOutlineColor() {
+    if (this.config.configuredColor) return null;
+    const v = this.attributes.marker_label_outline_color;
+    if (typeof v === "string" && v.trim().toLowerCase() === "none") return "none";
+    return parseMarkerColor(v);
+  }
+
+  /**
    * The marker's emitter-chosen styling beyond fill and label colour, as the
    * marker element's attribute names -> values ("" = the card's default):
    * label-outline (`marker_label_outline_color`, default dark), arrow-color
@@ -403,7 +417,7 @@ export default class Entity {
     const shape = this.config.configuredColor ? null : parseMarkerShape(this.attributes.marker_shape);
     return {
       "shape": shape ?? "",
-      "label-outline": this._emitterColor("marker_label_outline_color") ?? "",
+      "label-outline": this._labelOutlineColor() ?? "",
       "arrow-color": this._emitterColor("marker_arrow_color") ?? "",
       "arrow-outline": this._emitterColor("marker_arrow_outline_color") ?? "",
       "ring-color": this._emitterColor("marker_ring_color") ?? "",

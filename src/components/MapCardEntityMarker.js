@@ -65,6 +65,8 @@ export function labelTextStyle(color, labelColor, outlineColor) {
 export function labelOutline(outlineColor) {
   const o = typeof outlineColor === "string" ? outlineColor.trim() : "";
   if (o === "") return LABEL_OUTLINE;
+  // "none": no outline at all (2026-10-10, D4a).
+  if (o.toLowerCase() === "none") return "none";
   return `-1px -1px 0 ${o}, 1px -1px 0 ${o}, -1px 1px 0 ${o}, 1px 1px 0 ${o}`;
 }
 
@@ -182,12 +184,29 @@ export const STAR_INNER = 0.5;
 export const STAR_CORE = Math.SQRT1_2;
 /**
  * How far above the star's centre its label sits, as a fraction of the
- * marker's size. A horizontal box fits a five-pointed star best a little
- * above the centre, between the two side points: computed for a 4-digit
- * label (27 x 11 px with its outline) in the fuller star, the smallest star
- * that holds it is 57 px centred and 50 px raised 3.5 px (7%).
+ * marker's size. 0: across the centre (Lee 2026-10-10 00:46: "drop the
+ * numbers a bit so they run across the center"). It was 0.07 from
+ * `629e52c`: a horizontal box fits a five-pointed star best a little above
+ * the centre, and a 4-digit label then fitted a 50 px star (57 px centred).
  */
-export const STAR_LABEL_LIFT = 0.07;
+export const STAR_LABEL_LIFT = 0;
+
+/**
+ * A star's 1- and 2-character labels, larger (Lee 2026-10-10 00:46:
+ * "Increase the size of the 1 number and 2 number numbers"): the font scale
+ * by the label's length, 1 for any other length. The delay badge keeps its
+ * own size.
+ */
+export const STAR_SHORT_LABEL_SCALE = Object.freeze({ 1: 1.5, 2: 1.3 });
+
+/**
+ * @param {unknown} label
+ * @returns {number} the font scale for a star's label
+ */
+export function starLabelScale(label) {
+  const n = label == null ? 0 : String(label).trim().length;
+  return STAR_SHORT_LABEL_SCALE[n] || 1;
+}
 
 /** The star's thin white outline (Lee 16:43), drawn outside its edge. */
 export const STAR_EDGE_COLOR = "#FFFFFF";
@@ -228,6 +247,8 @@ export function starEdgeWidth(size) {
  */
 export function starLabelOutline(outlineColor) {
   const o = typeof outlineColor === "string" ? outlineColor.trim() : "";
+  // "none": no outline at all (Lee 2026-10-10 00:46, D4a).
+  if (o.toLowerCase() === "none") return "none";
   const c = o !== "" ? o : "rgba(0, 0, 0, 0.8)";
   const d = 1.5;
   return [[-d, -d], [0, -d], [d, -d], [-d, 0], [d, 0], [-d, d], [0, d], [d, d]]
@@ -331,7 +352,7 @@ export default class MapCardEntityMarker extends LitElement {
       return html`
         <div
           class="marker star ${this.extraCssClasses ? this.extraCssClasses : ""}"
-          style="${starLabelStyle(this.labelColor, this.labelOutline)} height: ${this.size}px; width: ${this.size}px; padding-bottom: ${+(2 * STAR_LABEL_LIFT * this.size).toFixed(2)}px;"
+          style="${starLabelStyle(this.labelColor, this.labelOutline)} height: ${this.size}px; width: ${this.size}px;${STAR_LABEL_LIFT > 0 ? ` padding-bottom: ${+(2 * STAR_LABEL_LIFT * this.size).toFixed(2)}px;` : ""}"
           @click=${this._badgeTap}
           >
           ${this._pulse()}
@@ -436,7 +457,9 @@ export default class MapCardEntityMarker extends LitElement {
       return html`<ha-icon icon="${this.icon}" style="color: ${this.color}; --icon-primary-color: ${this.color}; --mdc-icon-size: ${this.size - 10}px;">icon</ha-icon>`
     }
     if (!this.prefix && !this.suffix) {
-      return this._withBadge(this.title);
+      const scale = this.shape === "star" ? starLabelScale(this.title) : 1;
+      return this._withBadge(scale === 1 ? this.title
+        : html`<span class="star-label" style="font-size: ${Math.round(scale * 100)}%;">${this.title}</span>`);
     } else {
       return this._withBadge(html`
         <span class="prefix" style="display: ${this.prefix ? 'initial' : 'none'}">${this.prefix}</span>

@@ -8,6 +8,7 @@ jest.mock("lit", () => {
 
 import MapCardEntityMarker, {
   starPoints, starEdgeWidth, starLabelOutline, starLabelStyle, STAR_INNER, STAR_CORE, STAR_EDGE_COLOR, STAR_LABEL_LIFT,
+  starLabelScale, labelOutline,
 } from "./MapCardEntityMarker.js";
 
 // The star (06_MAP_CONTRACT.md D4a `marker_shape`; Lee 2026-10-09 16:43):
@@ -89,10 +90,32 @@ describe("the star marker", () => {
     expect(out).toContain("delay-badge");
   });
 
-  it("the label sits 7% of the size above the centre (padding twice that below)", () => {
-    expect(STAR_LABEL_LIFT).toBe(0.07);
-    expect(render({ size: 50 })).toContain("padding-bottom: 7px;");
-    expect(render({ size: 28 })).toContain("padding-bottom: 3.92px;");
+  it("the label runs across the centre (Lee 2026-10-10 00:46): no lift, no padding", () => {
+    expect(STAR_LABEL_LIFT).toBe(0);
+    expect(render({ size: 50 })).not.toContain("padding-bottom");
+  });
+
+  it("1- and 2-character labels are larger (Lee 00:46); 3 and 4 as before", () => {
+    expect(starLabelScale("8")).toBe(1.5);
+    expect(starLabelScale(" 28 ")).toBe(1.3);
+    expect(starLabelScale("507")).toBe(1);
+    expect(starLabelScale("2150")).toBe(1);
+    expect(starLabelScale("")).toBe(1);
+    expect(starLabelScale(undefined)).toBe(1);
+    expect(render({ title: "8" })).toContain('<span class="star-label" style="font-size: 150%;">8</span>');
+    expect(render({ title: "28" })).toContain('style="font-size: 130%;">28</span>');
+    expect(render({ title: "507" })).not.toContain("star-label");
+  });
+
+  it("a disc's short label is not scaled", () => {
+    expect(render({ shape: "", title: "8" })).not.toContain("star-label");
+  });
+
+  it('"none" is no outline on the number (Lee 00:46), whatever its case', () => {
+    expect(starLabelOutline("none")).toBe("none");
+    expect(starLabelOutline(" NONE ")).toBe("none");
+    expect(render({ labelOutline: "none" })).toContain(`color: ${RED}; text-shadow: none;`);
+    expect(labelOutline("none")).toBe("none");
   });
 
   it("the disc has no such padding", () => {

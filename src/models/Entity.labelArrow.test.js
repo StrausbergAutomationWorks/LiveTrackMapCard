@@ -189,6 +189,15 @@ describe('emitter styling: label outline, arrow colour, arrow outline', () => {
       .toEqual({ ...NONE, 'label-outline': '#EF8322', 'arrow-color': '#123456', 'arrow-outline': '#FFFFFF' });
   });
 
+  it.each(['none', ' None '])('label outline %p is "none", no outline (Lee 2026-10-10 00:46)', (v) => {
+    expect(makeEntity({ attrs: { marker_label_outline_color: v } }).entity.markerStyling['label-outline']).toBe('none');
+    // Only the label outline: "none" is not a colour anywhere else.
+    expect(makeEntity({ attrs: { marker_arrow_outline_color: v } }).entity.markerStyling['arrow-outline']).toBe('');
+    // A dashboard fill still wins.
+    expect(makeEntity({ attrs: { marker_label_outline_color: v }, config: { configuredColor: '#8B0000' } })
+      .entity.markerStyling['label-outline']).toBe('');
+  });
+
   it('absent: every one empty, the card default', () => {
     expect(makeEntity().entity.markerStyling).toEqual(NONE);
   });
