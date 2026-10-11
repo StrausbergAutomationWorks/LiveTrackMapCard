@@ -50,8 +50,28 @@ export function parseRingWidth(value) {
 /**
  * Marker shapes an emitter may ask for with `marker_shape` (06_MAP_CONTRACT.md
  * D4a). Absent or anything else: the disc, as every marker was before.
+ * "star": Live Track Intercity Rail's Amtrak (2026-10-09). "maple": a disc
+ * with a maple leaf and a wide outer band, VIA Rail's (Lee 2026-10-11 00:02).
  */
-export const MARKER_SHAPES = Object.freeze(["star"]);
+export const MARKER_SHAPES = Object.freeze(["star", "maple"]);
+
+/**
+ * Where an emitter may ask for its label with `marker_label_placement`
+ * (06_MAP_CONTRACT.md D4a). Absent or anything else: inside the marker, as
+ * before. "heading": an upright tag OUTSIDE the marker on the side it is
+ * heading, in place of the arrow (Lee 2026-10-11 00:18, 00:33).
+ */
+export const LABEL_PLACEMENTS = Object.freeze(["heading"]);
+
+/**
+ * An emitted `marker_label_placement`: one of LABEL_PLACEMENTS exactly, or
+ * null. The same strictness as marker_shape.
+ * @param {*} value the attribute value
+ * @returns {string|null}
+ */
+export function parseLabelPlacement(value) {
+  return typeof value === "string" && LABEL_PLACEMENTS.includes(value) ? value : null;
+}
 
 /**
  * An emitted `marker_shape`: one of MARKER_SHAPES exactly, or null. The same

@@ -4,7 +4,7 @@ import { PLACE } from "../services/path/place.js";
 import Circle from "./Circle.js";
 import GeoJson from "./GeoJson.js";
 import Logger from "../util/Logger.js"
-import EntityConfig, { layerOffset, parseMarkerColor, parseMarkerShape, parseRingWidth } from "../configs/EntityConfig.js";
+import EntityConfig, { layerOffset, parseLabelPlacement, parseMarkerColor, parseMarkerShape, parseRingWidth } from "../configs/EntityConfig.js";
 import EntityHistoryManager from "./EntityHistoryManager.js";
 import TimelineEntry from "./TimelineEntry.js";
 import { hoverHtml, HOVER_REFRESH_MS } from "../util/HoverLabel.js";
@@ -409,14 +409,21 @@ export default class Entity {
    * CSS px, fractions allowed, default 1). The width belongs to the same set, so it too is
    * ignored under a dashboard `color:`. So is shape (`marker_shape`, "star" or
    * the disc): a star is drawn in the emitter's colours, which a dashboard
-   * fill has replaced.
+   * fill has replaced. Likewise the maple leaf's colours, symbol-color
+   * (`marker_symbol_color`) and symbol-outline (`marker_symbol_outline_color`),
+   * and label-placement (`marker_label_placement`, "heading" or inside): the
+   * heading tag is drawn in the emitter's band colour.
    * @returns {{[attr: string]: string}}
    */
   get markerStyling() {
     const width = this.config.configuredColor ? null : parseRingWidth(this.attributes.marker_ring_width);
     const shape = this.config.configuredColor ? null : parseMarkerShape(this.attributes.marker_shape);
+    const placement = this.config.configuredColor ? null : parseLabelPlacement(this.attributes.marker_label_placement);
     return {
       "shape": shape ?? "",
+      "label-placement": placement ?? "",
+      "symbol-color": this._emitterColor("marker_symbol_color") ?? "",
+      "symbol-outline": this._emitterColor("marker_symbol_outline_color") ?? "",
       "label-outline": this._labelOutlineColor() ?? "",
       "arrow-color": this._emitterColor("marker_arrow_color") ?? "",
       "arrow-outline": this._emitterColor("marker_arrow_outline_color") ?? "",
@@ -1609,6 +1616,9 @@ export default class Entity {
             ring-color="${styling["ring-color"]}"
             ring-width="${styling["ring-width"]}"
             shape="${styling["shape"]}"
+            label-placement="${styling["label-placement"]}"
+            symbol-color="${styling["symbol-color"]}"
+            symbol-outline="${styling["symbol-outline"]}"
             delay-badge="${late["delay-badge"]}"
             delay-level="${late["delay-level"]}"
             pulse="${late["pulse"]}"

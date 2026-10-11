@@ -267,6 +267,97 @@ export function starLabelStyle(labelColor, outlineColor) {
   return `color: ${l !== "" ? l : "#212121"}; text-shadow: ${starLabelOutline(outlineColor)};`;
 }
 
+/**
+ * The maple leaf (06_MAP_CONTRACT.md D4a `marker_shape: "maple"`; Lee
+ * 2026-10-11 00:02, VIA Rail): the eleven-point leaf of the Flag of Canada,
+ * in its own units. MAPLE_LEAF_VIEWBOX is its bounding box, measured with
+ * getBBox in Chrome (bin\ltir_via_look\leafbox.html): x -1860..1860,
+ * y -2000..2030.
+ */
+export const MAPLE_LEAF_PATH = "m-90 2030 45-863a95 95 0 0 0-111-98l-859 151 116-320a65 65 0 0 0-20-73l-941-762 212-99a65 65 0 0 0 34-79l-186-572 542 115a65 65 0 0 0 73-38l105-247 423 454a65 65 0 0 0 111-57l-204-1052 327 189a65 65 0 0 0 91-27l332-652 332 652a65 65 0 0 0 91 27l327-189-204 1052a65 65 0 0 0 111 57l423-454 105 247a65 65 0 0 0 73 38l542-115-186 572a65 65 0 0 0 34 79l212 99-941 762a65 65 0 0 0-20 73l116 320-859-151a95 95 0 0 0-111 98l45 863z";
+export const MAPLE_LEAF_VIEWBOX = "-1860 -2000 3720 4030";
+const MAPLE_LEAF_ASPECT = 3720 / 4030;
+/** The outer band's width as a fraction of the marker (Lee: "wide enough to show on the map"). */
+export const MAPLE_BAND = 0.12;
+/** The leaf's height as a fraction of the marker (Lee: it "takes up most of the circle"). */
+export const MAPLE_LEAF_SIZE = 0.58;
+/** The disc's outline, inside the band (Lee: "The circle is outlined in #000000"). */
+export const MAPLE_EDGE_COLOR = "#000000";
+/** The leaf's colours when the emitter sends none (Lee: "#FF0000 outlined in #000000"). */
+export const MAPLE_LEAF_COLOR = "#FF0000";
+export const MAPLE_LEAF_OUTLINE = "#000000";
+
+/**
+ * The band's width in CSS px for a marker of `size`: MAPLE_BAND of it, never
+ * under 3 so it still shows on a small marker.
+ * @param {number} size
+ * @returns {number}
+ */
+export function mapleBandPx(size) {
+  return Math.max(3, (size || 24) * MAPLE_BAND);
+}
+
+/** The heading tag's font size as a fraction of the marker. */
+export const TAG_FONT = 0.32;
+/** Clear space between the marker's edge and the tag, CSS px. */
+export const TAG_GAP = 2;
+/** Where the tag goes when there is no heading: east, and the delay west. */
+export const TAG_DEFAULT_ANGLE = 90;
+
+/**
+ * Where the label goes as a heading TAG (06_MAP_CONTRACT.md D4a
+ * `marker_label_placement: "heading"`; Lee 2026-10-11 00:18: "make the
+ * heading arrow the train number and keep the number horizontal"): its
+ * centre's offset from the marker's centre, CSS px, along `angle` (0 north,
+ * clockwise), far enough that the tag's box just clears the marker's edge
+ * whichever side it is on, and the tag's size. Without a finite angle,
+ * TAG_DEFAULT_ANGLE. The width is an estimate from the text's length
+ * (0.62 em a character, bold digits); the tag is drawn centred on the point,
+ * so an estimate off by a little moves only the gap.
+ * @param {*} angle degrees, any number (accumulated angles allowed)
+ * @param {number} size the marker, CSS px
+ * @param {*} text the label
+ * @param {boolean} [bare] no tag box: plain text (the delay)
+ * @returns {{x: number, y: number, w: number, h: number, font: number, pad: number}}
+ */
+export function headingTag(angle, size, text, bare = false) {
+  const s = Number.isFinite(size) && size > 0 ? size : 24;
+  const n = text == null ? 0 : String(text).trim().length;
+  const font = Math.max(10, Math.round(s * TAG_FONT));
+  const pad = bare ? 0 : Math.round(font * 0.35);
+  const h = bare ? font : font + Math.round(font * 0.35);
+  const w = Math.round(font * 0.62 * n) + 2 * pad;
+  const a = angle == null || String(angle).trim() === "" || !Number.isFinite(Number(angle))
+    ? TAG_DEFAULT_ANGLE : Number(angle);
+  const t = (a * Math.PI) / 180;
+  const dx = Math.sin(t), dy = -Math.cos(t);
+  const d = s / 2 + TAG_GAP + (Math.abs(dx) * w) / 2 + (Math.abs(dy) * h) / 2;
+  return { x: +(dx * d).toFixed(2), y: +(dy * d).toFixed(2), w, h, font, pad };
+}
+
+/**
+ * The tag's number colour when the emitter sends none: black or white,
+ * whichever has the higher WCAG contrast against the tag's fill. Unlike a
+ * label inside a disc (labelTextStyle), the tag's text sits wholly on its
+ * own fill, so contrast with that fill is the right rule. Seen on the look
+ * page 2026-10-11: white numbers on VIA's yellow (#FFCC00) tags barely
+ * read; by this formula white is 1.5:1 there and black 13.9:1. A fill that
+ * is not `#RRGGBB` keeps white.
+ * @param {string} fill
+ * @returns {string} "#000000" or "#FFFFFF"
+ */
+export function tagInk(fill) {
+  const m = typeof fill === "string" ? /^#([0-9a-fA-F]{6})$/.exec(fill.trim()) : null;
+  if (!m) return "#FFFFFF";
+  const lin = (i) => {
+    const c = parseInt(m[1].slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const L = 0.2126 * lin(0) + 0.7152 * lin(2) + 0.0722 * lin(4);
+  const onWhite = 1.05 / (L + 0.05), onBlack = (L + 0.05) / 0.05;
+  return onBlack > onWhite ? "#000000" : "#FFFFFF";
+}
+
 export default class MapCardEntityMarker extends LitElement {
   static get properties() {
     return {
@@ -291,6 +382,9 @@ export default class MapCardEntityMarker extends LitElement {
       'ringColor': {type: String, attribute: 'ring-color'},
       'ringWidth': {type: String, attribute: 'ring-width'},
       'shape': {type: String, attribute: 'shape'},
+      'labelPlacement': {type: String, attribute: 'label-placement'},
+      'symbolColor': {type: String, attribute: 'symbol-color'},
+      'symbolOutline': {type: String, attribute: 'symbol-outline'},
       'delayBadge': {type: String, attribute: 'delay-badge'},
       'delayLevel': {type: String, attribute: 'delay-level'},
       'pulse': {type: String, attribute: 'pulse'},
@@ -346,6 +440,10 @@ export default class MapCardEntityMarker extends LitElement {
         </div>
       `;
     }
+    // The label as a heading tag (D4a `marker_label_placement: "heading"`):
+    // the tag replaces the arrow and the label inside, and the delay moves to
+    // the side opposite. Not on a picture or an icon, which draw their own.
+    const tag = this._tagMode();
     if (this.shape === "star" && !this.picture && !this.icon) {
       // The star: no disc, no CSS ring. Arrow, pulse and delay badge as on
       // the disc, around the same box.
@@ -357,8 +455,24 @@ export default class MapCardEntityMarker extends LitElement {
           >
           ${this._pulse()}
           ${this._star()}
-          ${this._arrow()}
-          ${this._inner()}
+          ${tag ? this._tag() : this._arrow()}
+          ${tag ? this._delayOpposite() : this._inner()}
+        </div>
+      `;
+    }
+    if (this.shape === "maple" && !this.picture && !this.icon) {
+      // The maple leaf: a disc in the fill with a wide band round it, both
+      // drawn in SVG, no CSS ring.
+      return html`
+        <div
+          class="marker maple ${this.extraCssClasses ? this.extraCssClasses : ""}"
+          style="${starLabelStyle(this.labelColor, this.labelOutline)} height: ${this.size}px; width: ${this.size}px;"
+          @click=${this._badgeTap}
+          >
+          ${this._pulse()}
+          ${this._maple()}
+          ${tag ? this._tag() : this._arrow()}
+          ${tag ? this._delayOpposite() : this._inner()}
         </div>
       `;
     }
@@ -369,11 +483,90 @@ export default class MapCardEntityMarker extends LitElement {
           @click=${this._badgeTap}
           >
           ${this._pulse()}
-          ${this._arrow()}
-          ${this._inner()}
+          ${tag ? this._tag() : this._arrow()}
+          ${tag ? this._delayOpposite() : this._inner()}
         </div>
       `;
   };
+
+  /**
+   * Whether the label is drawn as a heading tag: asked for, there is a label
+   * to draw, and the marker is not a picture or an icon.
+   * @returns {boolean}
+   */
+  _tagMode() {
+    if (this.labelPlacement !== "heading" || this.picture || this.icon) return false;
+    return typeof this.title === "string" && this.title.trim() !== "";
+  }
+
+  /**
+   * The label as an upright tag outside the marker on the side it is heading
+   * (Lee 2026-10-11 00:18, 00:33, option 2): the band colour (the ring, else
+   * the fill), the label colour (else black or white by contrast, tagInk),
+   * a black edge. It follows the
+   * same angle as the arrow it replaces, so while the marker slides along
+   * its track the tag sits on the line ahead; it moves round the marker with
+   * the arrow's transition time.
+   * @returns {unknown}
+   */
+  _tag() {
+    const g = headingTag(this.arrow, this.size, this.title);
+    const ring = typeof this.ringColor === "string" ? this.ringColor.trim() : "";
+    const fill = ring !== "" ? ring : this.color;
+    const l = typeof this.labelColor === "string" ? this.labelColor.trim() : "";
+    const ink = l !== "" ? l : tagInk(fill);
+    const t = Number(this.rotationTransition);
+    const secs = Number.isFinite(t) && t >= 0 ? t : 0;
+    return html`<div class="heading-tag" style="left: calc(50% + ${g.x}px); top: calc(50% + ${g.y}px); height: ${g.h}px; padding: 0 ${g.pad}px; font-size: ${g.font}px; line-height: ${g.h - 3}px; background-color: ${fill}; color: ${ink}; transition: left ${secs}s linear, top ${secs}s linear;">${this.title.trim()}</div>`;
+  }
+
+  /**
+   * The delay badge in tag mode: on the side OPPOSITE the tag, so the two
+   * never collide (Lee 2026-10-11 00:33, the fix that came with option 2).
+   * Its colour is the lateness level's, with the default dark outline, as
+   * beside a label. Nothing on time.
+   * @returns {unknown}
+   */
+  _delayOpposite() {
+    const text = typeof this.delayBadge === "string" ? this.delayBadge.trim() : "";
+    const color = latenessColor(this.delayLevel);
+    if (text === "" || color === "") return "";
+    const a = this.arrow == null || String(this.arrow).trim() === "" || !Number.isFinite(Number(this.arrow))
+      ? TAG_DEFAULT_ANGLE : Number(this.arrow);
+    const g = headingTag(a + 180, this.size, text, true);
+    const t = Number(this.rotationTransition);
+    const secs = Number.isFinite(t) && t >= 0 ? t : 0;
+    // Its own class, not .delay-badge: that one is placed after the label
+    // (LATENESS_CSS, appended last, would win over these rules).
+    return html`<span class="heading-delay" style="left: calc(50% + ${g.x}px); top: calc(50% + ${g.y}px); font-size: ${g.font}px; color: ${color}; text-shadow: ${LABEL_OUTLINE}; transition: left ${secs}s linear, top ${secs}s linear;">${text}</span>`;
+  }
+
+  /**
+   * The maple-leaf marker under its label (Lee 2026-10-11 00:02): a band of
+   * MAPLE_BAND in the ring colour (else the fill), inside it the disc in the
+   * fill outlined black, and the leaf, MAPLE_LEAF_SIZE of the marker tall,
+   * in `marker_symbol_color` (else red) outlined in
+   * `marker_symbol_outline_color` (else black). The other direction is the
+   * EMITTER's: it swaps the fill and the ring and sends a white outline.
+   * @returns {unknown}
+   */
+  _maple() {
+    const r = this.size / 2;
+    const ring = typeof this.ringColor === "string" ? this.ringColor.trim() : "";
+    const band = ring !== "" ? ring : this.color;
+    const sym = typeof this.symbolColor === "string" && this.symbolColor.trim() !== "" ? this.symbolColor.trim() : MAPLE_LEAF_COLOR;
+    const line = typeof this.symbolOutline === "string" && this.symbolOutline.trim() !== "" ? this.symbolOutline.trim() : MAPLE_LEAF_OUTLINE;
+    const leafH = this.size * MAPLE_LEAF_SIZE;
+    const leafW = leafH * MAPLE_LEAF_ASPECT;
+    return html`
+      <svg class="maple-shape" width="${this.size}" height="${this.size}" viewBox="${-r} ${-r} ${2 * r} ${2 * r}">
+        <circle r="${r}" fill="${band}"></circle>
+        <circle r="${+(r - mapleBandPx(this.size)).toFixed(2)}" fill="${this.color}" stroke="${MAPLE_EDGE_COLOR}" stroke-width="1"></circle>
+        <svg class="maple-leaf" x="${+(-leafW / 2).toFixed(2)}" y="${+(-leafH / 2).toFixed(2)}" width="${+leafW.toFixed(2)}" height="${+leafH.toFixed(2)}" viewBox="${MAPLE_LEAF_VIEWBOX}" overflow="visible">
+          <path d="${MAPLE_LEAF_PATH}" fill="${sym}" stroke="${line}" stroke-width="1" vector-effect="non-scaling-stroke" stroke-linejoin="round"></path>
+        </svg>
+      </svg>`;
+  }
 
   _badgeTap(ev) {
     ev.stopPropagation();
@@ -556,6 +749,42 @@ export default class MapCardEntityMarker extends LitElement {
         pointer-events: none;
         z-index: -1;
       }
+      .marker.maple {
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        font-weight: 700;
+        isolation: isolate;
+      }
+      .maple-shape {
+        position: absolute;
+        inset: 0;
+        overflow: visible;
+        pointer-events: none;
+        z-index: -1;
+      }
+      .heading-tag {
+        position: absolute;
+        transform: translate(-50%, -50%);
+        box-sizing: border-box;
+        border: 1.5px solid #000000;
+        border-radius: 999px;
+        font-weight: 800;
+        white-space: nowrap;
+        text-align: center;
+        text-shadow: none;
+        pointer-events: none;
+        z-index: 1;
+      }
+      .heading-delay {
+        position: absolute;
+        transform: translate(-50%, -50%);
+        line-height: 1;
+        font-weight: 700;
+        white-space: nowrap;
+        pointer-events: none;
+        z-index: 1;
+      }
       .entity-picture {
         background-size: cover;
         height: 100%;
@@ -578,6 +807,14 @@ export default class MapCardEntityMarker extends LitElement {
       .marker.dark {
         color: #ffffff;
         background: #1c1c1c;
+      }
+      /* The star and the maple leaf draw their own shape: no dark square
+         behind them in dark mode. Seen on the look page 2026-10-11: every
+         Amtrak star stood on a #1c1c1c square in dark mode, since the star
+         (64d611a), because this rule comes after .marker.star. */
+      .marker.star.dark,
+      .marker.maple.dark {
+        background: transparent;
       }
       .prefix {
         margin-right: var(--ha-marker-prefix-margin, 2px);
