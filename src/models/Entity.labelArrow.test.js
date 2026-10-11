@@ -183,7 +183,7 @@ describe('the marker element', () => {
 describe('emitter styling: label outline, arrow colour, arrow outline', () => {
   const STYLE = { marker_label_outline_color: '#EF8322', marker_arrow_color: '#123456', marker_arrow_outline_color: '#FFFFFF' };
   const NONE = { 'label-outline': '', 'arrow-color': '', 'arrow-outline': '', 'ring-color': '', 'ring-width': '', 'shape': '',
-  'label-placement': '', 'symbol-color': '', 'symbol-outline': '', symbol: '' };
+  'label-placement': '', 'symbol-color': '', 'symbol-outline': '', symbol: '', alternate: '' };
 
   it('reads all three', () => {
     expect(makeEntity({ attrs: STYLE }).entity.markerStyling)
@@ -251,7 +251,7 @@ describe('emitter styling: label outline, arrow colour, arrow outline', () => {
 
 describe('emitter styling: the ring around the disc (marker_ring_color, marker_ring_width)', () => {
   const NONE = { 'label-outline': '', 'arrow-color': '', 'arrow-outline': '', 'ring-color': '', 'ring-width': '', 'shape': '',
-  'label-placement': '', 'symbol-color': '', 'symbol-outline': '', symbol: '' };
+  'label-placement': '', 'symbol-color': '', 'symbol-outline': '', symbol: '', alternate: '' };
   const RING = { marker_ring_color: '#000000', marker_ring_width: 2 };
 
   it('reads colour and width', () => {

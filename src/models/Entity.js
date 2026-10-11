@@ -4,7 +4,7 @@ import { PLACE } from "../services/path/place.js";
 import Circle from "./Circle.js";
 import GeoJson from "./GeoJson.js";
 import Logger from "../util/Logger.js"
-import EntityConfig, { layerOffset, parseLabelPlacement, parseMarkerColor, parseMarkerShape, parseMarkerSymbol, parseRingWidth } from "../configs/EntityConfig.js";
+import EntityConfig, { layerOffset, parseAlternateSeconds, parseLabelPlacement, parseMarkerAlternate, parseMarkerColor, parseMarkerShape, parseMarkerSymbol, parseRingWidth } from "../configs/EntityConfig.js";
 import EntityHistoryManager from "./EntityHistoryManager.js";
 import TimelineEntry from "./TimelineEntry.js";
 import { hoverHtml, HOVER_REFRESH_MS } from "../util/HoverLabel.js";
@@ -422,9 +422,13 @@ export default class Entity {
     const shape = this.config.configuredColor ? null : parseMarkerShape(this.attributes.marker_shape);
     const placement = this.config.configuredColor ? null : parseLabelPlacement(this.attributes.marker_label_placement);
     const symbol = this.config.configuredColor ? null : parseMarkerSymbol(this.attributes.marker_symbol);
+    const alt = this.config.configuredColor ? null : parseMarkerAlternate(this.attributes.marker_alternate);
     return {
       "shape": shape ?? "",
       "symbol": symbol ?? "",
+      // The second look and its seconds, URI-encoded JSON so it sits in a
+      // double-quoted attribute and the in-place regex update (no quotes in it).
+      "alternate": alt ? encodeURIComponent(JSON.stringify({ ...alt, s: parseAlternateSeconds(this.attributes.marker_alternate_s) })) : "",
       "label-placement": placement ?? "",
       "symbol-color": this._emitterColor("marker_symbol_color") ?? "",
       "symbol-outline": this._emitterColor("marker_symbol_outline_color") ?? "",
@@ -1621,6 +1625,7 @@ export default class Entity {
             ring-width="${styling["ring-width"]}"
             shape="${styling["shape"]}"
             symbol="${styling["symbol"]}"
+            alternate="${styling["alternate"]}"
             label-placement="${styling["label-placement"]}"
             symbol-color="${styling["symbol-color"]}"
             symbol-outline="${styling["symbol-outline"]}"

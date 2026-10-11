@@ -243,6 +243,13 @@ export const DISC_STAR_DROP = 0.06;
 export const DISC_STAR_COLOR = "#FFFFFF";
 
 /**
+ * The look properties a `marker_alternate` may replace (EntityConfig
+ * parseMarkerAlternate's output); nothing else is swapped.
+ */
+export const ALTERNATE_PROPS = Object.freeze(["title", "color", "labelColor", "labelOutline", "arrowColor",
+  "arrowOutline", "ringColor", "ringWidth", "shape", "symbol", "labelPlacement", "symbolColor", "symbolOutline"]);
+
+/**
  * The width of the star's white outline stroke: half of it is under the
  * fill (paint-order stroke), so it shows about 1 px at size 24 and 2 px at 48.
  * @param {number} size the marker's size, CSS px
@@ -397,6 +404,7 @@ export default class MapCardEntityMarker extends LitElement {
       'ringWidth': {type: String, attribute: 'ring-width'},
       'shape': {type: String, attribute: 'shape'},
       'symbol': {type: String, attribute: 'symbol'},
+      'alternate': {type: String, attribute: 'alternate'},
       'labelPlacement': {type: String, attribute: 'label-placement'},
       'symbolColor': {type: String, attribute: 'symbol-color'},
       'symbolOutline': {type: String, attribute: 'symbol-outline'},
@@ -409,7 +417,69 @@ export default class MapCardEntityMarker extends LitElement {
     };
   }
 
+  /**
+   * One look, or two that take turns (D4a `marker_alternate`; Lee 2026-10-11
+   * 16:11, the Maple Leaf). With an alternate, both looks are drawn stacked
+   * and CSS fades between them (`ltmc-alt-a`/`-b`, each shown for `s`
+   * seconds, a crossfade of an eighth of the cycle); nothing ticks in
+   * JavaScript, so a slide in flight is not disturbed. Under
+   * prefers-reduced-motion only the primary look is shown. Not for a pill.
+   * @returns {unknown}
+   */
   render() {
+    const alt = this._alternateLook();
+    if (!alt || this.placeIcon) return this._renderLook();
+    const a = this._renderLook();
+    const b = this._withLook(alt.look, () => this._renderLook());
+    const cycle = 2 * alt.s;
+    return html`
+      <div class="alt-wrap" style="height: ${this.size}px; width: ${this.size}px;">
+        <div class="alt-layer alt-a" style="animation-duration: ${cycle}s;">${a}</div>
+        <div class="alt-layer alt-b" style="animation-duration: ${cycle}s;">${b}</div>
+      </div>`;
+  }
+
+  /**
+   * The `alternate` attribute decoded: the second look's property values and
+   * the seconds each look is shown, or null (absent, empty, malformed).
+   * @returns {{look: {[prop: string]: string}, s: number}|null}
+   */
+  _alternateLook() {
+    if (typeof this.alternate !== "string" || this.alternate === "") return null;
+    try {
+      // A non-object throws (null) or has none of the look properties.
+      const { s, ...look } = JSON.parse(decodeURIComponent(this.alternate));
+      if (!ALTERNATE_PROPS.some((p) => p in look)) return null;
+      const secs = Number.isFinite(s) && s > 0 ? s : 4;
+      return { look, s: secs };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Run `fn` with this element's look properties replaced by `look`, then
+   * put them back. Only the look properties (ALTERNATE_PROPS) are touched.
+   * @param {{[prop: string]: string}} look
+   * @param {() => unknown} fn
+   * @returns {unknown}
+   */
+  _withLook(look, fn) {
+    const saved = {};
+    for (const p of ALTERNATE_PROPS) {
+      if (p in look) {
+        saved[p] = this[p];
+        this[p] = look[p];
+      }
+    }
+    try {
+      return fn();
+    } finally {
+      Object.assign(this, saved);
+    }
+  }
+
+  _renderLook() {
     // When the entity is inside a named place, render a horizontal "pill":
     // a stadium outline holding two circles - the zone icon (left) and the
     // entity's initials (right). Otherwise fall back to the normal marker.
@@ -793,6 +863,41 @@ export default class MapCardEntityMarker extends LitElement {
         border-radius: 0;
         font-weight: 700;
         isolation: isolate;
+      }
+      .alt-wrap {
+        position: relative;
+      }
+      .alt-layer {
+        position: absolute;
+        inset: 0;
+        animation-iteration-count: infinite;
+        animation-timing-function: ease-in-out;
+      }
+      .alt-a {
+        animation-name: ltmc-alt-a;
+      }
+      .alt-b {
+        animation-name: ltmc-alt-b;
+        opacity: 0;
+      }
+      @keyframes ltmc-alt-a {
+        0%, 37.5% { opacity: 1; }
+        50%, 87.5% { opacity: 0; }
+        100% { opacity: 1; }
+      }
+      @keyframes ltmc-alt-b {
+        0%, 37.5% { opacity: 0; }
+        50%, 87.5% { opacity: 1; }
+        100% { opacity: 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .alt-a {
+          animation: none;
+          opacity: 1;
+        }
+        .alt-b {
+          display: none;
+        }
       }
       .disc-symbol {
         position: absolute;

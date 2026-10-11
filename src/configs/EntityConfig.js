@@ -83,6 +83,69 @@ export function parseMarkerSymbol(value) {
 }
 
 /**
+ * `marker_alternate` (06_MAP_CONTRACT.md D4a-alternate; Lee 2026-10-11
+ * 14:46, 16:11, the Maple Leaf: "slowly blink between its VIA badge and its
+ * Amtrak badge ... the entire length"): a SECOND look the card fades to and
+ * back, for one train sold under two railroads' badges. Each key is read with
+ * the same rule as the primary key of the same name; an invalid key is
+ * dropped, an absent key keeps the primary's value. Returns the marker
+ * element's property names -> values, or null when nothing valid is left.
+ */
+export const ALTERNATE_COLORS = Object.freeze({
+  marker_color: "color", marker_label_color: "labelColor", marker_arrow_color: "arrowColor",
+  marker_arrow_outline_color: "arrowOutline", marker_ring_color: "ringColor",
+  marker_symbol_color: "symbolColor", marker_symbol_outline_color: "symbolOutline",
+});
+/** The alternate label's longest length; a longer one is dropped. */
+export const ALTERNATE_LABEL_MAX = 12;
+/** Seconds each look is shown (`marker_alternate_s`), default and bounds. */
+export const ALTERNATE_S_DEFAULT = 4;
+export const ALTERNATE_S_MIN = 2;
+export const ALTERNATE_S_MAX = 30;
+
+/**
+ * @param {*} value the `marker_alternate` attribute
+ * @returns {{[prop: string]: string}|null}
+ */
+export function parseMarkerAlternate(value) {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) return null;
+  const out = {};
+  const label = value.marker_label;
+  if (typeof label === "string" && label.trim() !== "" && label.trim().length <= ALTERNATE_LABEL_MAX) {
+    out.title = label.trim();
+  } else if (typeof label === "number" && Number.isFinite(label) && String(label).length <= ALTERNATE_LABEL_MAX) {
+    out.title = String(label);
+  }
+  for (const [key, prop] of Object.entries(ALTERNATE_COLORS)) {
+    const c = parseMarkerColor(value[key]);
+    if (c) out[prop] = c;
+  }
+  const outline = value.marker_label_outline_color;
+  if (typeof outline === "string" && outline.trim().toLowerCase() === "none") out.labelOutline = "none";
+  else if (parseMarkerColor(outline)) out.labelOutline = outline;
+  const width = parseRingWidth(value.marker_ring_width);
+  if (width != null) out.ringWidth = String(width);
+  const shape = parseMarkerShape(value.marker_shape);
+  if (shape) out.shape = shape;
+  const symbol = parseMarkerSymbol(value.marker_symbol);
+  if (symbol) out.symbol = symbol;
+  const placement = parseLabelPlacement(value.marker_label_placement);
+  if (placement) out.labelPlacement = placement;
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * `marker_alternate_s`: seconds each look is shown, a JSON number from
+ * ALTERNATE_S_MIN to ALTERNATE_S_MAX, else ALTERNATE_S_DEFAULT.
+ * @param {*} value
+ * @returns {number}
+ */
+export function parseAlternateSeconds(value) {
+  return typeof value === "number" && Number.isFinite(value)
+    && value >= ALTERNATE_S_MIN && value <= ALTERNATE_S_MAX ? value : ALTERNATE_S_DEFAULT;
+}
+
+/**
  * An emitted `marker_label_placement`: one of LABEL_PLACEMENTS exactly, or
  * null. The same strictness as marker_shape.
  * @param {*} value the attribute value
