@@ -64,6 +64,25 @@ export const MARKER_SHAPES = Object.freeze(["star", "maple"]);
 export const LABEL_PLACEMENTS = Object.freeze(["heading"]);
 
 /**
+ * Symbols an emitter may ask for inside the DISC with `marker_symbol`
+ * (06_MAP_CONTRACT.md D4a). Absent or anything else: the label, as before.
+ * "star": a five-pointed star filling the disc in place of the label, for a
+ * run with no line number - SE Queensland's grey special shuttles (Lee
+ * 2026-10-11 05:21, 05:23: "fuller, small margin").
+ */
+export const MARKER_SYMBOLS = Object.freeze(["star"]);
+
+/**
+ * An emitted `marker_symbol`: one of MARKER_SYMBOLS exactly, or null. The
+ * same strictness as marker_shape.
+ * @param {*} value the attribute value
+ * @returns {string|null}
+ */
+export function parseMarkerSymbol(value) {
+  return typeof value === "string" && MARKER_SYMBOLS.includes(value) ? value : null;
+}
+
+/**
  * An emitted `marker_label_placement`: one of LABEL_PLACEMENTS exactly, or
  * null. The same strictness as marker_shape.
  * @param {*} value the attribute value

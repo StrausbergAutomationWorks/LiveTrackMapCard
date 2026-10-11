@@ -229,6 +229,20 @@ export function starPoints(r, k = STAR_INNER) {
 }
 
 /**
+ * The star INSIDE a disc (06_MAP_CONTRACT.md D4a `marker_symbol: "star"`;
+ * Lee 2026-10-11 05:23, "fuller, small margin"): the fuller star
+ * (STAR_INNER), its points at DISC_STAR_SIZE of the inner disc's radius
+ * (the disc inside the ring), dropped by DISC_STAR_DROP of its own radius
+ * so it sits centred to the eye (a five-pointed star's points reach higher
+ * above its centre than below). Drawn in a 200-unit box over the disc's
+ * padding box, so the ring's width never moves it.
+ */
+export const DISC_STAR_SIZE = 0.88;
+export const DISC_STAR_DROP = 0.06;
+/** The disc star's fill when the emitter sends no `marker_symbol_color`. */
+export const DISC_STAR_COLOR = "#FFFFFF";
+
+/**
  * The width of the star's white outline stroke: half of it is under the
  * fill (paint-order stroke), so it shows about 1 px at size 24 and 2 px at 48.
  * @param {number} size the marker's size, CSS px
@@ -382,6 +396,7 @@ export default class MapCardEntityMarker extends LitElement {
       'ringColor': {type: String, attribute: 'ring-color'},
       'ringWidth': {type: String, attribute: 'ring-width'},
       'shape': {type: String, attribute: 'shape'},
+      'symbol': {type: String, attribute: 'symbol'},
       'labelPlacement': {type: String, attribute: 'label-placement'},
       'symbolColor': {type: String, attribute: 'symbol-color'},
       'symbolOutline': {type: String, attribute: 'symbol-outline'},
@@ -476,6 +491,9 @@ export default class MapCardEntityMarker extends LitElement {
         </div>
       `;
     }
+    // A symbol in the disc (D4a `marker_symbol`) replaces the label inside it;
+    // the delay badge stays. Not on a picture or an icon.
+    const sym = this.symbol === "star" && !this.picture && !this.icon;
     return html`
         <div
           class="marker ${this.picture ? "picture" : ""}  ${this.extraCssClasses ? this.extraCssClasses : ""}"
@@ -483,8 +501,9 @@ export default class MapCardEntityMarker extends LitElement {
           @click=${this._badgeTap}
           >
           ${this._pulse()}
+          ${sym ? this._discStar() : ""}
           ${tag ? this._tag() : this._arrow()}
-          ${tag ? this._delayOpposite() : this._inner()}
+          ${tag ? this._delayOpposite() : sym ? this._withBadge("") : this._inner()}
         </div>
       `;
   };
@@ -632,6 +651,25 @@ export default class MapCardEntityMarker extends LitElement {
       </svg>`;
   }
 
+  /**
+   * The star inside the disc (D4a `marker_symbol: "star"`; Lee 2026-10-11
+   * 05:23): the fuller star in `marker_symbol_color` (else white), outlined
+   * in `marker_symbol_outline_color` when one is sent (else none), over the
+   * disc's padding box - inside the ring, whatever its width.
+   * @returns {unknown}
+   */
+  _discStar() {
+    const fill = typeof this.symbolColor === "string" && this.symbolColor.trim() !== "" ? this.symbolColor.trim() : DISC_STAR_COLOR;
+    const line = typeof this.symbolOutline === "string" ? this.symbolOutline.trim() : "";
+    const r = 100 * DISC_STAR_SIZE;
+    return html`
+      <svg class="disc-symbol" viewBox="-100 -100 200 200" preserveAspectRatio="xMidYMid meet">
+        <polygon points="${starPoints(r, STAR_INNER)}" transform="translate(0 ${+(r * DISC_STAR_DROP).toFixed(2)})"
+                 fill="${fill}" stroke="${line !== "" ? line : "none"}" stroke-width="1.2"
+                 vector-effect="non-scaling-stroke" stroke-linejoin="round"></polygon>
+      </svg>`;
+  }
+
   _inner() {
     if(this.picture) {
       const hasLabel = shouldOverlayPictureLabel(this.prefix, this.suffix, this.label);
@@ -755,6 +793,14 @@ export default class MapCardEntityMarker extends LitElement {
         border-radius: 0;
         font-weight: 700;
         isolation: isolate;
+      }
+      .disc-symbol {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+        pointer-events: none;
       }
       .maple-shape {
         position: absolute;

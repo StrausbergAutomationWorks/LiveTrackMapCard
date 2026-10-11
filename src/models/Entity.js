@@ -4,7 +4,7 @@ import { PLACE } from "../services/path/place.js";
 import Circle from "./Circle.js";
 import GeoJson from "./GeoJson.js";
 import Logger from "../util/Logger.js"
-import EntityConfig, { layerOffset, parseLabelPlacement, parseMarkerColor, parseMarkerShape, parseRingWidth } from "../configs/EntityConfig.js";
+import EntityConfig, { layerOffset, parseLabelPlacement, parseMarkerColor, parseMarkerShape, parseMarkerSymbol, parseRingWidth } from "../configs/EntityConfig.js";
 import EntityHistoryManager from "./EntityHistoryManager.js";
 import TimelineEntry from "./TimelineEntry.js";
 import { hoverHtml, HOVER_REFRESH_MS } from "../util/HoverLabel.js";
@@ -412,15 +412,19 @@ export default class Entity {
    * fill has replaced. Likewise the maple leaf's colours, symbol-color
    * (`marker_symbol_color`) and symbol-outline (`marker_symbol_outline_color`),
    * and label-placement (`marker_label_placement`, "heading" or inside): the
-   * heading tag is drawn in the emitter's band colour.
+   * heading tag is drawn in the emitter's band colour. And symbol
+   * (`marker_symbol`, "star" or the label): the star is drawn in the
+   * emitter's symbol colours.
    * @returns {{[attr: string]: string}}
    */
   get markerStyling() {
     const width = this.config.configuredColor ? null : parseRingWidth(this.attributes.marker_ring_width);
     const shape = this.config.configuredColor ? null : parseMarkerShape(this.attributes.marker_shape);
     const placement = this.config.configuredColor ? null : parseLabelPlacement(this.attributes.marker_label_placement);
+    const symbol = this.config.configuredColor ? null : parseMarkerSymbol(this.attributes.marker_symbol);
     return {
       "shape": shape ?? "",
+      "symbol": symbol ?? "",
       "label-placement": placement ?? "",
       "symbol-color": this._emitterColor("marker_symbol_color") ?? "",
       "symbol-outline": this._emitterColor("marker_symbol_outline_color") ?? "",
@@ -1616,6 +1620,7 @@ export default class Entity {
             ring-color="${styling["ring-color"]}"
             ring-width="${styling["ring-width"]}"
             shape="${styling["shape"]}"
+            symbol="${styling["symbol"]}"
             label-placement="${styling["label-placement"]}"
             symbol-color="${styling["symbol-color"]}"
             symbol-outline="${styling["symbol-outline"]}"
