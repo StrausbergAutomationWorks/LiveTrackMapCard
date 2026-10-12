@@ -66,6 +66,11 @@ export const NO_LATENESS = Object.freeze({ "delay-badge": "", "delay-level": "",
  * @returns {{"delay-badge": string, "delay-level": string, "pulse": string}}
  */
 export function lateness(attributes) {
+  // D4c-status (Lee 2026-10-11 20:23): a word the emitter sends in the
+  // badge's place while the train is held for something that is not
+  // lateness (a customs stop). It wins over delay_min and never pulses.
+  const status = parseMarkerStatus(attributes?.marker_status);
+  if (status !== null) return { "delay-badge": status, "delay-level": "status", "pulse": "" };
   const d = attributes?.delay_min;
   const { late, veryLate } = thresholds(attributes);
   if (!Number.isInteger(d) || d < late) return { ...NO_LATENESS };
@@ -85,7 +90,26 @@ export function lateness(attributes) {
 export function latenessColor(level) {
   if (level === "red") return VERY_LATE_COLOR;
   if (level === "amber") return LATE_COLOR;
+  if (level === "status") return STATUS_COLOR;
   return "";
+}
+
+/** The colour of a `marker_status` word: white, with the badge's dark outline. */
+export const STATUS_COLOR = "#FFFFFF";
+
+/** The longest `marker_status` drawn; a longer one is ignored. */
+export const STATUS_MAX = 10;
+
+/**
+ * An emitted `marker_status` (06_MAP_CONTRACT.md D4c-status): a string of 1
+ * to STATUS_MAX characters after trimming, else null.
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+export function parseMarkerStatus(value) {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  return text !== "" && text.length <= STATUS_MAX ? text : null;
 }
 
 /**
