@@ -330,10 +330,28 @@ export default class Entity {
    * @returns {string|null}
    */
   get markerPicture() {
-    if (this.display == "icon" || this.display == "state" || this.display == "attribute") {
+    if (this.display == "icon") {
       return null;
     }
+    if (this.display == "state" || this.display == "attribute") {
+      return this.barePicture;
+    }
     return this.picture;
+  }
+
+  /**
+   * The picture drawn BARE (06_MAP_CONTRACT.md D4a-picture; Lee 2026-10-15,
+   * VR's night-train figures and the mokki): under `display: state` or
+   * `attribute`, the entity's OWN `entity_picture`, with no disc and no ring
+   * behind it, not clipped, its label as a heading tag and its delay beside
+   * it. A dashboard `picture:` stays ignored in those modes, as before, and
+   * an entity sending no picture keeps its label marker.
+   * @returns {string|null}
+   */
+  get barePicture() {
+    if (this.display != "state" && this.display != "attribute") return null;
+    const own = this.attributes.entity_picture;
+    return typeof own === "string" && own.trim() !== "" ? this.hass.hassUrl(own.trim()) : null;
   }
 
   /**
@@ -1053,6 +1071,7 @@ export default class Entity {
     if (wanted == this._currentPicture) return;
 
     this._setMarkerAttribute("picture", wanted ?? "");
+    this._setMarkerAttribute("bare-picture", this.barePicture ? "true" : "");
     this._currentPicture = wanted;
   }
 
@@ -1611,6 +1630,7 @@ export default class Entity {
             tooltip="${this.tooltip}"
             icon="${icon ?? ""}"
             picture="${picture ?? ""}"
+            bare-picture="${this.barePicture ? "true" : ""}"
             rotation="${rotation ?? ""}"
             rotation-transition="${this.config.rotationTransition ?? 0}"
             place-icon="${placeIcon ?? ""}"

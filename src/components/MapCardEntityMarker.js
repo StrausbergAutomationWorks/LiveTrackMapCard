@@ -389,6 +389,7 @@ export default class MapCardEntityMarker extends LitElement {
       'suffix': {type: String, attribute: 'suffix'},
       'tooltip': {type: String, attribute: 'tooltip'},
       'picture': {type: String, attribute: 'picture'},
+      'barePicture': {type: String, attribute: 'bare-picture'},
       'rotation': {type: String, attribute: 'rotation'},
       'rotationTransition': {type: String, attribute: 'rotation-transition'},
       'icon': {type: String, attribute: 'icon'},
@@ -564,16 +565,22 @@ export default class MapCardEntityMarker extends LitElement {
     // A symbol in the disc (D4a `marker_symbol`) replaces the label inside it;
     // the delay badge stays. Not on a picture or an icon.
     const sym = this.symbol === "star" && !this.picture && !this.icon;
+    // A bare picture (D4a-picture): no disc and no ring behind it, not
+    // clipped, and its delay beside it - opposite its tag, else east.
+    const bare = this._bare();
+    const disc = bare ? "background-color: transparent; border-color: transparent;"
+      : `background-color: ${this.color}; ${ringStyle(this.color, this.ringColor, this.ringWidth)}`;
     return html`
         <div
-          class="marker ${this.picture ? "picture" : ""}  ${this.extraCssClasses ? this.extraCssClasses : ""}"
-          style="background-color: ${this.color}; ${ringStyle(this.color, this.ringColor, this.ringWidth)} ${labelTextStyle(this.color, this.labelColor, this.labelOutline)} height: ${this.size}px; width: ${this.size}px;"
+          class="marker ${this.picture ? "picture" : ""}${bare ? " bare" : ""}  ${this.extraCssClasses ? this.extraCssClasses : ""}"
+          style="${disc} ${labelTextStyle(this.color, this.labelColor, this.labelOutline)} height: ${this.size}px; width: ${this.size}px;"
           @click=${this._badgeTap}
           >
           ${this._pulse()}
           ${sym ? this._discStar() : ""}
           ${tag ? this._tag() : this._arrow()}
-          ${tag ? this._delayOpposite() : sym ? this._withBadge("") : this._inner()}
+          ${bare ? html`${this._inner()}${tag ? this._delayOpposite() : this._delayAt(TAG_DEFAULT_ANGLE)}`
+            : tag ? this._delayOpposite() : sym ? this._withBadge("") : this._inner()}
         </div>
       `;
   };
@@ -584,8 +591,18 @@ export default class MapCardEntityMarker extends LitElement {
    * @returns {boolean}
    */
   _tagMode() {
-    if (this.labelPlacement !== "heading" || this.picture || this.icon) return false;
+    if (this.labelPlacement !== "heading" || this.icon || (this.picture && !this._bare())) return false;
     return typeof this.title === "string" && this.title.trim() !== "";
+  }
+
+  /**
+   * Whether the picture is drawn bare (D4a-picture): the card's Entity says
+   * so (`bare-picture="true"`, display state or attribute with the entity's
+   * own picture). Any other picture keeps its round, clipped disc.
+   * @returns {boolean}
+   */
+  _bare() {
+    return Boolean(this.picture) && this.barePicture === "true";
   }
 
   /**
@@ -617,12 +634,23 @@ export default class MapCardEntityMarker extends LitElement {
    * @returns {unknown}
    */
   _delayOpposite() {
+    const a = this.arrow == null || String(this.arrow).trim() === "" || !Number.isFinite(Number(this.arrow))
+      ? TAG_DEFAULT_ANGLE : Number(this.arrow);
+    return this._delayAt(a + 180);
+  }
+
+  /**
+   * The delay as plain text outside the marker at `angle` (0 north,
+   * clockwise): opposite a heading tag, or east of a bare picture with no
+   * tag (D4a-picture; Lee 2026-10-15 03:38). Nothing on time.
+   * @param {number} angle
+   * @returns {unknown}
+   */
+  _delayAt(angle) {
     const text = typeof this.delayBadge === "string" ? this.delayBadge.trim() : "";
     const color = latenessColor(this.delayLevel);
     if (text === "" || color === "") return "";
-    const a = this.arrow == null || String(this.arrow).trim() === "" || !Number.isFinite(Number(this.arrow))
-      ? TAG_DEFAULT_ANGLE : Number(this.arrow);
-    const g = headingTag(a + 180, this.size, text, true);
+    const g = headingTag(angle, this.size, text, true);
     const t = Number(this.rotationTransition);
     const secs = Number.isFinite(t) && t >= 0 ? t : 0;
     // Its own class, not .delay-badge: that one is placed after the label
@@ -805,7 +833,7 @@ export default class MapCardEntityMarker extends LitElement {
    * @returns {unknown}
    */
   _pulse() {
-    if (this.pulse !== "true" || this.picture) return "";
+    if (this.pulse !== "true" || (this.picture && !this._bare())) return "";
     const color = latenessColor(this.delayLevel);
     if (color === "") return "";
     // The ring is inside the border box: start the pulse 2 px outside the
@@ -842,6 +870,11 @@ export default class MapCardEntityMarker extends LitElement {
       }
       .marker.picture {
         overflow: hidden;
+      }
+      /* D4a-picture: a bare picture is not clipped, so its tag, delay and
+         pulse outside the marker show. */
+      .marker.picture.bare {
+        overflow: visible;
       }
       .marker.star {
         background: transparent;

@@ -153,7 +153,10 @@ describe('a changed entity_picture', () => {
     expect(entity._currentPicture).toBe('https://ha/pic-b.svg');
   });
 
-  it.each(['icon', 'state', 'attribute'])(
+  // Until 2026-10-15 this pinned 'icon', 'state' AND 'attribute'. Since
+  // D4a-picture (Lee 2026-10-15) state and attribute draw the entity's own
+  // picture bare: the tests below.
+  it.each(['icon'])(
     'is ignored for display: %s, which never shows a picture',
     async (display) => {
       const { entity, hass, el, fake } = withLiveMarker({ display });
@@ -163,6 +166,50 @@ describe('a changed entity_picture', () => {
       expect(el.setAttribute).not.toHaveBeenCalled();
       expect(storedHtml(fake)).toContain('picture=""');
     });
+
+  describe.each(['state', 'attribute'])('display: %s (D4a-picture)', (display) => {
+    it('draws the entity\'s own picture, bare', () => {
+      const { entity } = makeEntity({ display, picture: 'https://ha/mokki.svg' });
+      const html = entity.createMapMarker().options.icon.options.html;
+      expect(html).toContain('picture="https://ha/mokki.svg"');
+      expect(html).toContain('bare-picture="true"');
+      expect(entity.barePicture).toBe('https://ha/mokki.svg');
+    });
+
+    it('with no picture: the label marker, as before', () => {
+      for (const picture of [null, '', '   ', 7]) {
+        const { entity } = makeEntity({ display, picture });
+        const html = entity.createMapMarker().options.icon.options.html;
+        expect(html).toContain(' picture=""');
+        expect(html).toContain('bare-picture=""');
+      }
+    });
+
+    it('a dashboard picture is still ignored', () => {
+      const { entity, config } = makeEntity({ display, picture: null });
+      config.picture = 'https://ha/dash.svg';
+      expect(entity.markerPicture).toBeNull();
+    });
+
+    it('a picture arriving later reaches the live marker, bare', async () => {
+      const { entity, hass, el, fake } = withLiveMarker({ display, picture: null });
+      setPicture(hass, 'https://ha/reindeer.svg');
+      await entity.update();
+      expect(el.setAttribute).toHaveBeenCalledWith('picture', 'https://ha/reindeer.svg');
+      expect(el.setAttribute).toHaveBeenCalledWith('bare-picture', 'true');
+      expect(storedHtml(fake)).toContain('bare-picture="true"');
+      setPicture(hass, undefined);
+      await entity.update();
+      expect(el.setAttribute).toHaveBeenCalledWith('bare-picture', '');
+      expect(storedHtml(fake)).toContain(' picture=""');
+    });
+  });
+
+  it.each(['marker', 'pill'])('display: %s is never bare', (display) => {
+    const { entity } = makeEntity({ display });
+    expect(entity.barePicture).toBeNull();
+    expect(entity.createMapMarker().options.icon.options.html).toContain('bare-picture=""');
+  });
 
   it('still moves the marker in the same update', async () => {
     const { entity, hass, map, fake } = withLiveMarker();
