@@ -114,6 +114,11 @@ export function releaseProblems({ packageVersion, git, bannerVersion, tag }) {
   if (tag && tag !== `v${packageVersion}`) {
     problems.push(`tag ${tag} does not match package.json version ${packageVersion}`);
   }
+  // Card SSOT 67.2: integrations ship only releases, so one semver is one file. A prerelease
+  // ("0.1.1-dev") is the development line between releases and is never tagged as one.
+  if (tag && typeof packageVersion === "string" && packageVersion.includes("-")) {
+    problems.push(`package.json version ${packageVersion} is a prerelease: set the release version before tagging`);
+  }
   return problems;
 }
 

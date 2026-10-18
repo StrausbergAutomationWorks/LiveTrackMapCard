@@ -148,6 +148,16 @@ describe("releaseProblems", () => {
     expect(releaseProblems({ ...good, tag: "0.1.0" }).join()).toMatch(/tag/);
   });
 
+  it("refuses to tag a prerelease (SSOT 67.2: integrations ship releases only)", () => {
+    const dev = { ...good, packageVersion: "0.1.1-dev", tag: "v0.1.1-dev", bannerVersion: "0.1.1-dev+82a9634" };
+    expect(releaseProblems(dev).join()).toMatch(/prerelease/);
+  });
+
+  it("builds a prerelease without a tag - the development line", () => {
+    const dev = { ...good, packageVersion: "0.1.1-dev", tag: "", bannerVersion: "0.1.1-dev+82a9634" };
+    expect(releaseProblems(dev)).toEqual([]);
+  });
+
   it("refuses a dirty build", () => {
     const p = releaseProblems({ ...good, git: { gitHash: "82a9634", dirty: true }, bannerVersion: "0.1.0+82a9634.dirty" });
     expect(p.join()).toMatch(/uncommitted/);
