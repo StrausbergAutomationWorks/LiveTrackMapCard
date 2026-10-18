@@ -1,8 +1,14 @@
-# Home Assistant Map Card
+# Live Track Map Card
 
-Take a look at the blog post [introducing the custom:map-card for Home Assistant](https://nathan.gs/2024/01/06/ha-map-card-a-new-and-alternative-leaflet-based-map/).
+A Leaflet map card for Home Assistant, and the shared map of the Live Track
+integrations: aircraft, ships, trains and weather on one map.
 
-![An example of the custom:map-card](ha-map-card-pm25.png)
+It is derived from [ha-map-card](https://github.com/nathan-gs/ha-map-card)
+1.16.0 by [nathan-gs](https://github.com/nathan-gs), under the MIT licence.
+The options documented below are mostly his, and the Live Track features are
+built on his card. This is a separate card with its own name,
+`custom:live-track-map-card`, so it can be installed alongside ha-map-card
+(`custom:map-card`) without either replacing the other.
 
 ### Installation
 
@@ -11,8 +17,75 @@ Take a look at the blog post [introducing the custom:map-card for Home Assistant
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=StrausbergAutomationWorks&repository=LiveTrackMapCard&category=plugin)
 
 #### Manual
-1. Copy `map-card.js` to your `/var/lib/hass/www` folder.
-2. Click on `Edit Dashboard`,  `Manage resources` add `/local/map-card.js` as `JavaScript Module`.
+1. Get `live-track-map-card.js`: download it from a release's assets, or build
+   it from this repository with `npm ci` and then `npm run build`, which writes
+   `dist/live-track-map-card.js`.
+2. Copy it to `/config/www/live-track-map-card/live-track-map-card.js`.
+3. Add it as a resource: **Settings → Dashboards → ⋮ → Resources → Add
+   resource** (the menu needs Advanced mode, set in your user profile). URL
+   `/local/live-track-map-card/live-track-map-card.js?v=1`, type
+   **JavaScript module**.
+4. Whenever you replace the file, change the `?v=` value as well (`?v=2`, and
+   so on). Browsers cache a resource by its URL for up to 31 days, so a new file
+   behind an unchanged URL can keep loading the old one.
+
+### Live Track
+
+Each Live Track integration publishes what it tracks as `geo_location`
+entities, and every one of them carries a `source` attribute naming the
+integration (`live_track_aircraft`, `live_track_ships`, and so on). The shared
+map is this card inside [auto-entities](https://github.com/thomasloven/lovelace-auto-entities),
+which hands the card every entity matching a filter. A new train or vessel then
+appears on the map, and leaves it, without the card being edited.
+
+One integration:
+
+```yaml
+type: custom:auto-entities
+card_param: entities
+card:
+  type: custom:live-track-map-card
+  x: 41.88       # latitude
+  y: -87.63      # longitude
+  zoom: 10
+filter:
+  include:
+    - domain: geo_location
+      attributes:
+        source: live_track_ships
+      options:
+        display: attribute
+        attribute: marker_label
+        position_transition: auto
+  exclude:
+    - state: unavailable
+```
+
+Every Live Track integration at once, by leaving `source` out. That matches
+every `geo_location` entity on the instance, so exclude other integrations'
+by their own `source` (here `geo_json_events`):
+
+```yaml
+filter:
+  include:
+    - domain: geo_location
+      options:
+        display: attribute
+        attribute: marker_label
+        position_transition: auto
+  exclude:
+    - attributes:
+        source: geo_json_events
+    - state: unavailable
+```
+
+`card_param: entities` is required: it is what tells auto-entities which of
+the card's options to fill. Whatever goes under `options:` is applied to every
+entity the filter finds. `display: attribute` with `attribute: marker_label`
+draws the label the integration chose (a train or flight number) instead of
+one squeezed out of the entity's name. `position_transition: auto` slides each
+marker to its new position over the time since its last update, at most 30
+seconds, and not at all when the browser asks for reduced motion.
 
 ### Usage
 
@@ -22,7 +95,7 @@ Take a look at the blog post [introducing the custom:map-card for Home Assistant
 
 #### Minimal
 ```yaml
-type: custom:map-card
+type: custom:live-track-map-card
 x: 51.23
 y: 3.652
 ```
@@ -33,13 +106,16 @@ y: 3.652
 >
 > Take a look at:
 > https://nathan.gs/2024/01/06/ha-map-card-a-new-and-alternative-leaflet-based-map/#a-more-advanced-example-measuring-pm25-air-quality-for-my-home
+>
+> It was written for ha-map-card: to use its examples with this card, change
+> `type: custom:map-card` to `type: custom:live-track-map-card`.
 
 ### Options
 
 | name                     | Default                                                                                                                      | note                                         |
 |--------------------------|------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|
-| `x`                      |                                                                                                                              | Longitude                                    |
-| `y`                      |                                                                                                                              | Latitude                                     |
+| `x`                      |                                                                                                                              | Latitude                                     |
+| `y`                      |                                                                                                                              | Longitude                                    |
 | `history_start`          |                                       																						  | Date: `2022-03-01T12:00:00Z` <br/>Time code: `5 hours ago` <br/>Entity: `input_number.example_number`  <br/>See [History options](#history-options) for full details.  |
 | `history_end`            | `now`                                 																						  | Date: `2022-03-01T12:00:00Z` <br/>Time code: `5 hours ago` <br/>Entity: `input_number.example_number`  <br/>See [History options](#history-options) for full details. |
 | `focus_entity`           |                                                                                                                              | Entity to focus on. Map will default to show all markers if this and X/Y are not set.        |
@@ -71,7 +147,7 @@ y: 3.652
 For non-geographic maps, set `map_options.crs` to `simple`. The card will translate that into Leaflet's `L.CRS.Simple`, so you can use image/floor-plan style coordinates and pair them with entity `fixed_x` / `fixed_y` values.
 
 ```yaml
-type: custom:map-card
+type: custom:live-track-map-card
 x: 0
 y: 0
 zoom: 0
@@ -282,7 +358,7 @@ initials and leader, and `size` for each circle. Dark mode is honoured.
 #### Example
 
 ```yaml
-type: custom:map-card
+type: custom:live-track-map-card
 entities:
   - entity: device_tracker.mom_location
     display: pill
@@ -421,10 +497,10 @@ tile_layers:
 
 #### Zooming & `tile_layer_options.maxZoom`
 
-By default the map-card will not zoom beyond [default property of the `maxZoom`](https://leafletjs.com/reference.html#tilelayer-maxzoom) of the tilelayer, the default is `18`, but it can be overriden as follows:
+By default the card will not zoom beyond [default property of the `maxZoom`](https://leafletjs.com/reference.html#tilelayer-maxzoom) of the tilelayer, the default is `18`, but it can be overriden as follows:
 
 ```
-type: custom:map-card
+type: custom:live-track-map-card
 tile_layer_options:
   maxZoom: 20
 ```
@@ -436,7 +512,7 @@ Keep in mind that the tile layer source also has a maximum zoom level, which is 
 OpenStreetMap tile servers may block tile requests that lack a valid `Referer` header. By default, `referrerPolicy` is set to `"origin-when-cross-origin"`, which ensures the browser sends the origin with cross-origin tile requests as required by OSM's [Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/). You can override this if needed:
 
 ```
-type: custom:map-card
+type: custom:live-track-map-card
 tile_layer_options:
   referrerPolicy: "no-referrer"
 ```
@@ -472,7 +548,7 @@ If the `url` is not set and the `hacs` object is, the plugin will be loaded from
 
 #### Example config with plugin
 ```yaml
-type: custom:map-card
+type: custom:live-track-map-card
 x: -25.3744
 y: 133.7751
 plugins:
@@ -487,6 +563,11 @@ plugins:
 ```
 
 #### Available Plugins
+
+These plugins were written for ha-map-card. This card's plugin interface
+(`src/models/Plugin.js`) is unchanged from ha-map-card 1.16.0, but none of
+them has been tested with it.
+
 | name      | description                                                                                         |
 |-----------|-----------------------------------------------------------------------------------------------------|
 | [`bom-radar`](https://github.com/bezmi/ha-map-card-plugin-bom-radar) | Displays the Australian BoM rainfall radar for the past 90 minutes and the radar forecast for the next 90 minutes as an overlay on the map. |
@@ -521,9 +602,13 @@ This project uses [devenv.sh](https://devenv.sh/).
 Tag your Github repo with [ha-map-card-plugin](https://github.com/topics/ha-map-card-plugin) for discoverability.
 
 
-## Mentions & Discussions
+## ha-map-card: mentions and discussions
 
-* [home-assistant community: map-card: a slightly improved map-card](https://community.home-assistant.io/t/map-card-a-slightly-improved-map-card/693088), this topic should be used for general discussions.
+These are about [ha-map-card](https://github.com/nathan-gs/ha-map-card), the
+card this one is derived from, and are kept here as its credits. Problems with
+this card belong in this repository's issues, not in ha-map-card's threads.
+
+* [home-assistant community: map-card: a slightly improved map-card](https://community.home-assistant.io/t/map-card-a-slightly-improved-map-card/693088), the discussion topic for ha-map-card.
 * [nathan.gs: Map Card, a new leaflet based map with WMS and other advanced features](https://nathan.gs/2024/01/06/ha-map-card-a-new-and-alternative-leaflet-based-map/)
 * [nathan.gs: Map Card, displaying Weather and Other Tile Layers](https://nathan.gs/2024/02/25/ha-map-card-displaying-weather-and-other-tilelayers/)
 * [userbag.co.uk: Home Assistant Exploring location history](https://userbag.co.uk/development/home-assistant-exploring-location-history/)
