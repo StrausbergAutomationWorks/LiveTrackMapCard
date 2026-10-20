@@ -9,7 +9,7 @@ import EntityHistoryManager from "./EntityHistoryManager.js";
 import TimelineEntry from "./TimelineEntry.js";
 import { hoverHtml, HOVER_REFRESH_MS } from "../util/HoverLabel.js";
 import { lateness } from "../util/Lateness.js";
-import { trackRoute } from "../util/TrackPath.js";
+import { metres, pathAt, trackRoute } from "../util/TrackPath.js";
 
 /**
  * The custom element every marker is built from. index.js registers it under
@@ -62,6 +62,38 @@ const isFiniteNumber = (v) => typeof v === "number" && Number.isFinite(v);
  * 29 deg at 20-30 m, and 14-15 deg from 30 m up - the same as at 50-100 m.
  */
 export const TRAVEL_BEARING_MIN_M = 30;
+
+/**
+ * A RAIL MOVE ALONG ITS LINE SLIDES OVER THE EMITTER'S OWN SEGMENT
+ * (06_MAP_CONTRACT.md D3c), not only over the 'auto' rule's browser gap. Lee, 2026-10-20 02:24, on Madrid:
+ * trains "apparently achieve super sonic speeds". MEASURED that night on the
+ * live card (Commuter Rail 20_Research/SHAPE_PATHS_20261020.md section 6):
+ * Renfe's positions stand 1-2 minutes and then catch up 1-10 km
+ * (segment_duration_s p50 121 s, max 401 s); 'auto' slid that in at most
+ * 30 s - 4 km drawn at 480 km/h for a train that averaged 120 - and PLACED
+ * the first move after the page opened, kilometres in one frame (3 of the 4
+ * jumps pinned to an entity, each with previous_*, a 42 s segment and a
+ * track_path, arriving 3-5 s after its fix).
+ *
+ * So, with position_transition 'auto', a move of an entity on map_layer
+ * "rail" whose previous_* is within SEGMENT_FROM_M of where the marker was
+ * last sent, and which slides along a track route (track_path, D3c-v), lasts
+ * segment_duration_s (at most SEGMENT_SLIDE_MAX_S) or the 'auto' time,
+ * whichever is longer: the train is drawn at the speed it averaged between
+ * its two fixes, and never faster than before. Anything else keeps the 'auto'
+ * rule. CORRECTED the same night by the A/B replay (Madrid's recorded states
+ * through both built cards, bin\ltmc280_look\index_es_ab.html): the first
+ * build slid for what was LEFT of the segment since observed_at, and for
+ * every move. A fix delivered nearly as late as its segment was long (a 22 s
+ * segment, 21 s late) then slid 3.5 km in about a second, and a move with no
+ * track route slid straight across country for minutes (a 321 s segment, 2.5
+ * km off the line). Rail only:
+ * Ships' segments are p50 240 s, p90 720 s, max 1,441 s on the same night,
+ * and a vessel drawn up to 24 minutes behind its fix is that integration's
+ * call; Aircraft's are about 14 s, where the two rules agree.
+ */
+export const SEGMENT_FROM_M = 50;
+export const SEGMENT_SLIDE_MAX_S = 600;
 
 /**
  * Initial great-circle bearing from `a` to `b`, degrees clockwise from north,
@@ -261,6 +293,13 @@ export default class Entity {
    * @type {number|null}
    */
   _transitionFrame = null;
+  /**
+   * The slide in progress, for a fix that arrives before it ends: its points,
+   * the metres along them, when it started and how long it lasts (ms).
+   * @private
+   * @type {{pts: Array<{lat: number, lng: number}>, cum: number[], total: number, started: number, duration: number}|null}
+   */
+  _sliding = null;
   /**
    * When this entity's position last changed, for position_transition 'auto'.
    * @private
@@ -682,7 +721,7 @@ export default class Entity {
       const catchUp = this._catchUpPlan();
       // Built already facing the catch-up's travel, rather than built at the
       // emitter's angle and turned the moment its slide starts.
-      if (catchUp) this._travel = this._segmentBearing(catchUp.start, this.latLng);
+      if (catchUp) this._travel = this._catchUpBearing(catchUp);
       this.marker = this.createMapMarker(catchUp?.start);
 
       // Bind distance tooltip if configured
@@ -999,7 +1038,7 @@ export default class Entity {
     // replace a marker the viewer is already watching - and get no catch-up.
     if (!this.marker && !this.config.geoJsonConfig?.hideMarker && this.latLng) {
       const catchUp = this._catchUpPlan();
-      if (catchUp) this._travel = this._segmentBearing(catchUp.start, this.latLng);
+      if (catchUp) this._travel = this._catchUpBearing(catchUp);
       this.marker = this.createMapMarker(catchUp?.start);
       if (clusterGroup) {
         clusterGroup.addLayer(this.marker);
@@ -1235,10 +1274,13 @@ export default class Entity {
    * @param {LatLng} to
    */
   _moveMarkerTo(from, to) {
-    const seconds = this._transitionSeconds();
+    const auto = this._transitionSeconds();
+    const segment = auto === 0 && Entity._prefersReducedMotion() ? null : this._segmentSeconds(from);
+    // Read before the slide is cancelled: what is left of it to draw.
+    const left = this._slideRemainder();
     this._cancelTransition();
     const paths = this._pathFollower();
-    if (!from || !seconds || this.positionJump) {
+    if (!from || (!auto && segment === null) || this.positionJump) {
       this.marker.setLatLng(this._drawnAt(to));
       this._endClusterMove();
       // A slide cut short by a placement leaves no travel to face.
@@ -1246,6 +1288,7 @@ export default class Entity {
       return;
     }
     let route = null;
+    let onTrack = false;
     if (paths) {
       try {
         route = paths.plan(this.marker.getLatLng?.() ?? from, to, this.attributes);
@@ -1257,9 +1300,29 @@ export default class Entity {
       // The emitter's own line, when it publishes one (06_MAP_CONTRACT.md
       // D3c-v route hint; util/TrackPath.js): along the track, not across.
       route = trackRoute(this.attributes?.track_path, this.marker.getLatLng?.() ?? from, to);
+      // A fix arriving mid-slide: the marker carries on along what is left of
+      // the old slide, then the new path from where that one ends. Measured
+      // 2026-10-20 on Madrid's published fixes (bin\ltmc_seg_survey.py): with
+      // slides as long as their segments, 28 of 55 next fixes arrive mid-slide,
+      // the marker then a median 0.5 km and up to 3 km behind the new path's
+      // start - past TRACK_PATH_JOIN_M, a straight slide off the line.
+      if (left) {
+        const onward = trackRoute(this.attributes?.track_path, left[left.length - 1], to);
+        if (onward) route = [...left, ...onward.slice(1)];
+      }
+      onTrack = route !== null;
     }
     if (route === PLACE) {
       // No way round over water: placed at its fix, never slid across land.
+      this.marker.setLatLng(this._drawnAt(to));
+      this._endClusterMove();
+      this._arrive();
+      return;
+    }
+    const seconds = onTrack && segment !== null ? Math.max(auto, segment) : auto;
+    if (!seconds) {
+      // The first move after the page opened, with no track route to time
+      // by the emitter's segment: placed, as before.
       this.marker.setLatLng(this._drawnAt(to));
       this._endClusterMove();
       this._arrive();
@@ -1325,7 +1388,7 @@ export default class Entity {
    * catchUpFromPrevious(); a start within positionUpdateThreshold of the
    * current position is not worth a slide.
    * @private
-   * @returns {{start: LatLng, elapsedSeconds: number, remainingSeconds: number}|null}
+   * @returns {{start: LatLng, elapsedSeconds: number, remainingSeconds: number, route: Array<{lat: number, lng: number}>|null}|null}
    */
   _catchUpPlan() {
     if (!this._transitionConfigured() || Entity._prefersReducedMotion()) return null;
@@ -1339,13 +1402,19 @@ export default class Entity {
     const plan = catchUpFromPrevious(attrs, Date.now());
     if (!plan) return null;
     const to = this.latLng;
-    const start = new LatLng(
-      plan.previous.lat + (to.lat - plan.previous.lat) * plan.fraction,
-      plan.previous.lng + (to.lng - plan.previous.lng) * plan.fraction,
-    );
+    // On the emitter's line when it publishes this segment's track_path
+    // (TrackPath.pathAt), else on the straight line between the two fixes.
+    const along = pathAt(attrs.track_path, plan.previous, to, plan.fraction);
+    const start = along
+      ? new LatLng(along.start.lat, along.start.lng)
+      : new LatLng(
+        plan.previous.lat + (to.lat - plan.previous.lat) * plan.fraction,
+        plan.previous.lng + (to.lng - plan.previous.lng) * plan.fraction,
+      );
     const threshold = this.config.positionUpdateThreshold;
     if (Number.isFinite(threshold) && this.map.distance(start, to) <= threshold) return null;
-    return { start, elapsedSeconds: plan.elapsedSeconds, remainingSeconds: plan.remainingSeconds };
+    return { start, elapsedSeconds: plan.elapsedSeconds, remainingSeconds: plan.remainingSeconds,
+      route: along ? [start, ...along.route.slice(1)] : null };
   }
 
   /**
@@ -1354,12 +1423,25 @@ export default class Entity {
    * fix was observed, so the NEXT update's slide is measured over a real
    * segment rather than over the time since the page opened.
    * @private
-   * @param {{start: LatLng, elapsedSeconds: number, remainingSeconds: number}} plan
+   * @param {{start: LatLng, elapsedSeconds: number, remainingSeconds: number, route: Array<{lat: number, lng: number}>|null}} plan
    */
   _startCatchUp(plan) {
     this._lastMoveAt = performance.now() - plan.elapsedSeconds * 1000;
     this._cancelTransition();
-    this._slide(plan.start, this.latLng, plan.remainingSeconds);
+    this._slide(plan.start, this.latLng, plan.remainingSeconds, plan.route);
+  }
+
+  /**
+   * The way a catch-up first faces: along its first leg on the line, or
+   * along the straight line to the fix.
+   * @private
+   * @param {{start: LatLng, route: Array<{lat: number, lng: number}>|null}} plan
+   * @returns {number|null}
+   */
+  _catchUpBearing(plan) {
+    return plan.route && plan.route.length > 2
+      ? this._routeBearing(plan.route, 0)
+      : this._segmentBearing(plan.start, this.latLng);
   }
 
   /**
@@ -1402,6 +1484,7 @@ export default class Entity {
     const total = cum[cum.length - 1];
     const duration = seconds * 1000;
     const started = performance.now();
+    this._sliding = { pts, cum, total, started, duration };
     this._beginClusterMove();
     // Face the way the marker is DRAWN moving. The picture's own CSS
     // transition does the turning.
@@ -1541,6 +1624,44 @@ export default class Entity {
    * @private
    * @returns {number}
    */
+  /**
+   * A rail move's slide time from the emitter's own segment, in seconds, or
+   * null for the 'auto' rule (SEGMENT_FROM_M above says when and why). Used
+   * only when the move follows a track route; _moveMarkerTo() decides that.
+   * @private
+   * @param {LatLng|null} from the last position the marker was sent to
+   * @returns {number|null}
+   */
+  _segmentSeconds(from) {
+    if (this.config.positionTransition !== "auto") return null;
+    // A declared jump never gets here as a slide: _moveMarkerTo places it.
+    if (this.attributes?.map_layer !== "rail" || !from) return null;
+    const a = this.attributes;
+    const seg = a.segment_duration_s;
+    if (!isFiniteNumber(seg) || seg <= 0) return null;
+    if (!isFiniteNumber(a.previous_latitude) || !isFiniteNumber(a.previous_longitude)) return null;
+    if (metres({ lat: a.previous_latitude, lng: a.previous_longitude }, from) > SEGMENT_FROM_M) return null;
+    return Math.min(seg, SEGMENT_SLIDE_MAX_S);
+  }
+
+  /**
+   * What is left of the slide in progress, from where the marker is drawn to
+   * where that slide ends, or null with no slide running.
+   * @private
+   * @returns {Array<{lat: number, lng: number}>|null}
+   */
+  _slideRemainder() {
+    const sl = this._sliding;
+    if (!this._transitionFrame || !sl || !this.marker?.getLatLng) return null;
+    const f = Math.min(1, Math.max(0, (performance.now() - sl.started) / sl.duration));
+    if (f >= 1) return null;
+    const d = f * sl.total;
+    let leg = 0;
+    while (leg < sl.pts.length - 2 && sl.cum[leg + 1] <= d) leg++;
+    const at = this.marker.getLatLng();
+    return [{ lat: at.lat, lng: at.lng }, ...sl.pts.slice(leg + 1)];
+  }
+
   _transitionSeconds() {
     const now = performance.now();
     const previous = this._lastMoveAt;

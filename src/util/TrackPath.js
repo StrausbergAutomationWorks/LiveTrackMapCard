@@ -34,6 +34,12 @@ export function metres(a, b) {
 }
 
 /**
+ * ...and, for a first-sight catch-up (pathAt), start this close to the
+ * segment's previous_* - the path must be THAT segment's.
+ */
+export const TRACK_PATH_START_M = 50;
+
+/**
  * An emitted `track_path`: an array of 2 to TRACK_PATH_MAX_POINTS [lat, lon]
  * pairs of finite numbers in range, as {lat, lng}; anything else null.
  * @param {*} value
@@ -84,4 +90,37 @@ export function trackRoute(value, start, to) {
   // no length has no bearing for the picture or the arrow to face.
   const join = best.d < 1 ? [] : [best.p];
   return [start, ...join, ...pts.slice(best.i + 1, -1), to];
+}
+
+/**
+ * Where a first-sight catch-up starts ON THE LINE: `fraction` (0..1) of the
+ * way along the segment's `track_path`, and the route on from there to `to`;
+ * null when there is no such path - it must start within TRACK_PATH_START_M
+ * of `previous` and end within TRACK_PATH_END_M of `to` - and the catch-up is
+ * the straight one. MEASURED 2026-10-20 on Madrid's recorded states replayed
+ * through the built card: straight catch-ups over Renfe's long segments drew
+ * trains up to 2.5 km off the line for minutes.
+ * @param {*} value the entity's track_path attribute
+ * @param {{lat: number, lng: number}} previous
+ * @param {{lat: number, lng: number}} to
+ * @param {number} fraction
+ * @returns {{start: {lat: number, lng: number}, route: Array<{lat: number, lng: number}>}|null}
+ */
+export function pathAt(value, previous, to, fraction) {
+  const pts = parseTrackPath(value);
+  if (!pts || !previous || !to || !Number.isFinite(fraction)) return null;
+  if (metres(pts[0], previous) > TRACK_PATH_START_M) return null;
+  if (metres(pts[pts.length - 1], to) > TRACK_PATH_END_M) return null;
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + metres(pts[i - 1], pts[i]));
+  const total = cum[cum.length - 1];
+  if (!(total > 0)) return null;
+  const d = Math.min(1, Math.max(0, fraction)) * total;
+  let i = 0;
+  while (i < pts.length - 2 && cum[i + 1] < d) i++;
+  const span = cum[i + 1] - cum[i];
+  const g = span > 0 ? (d - cum[i]) / span : 0;
+  const a = pts[i], b = pts[i + 1];
+  const start = { lat: a.lat + (b.lat - a.lat) * g, lng: a.lng + (b.lng - a.lng) * g };
+  return { start, route: [start, ...pts.slice(i + 1, -1), to] };
 }
