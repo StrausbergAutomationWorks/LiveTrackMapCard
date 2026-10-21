@@ -89,6 +89,41 @@ export function pictureRotationStyle(rotation, transition) {
 }
 
 /**
+ * The altitude at which the ground shadow stops growing: 40,000 ft.
+ */
+export const SHADOW_FULL_M = 12192;
+
+/**
+ * Inline style casting a picture's GROUND SHADOW (06_MAP_CONTRACT.md
+ * D4a-shadow; Lee 2026-10-21): an aircraft drawn as a picture reads as flying
+ * when its shadow falls on the map beside it, further away the higher it is.
+ *
+ * It sits on the marker element, which never turns: a CSS filter on a parent
+ * is applied after its child's rotation, so the shadow keeps one direction
+ * (light from the upper left) whichever way the picture faces. A filter's
+ * output is not clipped by the element's own `overflow: hidden`, so a round
+ * picture marker does not cut it off. Separation grows with the square root
+ * of altitude, and the shadow softens and fades as it moves away; offsets are
+ * a fraction of the marker size, so a bigger marker casts a bigger shadow.
+ * Values chosen by eye on OSM Standard tiles (Live Track Aircraft
+ * 20_Research/icons_depth_20261021/), not measured.
+ * @param {string} altitude metres, or empty for no shadow
+ * @param {number} size marker size in px
+ * @returns {string}
+ */
+export function groundShadowStyle(altitude, size) {
+  if (altitude == null || String(altitude).trim() === "") return "";
+  const a = Number(altitude);
+  const s = Number(size);
+  if (!Number.isFinite(a) || !Number.isFinite(s) || s <= 0) return "";
+  const f = Math.sqrt(Math.min(Math.max(a, 0), SHADOW_FULL_M) / SHADOW_FULL_M);
+  const off = +(s * (0.025 + 0.12 * f)).toFixed(1);
+  const blur = +(0.6 + 0.35 * off).toFixed(1);
+  const op = +(0.55 - 0.25 * f).toFixed(2);
+  return `filter: drop-shadow(${off}px ${off}px ${blur}px rgba(0, 0, 0, ${op})); transition: filter 3s linear;`;
+}
+
+/**
  * Inline style turning the arrow's frame. Empty when there is no angle, and
  * then no arrow is drawn at all. The angle is used as given, accumulated
  * past 360 or below 0, so the CSS transition turns the short way.
@@ -390,6 +425,7 @@ export default class MapCardEntityMarker extends LitElement {
       'tooltip': {type: String, attribute: 'tooltip'},
       'picture': {type: String, attribute: 'picture'},
       'barePicture': {type: String, attribute: 'bare-picture'},
+      'groundShadow': {type: String, attribute: 'ground-shadow'},
       'rotation': {type: String, attribute: 'rotation'},
       'rotationTransition': {type: String, attribute: 'rotation-transition'},
       'icon': {type: String, attribute: 'icon'},
@@ -573,7 +609,7 @@ export default class MapCardEntityMarker extends LitElement {
     return html`
         <div
           class="marker ${this.picture ? "picture" : ""}${bare ? " bare" : ""}  ${this.extraCssClasses ? this.extraCssClasses : ""}"
-          style="${disc} ${labelTextStyle(this.color, this.labelColor, this.labelOutline)} height: ${this.size}px; width: ${this.size}px;"
+          style="${disc} ${labelTextStyle(this.color, this.labelColor, this.labelOutline)} height: ${this.size}px; width: ${this.size}px; ${this.picture ? groundShadowStyle(this.groundShadow, this.size) : ""}"
           @click=${this._badgeTap}
           >
           ${this._pulse()}

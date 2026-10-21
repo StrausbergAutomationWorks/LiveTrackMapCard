@@ -394,6 +394,23 @@ export default class Entity {
   }
 
   /**
+   * The altitude the ground shadow is cast from (06_MAP_CONTRACT.md
+   * D4a-shadow), in metres rounded to 50 so a few metres of climb do not
+   * rewrite the marker every update: the entity's `altitude_m` when the
+   * marker draws a picture, else empty and no shadow. Only an emitter of
+   * flying things sends `altitude_m` (Live Track Aircraft today).
+   * @returns {string}
+   */
+  get groundShadowAltitude() {
+    if (!this.markerPicture) return "";
+    const raw = this.attributes.altitude_m;
+    if (raw == null || typeof raw === "boolean" || String(raw).trim() === "") return "";
+    const a = Number(raw);
+    if (!Number.isFinite(a)) return "";
+    return String(Math.round(Math.max(0, a) / 50) * 50);
+  }
+
+  /**
    * The marker's fill: the dashboard's `color` if one is configured, else
    * the entity's `marker_color` attribute if it is valid
    * (05_SHARED_LESSONS.md D4a), else the neutral fallback.
@@ -1082,6 +1099,7 @@ export default class Entity {
       this.refreshMarkerArrow();
       this.refreshMarkerStyling();
       this.refreshMarkerLateness();
+      this.refreshMarkerGroundShadow();
       this.refreshMarkerZIndex();
       this.refreshTooltip();
       this.updateMarkerPosition();
@@ -1193,6 +1211,19 @@ export default class Entity {
       if (had[name] !== value) this._setMarkerAttribute(name, value);
     }
     this._currentLateness = wanted;
+  }
+
+  /**
+   * Give an existing marker the entity's current ground-shadow altitude. In
+   * place, never a rebuild, so a slide in flight carries on; the marker's CSS
+   * transition eases the shadow to its new place.
+   */
+  refreshMarkerGroundShadow() {
+    if (!this.marker) return;
+    const wanted = this.groundShadowAltitude;
+    if (wanted === this._currentGroundShadow) return;
+    this._setMarkerAttribute("ground-shadow", wanted);
+    this._currentGroundShadow = wanted;
   }
 
   /**
@@ -1715,6 +1746,8 @@ export default class Entity {
     this._currentStyling = styling;
     const late = this.markerLateness;
     this._currentLateness = late;
+    const shadowAlt = this.groundShadowAltitude;
+    this._currentGroundShadow = shadowAlt;
     const zIndexOffset = this.zIndexOffset;
     this._currentZIndex = zIndexOffset;
 
@@ -1752,6 +1785,7 @@ export default class Entity {
             icon="${icon ?? ""}"
             picture="${picture ?? ""}"
             bare-picture="${this.barePicture ? "true" : ""}"
+            ground-shadow="${shadowAlt}"
             rotation="${rotation ?? ""}"
             rotation-transition="${this.config.rotationTransition ?? 0}"
             place-icon="${placeIcon ?? ""}"
