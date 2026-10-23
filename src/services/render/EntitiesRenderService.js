@@ -9,6 +9,7 @@ import HaLinkedEntityService from "../HaLinkedEntityService";
 import HaHistoryService from "../HaHistoryService";
 import FocusFollowConfig from "../../configs/FocusFollowConfig";
 import { mergedAway } from "../ObjectMergeService";
+import { creditHtml } from "../../util/EntityCredits";
 
 
 export default class EntitiesRenderService {
@@ -92,6 +93,40 @@ export default class EntitiesRenderService {
   }
 
   /**
+   * Credits this service has put in the map's attribution box (backlog 228).
+   * @type {Set<string>}
+   */
+  credits = new Set();
+
+  /**
+   * Credit, once each, the `attribution` of every entity drawn now: not
+   * stale, not merged away, with a position (util/EntityCredits.js). A
+   * source leaves the box when its last drawn entity goes. Never lets a
+   * bad credit stop the map drawing.
+   */
+  refreshCredits() {
+    const ctl = this.map?.attributionControl;
+    if (!ctl) return;
+    const want = new Set();
+    for (const ent of this.entities ?? []) {
+      try {
+        if (this.isHidden(ent.id) || !ent.latLng) continue;
+        const html = creditHtml(ent.attributes?.attribution);
+        if (html) want.add(html);
+      } catch (e) {
+        Logger.error("[EntitiesRenderService] credit skipped " + ent.id, e);
+      }
+    }
+    try {
+      for (const c of this.credits) if (!want.has(c)) ctl.removeAttribution(c);
+      for (const c of want) if (!this.credits.has(c)) ctl.addAttribution(c);
+      this.credits = want;
+    } catch (e) {
+      Logger.error("[EntitiesRenderService] credits failed", e);
+    }
+  }
+
+  /**
    * Is this entity kept off the map: stale, or merged away?
    * @param {string} id entity id
    * @returns {boolean}
@@ -142,6 +177,7 @@ export default class EntitiesRenderService {
 
     this.computeMerged();
     this.hideMerged();
+    this.refreshCredits();
 
     if (!this.focusFollowConfig.isNone && this.focusFollowConfig.hasPause) {
       this._setupFollowPauseListeners();
@@ -246,6 +282,7 @@ export default class EntitiesRenderService {
     this.entityConfigs = plan.map((p) => p.config);
     this.computeMerged();
     this.hideMerged();
+    this.refreshCredits();
   }
 
   cleanup() {
@@ -290,6 +327,7 @@ export default class EntitiesRenderService {
         Logger.error("Entity: " + ent.id + " failed to update", e);
       }
     });
+    this.refreshCredits();
     this.updateInitialView();
   }
 
