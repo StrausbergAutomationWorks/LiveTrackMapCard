@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@jest/globals';
 import { escapeHtml, routeText, detailLine, titleLine, hoverHtml,
-  airportLines, sourceText, ROUTE_SOURCE_TEXT } from './HoverLabel.js';
+  airportLines, sourceText, ROUTE_SOURCE_TEXT, NEW_ROUTE_TEXT, isNewRoute } from './HoverLabel.js';
 
 const NOW = Date.parse('2026-10-03T01:00:00+00:00');
 const at = (sec) => new Date(NOW + sec * 1000).toISOString();
@@ -67,11 +67,20 @@ describe('aircraft: second line', () => {
   it('the route alone with no ETA', () => {
     expect(detailLine(plane(), NOW)).toBe('KPHX-KORD');
   });
-  it('an implausible route carries a "?" (Lee, 2026-10-03)', () => {
+  it('an implausible route reads "New route < 24hrs old", no ETA (backlog 281)', () => {
     expect(detailLine(plane({ route_check: 'implausible', arrival_estimated_at: at(600) }), NOW))
-      .toBe('KPHX-KORD? in 10 min');
+      .toBe('New route < 24hrs old');
+    expect(detailLine(plane({ route_check: 'implausible' }), NOW)).toBe('New route < 24hrs old');
+    expect(routeText(plane({ route_check: 'implausible' }))).toBeNull();
     expect(detailLine(plane({ route_check: 'plausible' }), NOW)).toBe('KPHX-KORD');
     expect(detailLine(plane({ route_check: 'unchecked' }), NOW)).toBe('KPHX-KORD');
+  });
+  it('keys on route_check alone: holds when the rejected codes are not published', () => {
+    expect(detailLine({ callsign: 'SWA1639', route_check: 'implausible' }, NOW)).toBe('New route < 24hrs old');
+    expect(isNewRoute({ route_check: 'implausible' })).toBe(true);
+    expect(isNewRoute({ route_check: 'Implausible' })).toBe(false);
+    expect(isNewRoute(undefined)).toBe(false);
+    expect(NEW_ROUTE_TEXT).toBe('New route < 24hrs old');
   });
   it('IATA when published, ICAO otherwise, per end', () => {
     expect(routeText(plane({ origin_iata: 'PHX', destination_iata: 'ORD' }))).toBe('PHX-ORD');
@@ -148,16 +157,19 @@ describe('aircraft: airport names (backlog 293)', () => {
     expect(airportLines({ next_stop: 'Wheaton', origin_name: 'X', destination_name: 'Y' })).toEqual([]);
     expect(airportLines(undefined)).toEqual([]);
   });
-  it('kept for an implausible route, whose code line carries the "?"', () => {
-    expect(airportLines(named({ route_check: 'implausible' })).length).toBe(2);
+  it('none for an implausible route: they name the leg that does not fit (backlog 281)', () => {
+    expect(airportLines(named({ route_check: 'implausible' }))).toEqual([]);
   });
 });
 
 describe('aircraft: route source (backlog 293)', () => {
-  it('names the two published sources', () => {
-    expect(sourceText(plane({ route_source: 'saw_filed_routes' }))).toBe('Filed flight plan');
-    expect(sourceText(plane({ route_source: 'adsbdb' }))).toBe('Airline schedule (adsbdb)');
-    expect(sourceText(plane({ route_source: ' adsbdb ' }))).toBe('Airline schedule (adsbdb)');
+  it('names the two published sources by their own names (Lee, 2026-10-22 22:38)', () => {
+    expect(sourceText(plane({ route_source: 'saw_filed_routes' }))).toBe('FiledRoutesDB');
+    expect(sourceText(plane({ route_source: 'adsbdb' }))).toBe('adsbdb');
+    expect(sourceText(plane({ route_source: ' adsbdb ' }))).toBe('adsbdb');
+  });
+  it('none for an implausible route', () => {
+    expect(sourceText(plane({ route_source: 'saw_filed_routes', route_check: 'implausible' }))).toBeNull();
   });
   it('an unknown or missing source says nothing', () => {
     expect(sourceText(plane({ route_source: 'opensky' }))).toBeNull();
@@ -181,7 +193,7 @@ describe('hoverHtml: an aircraft with names and a source', () => {
       arrival_estimated_at: at(22 * 60) }), 'x', NOW))
       .toBe('AAL435<br>KPHX-KORD in 22 min'
         + '<div class="hover-airports">South Bend International Airport<br>to Purdue University Airport</div>'
-        + '<div class="hover-source">Filed flight plan</div>');
+        + '<div class="hover-source">FiledRoutesDB</div>');
   });
   it('the names are escaped', () => {
     expect(hoverHtml(plane({ origin_name: '<b>A & B</b>', destination_name: "O'Hare" }), 'x', NOW))
@@ -189,7 +201,12 @@ describe('hoverHtml: an aircraft with names and a source', () => {
   });
   it('a source alone, no names block', () => {
     expect(hoverHtml(plane({ route_source: 'adsbdb' }), 'x', NOW))
-      .toBe('AAL435<br>KPHX-KORD<div class="hover-source">Airline schedule (adsbdb)</div>');
+      .toBe('AAL435<br>KPHX-KORD<div class="hover-source">adsbdb</div>');
+  });
+  it('an implausible route: one line, escaped, nothing under it (backlog 281)', () => {
+    expect(hoverHtml(plane({ route_check: 'implausible', origin_name: 'A', destination_name: 'B',
+      route_source: 'saw_filed_routes', arrival_estimated_at: at(600) }), 'x', NOW))
+      .toBe('AAL435<br>New route &lt; 24hrs old');
   });
   it('a train is unchanged', () => {
     expect(hoverHtml({ line_name: 'UP-W', next_stop: 'Wheaton', arrival_estimated_at: at(120),

@@ -12,7 +12,11 @@
  * The train number is NOT repeated: it is on the marker being hovered.
  * Under one minute: "Arriving Irving Park", "KPHX-KORD arriving". A station
  * with no time: "Next: Irving Park". A time with no station says nothing.
- * A route the integration judged implausible is shown with a "?".
+ * A route the integration judged implausible (no leg on file fits where the
+ * aircraft is) reads "New route < 24hrs old" in place of the route, with no
+ * ETA, no names and no source (backlog 281, Lee 2026-10-06; built 2026-10-22).
+ * It keys on route_check alone, so it holds if the integration later stops
+ * publishing the codes of a leg it rejected.
  * Anything else keeps the text it had (friendly name, "<person> is at ...").
  *
  * Under an aircraft's route (backlog 293, 2026-10-22), the airport names as
@@ -22,7 +26,7 @@
  *
  *              South Bend International Airport
  *              to Purdue University Airport
- *              Filed flight plan
+ *              FiledRoutesDB
  *
  * One name alone reads "From <name>" or "To <name>". An unknown route_source
  * says nothing rather than guess.
@@ -83,17 +87,30 @@ function minutesText(n) {
   return m ? `${h} h ${m} min` : `${h} h`;
 }
 
+/** The second line when no leg on file fits the aircraft (backlog 281). */
+export const NEW_ROUTE_TEXT = "New route < 24hrs old";
+
 /**
- * "<ORIG>-<DEST>", "?" appended when route_check is implausible; or null.
- * IATA when published, else ICAO (Lee: codes until names exist).
+ * Whether the integration judged the route implausible: no leg on file fits.
+ * @param {object} a attributes
+ * @returns {boolean}
+ */
+export function isNewRoute(a) {
+  return a?.route_check === "implausible";
+}
+
+/**
+ * "<ORIG>-<DEST>", or null: none without both ends, none for a route the
+ * integration judged implausible. IATA when published, else ICAO.
  * @param {object} a attributes
  * @returns {string|null}
  */
 export function routeText(a) {
+  if (isNewRoute(a)) return null;
   const o = text(a?.origin_iata) ?? text(a?.origin_icao);
   const d = text(a?.destination_iata) ?? text(a?.destination_icao);
   if (!o || !d) return null;
-  return `${o}-${d}${a.route_check === "implausible" ? "?" : ""}`;
+  return `${o}-${d}`;
 }
 
 /**
@@ -103,6 +120,7 @@ export function routeText(a) {
  * @returns {string|null}
  */
 export function detailLine(a, nowMs) {
+  if (isNewRoute(a)) return NEW_ROUTE_TEXT;
   const route = routeText(a);
   const n = minutesUntil(a?.arrival_estimated_at, nowMs);
   if (route) {
@@ -126,13 +144,14 @@ export function titleLine(a, fallback) {
 }
 
 /**
- * What each published `route_source` is called in the box. Lee's study
+ * What each published `route_source` is called in the box: the source's
+ * own name (Lee, 2026-10-22 22:38). Lee's study
  * `adsb-route-accuracy`: the two are not equally trustworthy, so the box
  * says which one it is.
  */
 export const ROUTE_SOURCE_TEXT = Object.freeze({
-  saw_filed_routes: "Filed flight plan",
-  adsbdb: "Airline schedule (adsbdb)",
+  saw_filed_routes: "FiledRoutesDB",
+  adsbdb: "adsbdb",
 });
 
 /**

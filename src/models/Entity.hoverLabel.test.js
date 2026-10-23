@@ -74,12 +74,13 @@ describe('hover box on a real entity (util/HoverLabel.js)', () => {
     expect(makeEntity({ arrival_estimated_at: at(240) }).entity.tooltipHtml(NOW)).toBe('Metra unit 8461');
   });
 
-  it('an aircraft: callsign over "<ORIG>-<DEST> in <n> min", "?" when implausible', () => {
+  it('an aircraft: callsign over "<ORIG>-<DEST> in <n> min"; "New route < 24hrs old" when implausible', () => {
     const base = { friendly_name: 'Aircraft A68336', callsign: 'DAL27', origin_icao: 'KATL',
       destination_icao: 'KORD', arrival_estimated_at: at(12 * 60) };
     expect(makeEntity(base).entity.tooltipHtml(NOW)).toBe('DAL27<br>KATL-KORD in 12 min');
-    expect(makeEntity({ ...base, route_check: 'implausible' }).entity.tooltipHtml(NOW))
-      .toBe('DAL27<br>KATL-KORD? in 12 min');
+    expect(makeEntity({ ...base, route_check: 'implausible', origin_name: 'X', destination_name: 'Y',
+      route_source: 'saw_filed_routes' }).entity.tooltipHtml(NOW))
+      .toBe('DAL27<br>New route &lt; 24hrs old');
   });
 
   it('a person in a zone keeps "<person> is at <place>"', () => {
