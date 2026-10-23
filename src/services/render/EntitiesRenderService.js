@@ -9,7 +9,7 @@ import HaLinkedEntityService from "../HaLinkedEntityService";
 import HaHistoryService from "../HaHistoryService";
 import FocusFollowConfig from "../../configs/FocusFollowConfig";
 import { mergedAway } from "../ObjectMergeService";
-import { creditHtml } from "../../util/EntityCredits";
+import { creditLine } from "../../util/EntityCredits";
 
 
 export default class EntitiesRenderService {
@@ -93,34 +93,38 @@ export default class EntitiesRenderService {
   }
 
   /**
-   * Credits this service has put in the map's attribution box (backlog 228).
-   * @type {Set<string>}
+   * The one credit line this service has put in the map's attribution box
+   * (backlog 228), or "" for none.
+   * @type {string}
    */
-  credits = new Set();
+  credits = "";
 
   /**
-   * Credit, once each, the `attribution` of every entity drawn now: not
-   * stale, not merged away, with a position (util/EntityCredits.js). A
-   * source leaves the box when its last drawn entity goes. Never lets a
-   * bad credit stop the map drawing.
+   * Credit the `attribution` of every entity drawn now: not stale, not
+   * merged away, with a position, as one line (util/EntityCredits.js
+   * creditLine). A source leaves the line when its last drawn entity goes.
+   * The box is touched only when the line changes. Never lets a bad credit
+   * stop the map drawing.
    */
   refreshCredits() {
     const ctl = this.map?.attributionControl;
     if (!ctl) return;
-    const want = new Set();
+    const texts = new Set();
     for (const ent of this.entities ?? []) {
       try {
         if (this.isHidden(ent.id) || !ent.latLng) continue;
-        const html = creditHtml(ent.attributes?.attribution);
-        if (html) want.add(html);
+        const a = ent.attributes?.attribution;
+        if (typeof a === "string") texts.add(a);
       } catch (e) {
         Logger.error("[EntitiesRenderService] credit skipped " + ent.id, e);
       }
     }
     try {
-      for (const c of this.credits) if (!want.has(c)) ctl.removeAttribution(c);
-      for (const c of want) if (!this.credits.has(c)) ctl.addAttribution(c);
-      this.credits = want;
+      const line = creditLine(texts);
+      if (line === this.credits) return;
+      if (this.credits) ctl.removeAttribution(this.credits);
+      if (line) ctl.addAttribution(line);
+      this.credits = line;
     } catch (e) {
       Logger.error("[EntitiesRenderService] credits failed", e);
     }

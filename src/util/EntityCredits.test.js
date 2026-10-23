@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { creditParts, linkify, creditHtml } from './EntityCredits.js';
+import { creditParts, linkify, creditLine, CREDIT_SEPARATOR } from './EntityCredits.js';
 
 // Strings as the box's entities carried them, 2026-10-22 (bin\ltmc228_live.txt).
 const RENFE = 'Data: Renfe (data.renfe.com), CC BY 4.0, modified. This integration is not sponsored by, affiliated with, or operated by Renfe.';
@@ -66,21 +66,39 @@ describe('linkify: any URL or domain becomes a link', () => {
   });
 });
 
-describe('creditHtml: the short credit linked, the whole string on hover', () => {
-  it('Renfe', () => {
-    expect(creditHtml(RENFE)).toBe(`<span class="ltmc-credit" title="Data: Renfe (data.renfe.com), CC BY 4.0, modified. `
-      + `This integration is not sponsored by, affiliated with, or operated by Renfe.">`
-      + `Data: Renfe (${a('https://data.renfe.com', 'data.renfe.com')}), CC BY 4.0, modified</span>`);
+describe('creditLine: one line, the short credits linked, the whole strings on hover', () => {
+  const span = (title, inner) => `<span class="ltmc-credit" title="${title}">${inner}</span>`;
+  it('Renfe alone', () => {
+    expect(creditLine([RENFE])).toBe(span('Data: Renfe (data.renfe.com), CC BY 4.0, modified. '
+      + 'This integration is not sponsored by, affiliated with, or operated by Renfe.',
+      `Data: Renfe (${a('https://data.renfe.com', 'data.renfe.com')}), CC BY 4.0, modified`));
+  });
+  it('several, sorted, separated by "|" (Leaflet\'s own commas are unreadable here)', () => {
+    expect(creditLine([SHIPS, AMTRAK])).toBe(
+      span(AMTRAK, `Data from Amtraker (${a('https://amtraker.com', 'amtraker.com')}), ODC-By v1.0`)
+      + CREDIT_SEPARATOR
+      + span(SHIPS, `Data: ${a('https://aisstream.io', 'aisstream.io')} (${a('https://aisstream.io')})`));
+    expect(CREDIT_SEPARATOR).toBe(' <span aria-hidden="true">|</span> ');
+  });
+  it('the order of the input does not change the line', () => {
+    expect(creditLine([SHIPS, AMTRAK, METRA])).toBe(creditLine([METRA, AMTRAK, SHIPS]));
+  });
+  it('strings that cut to the same credit show once, every full string on hover', () => {
+    const f1 = 'Data: Fintraffic / digitraffic.fi, CC BY 4.0';
+    const f2 = 'Data: Fintraffic / digitraffic.fi, CC BY 4.0. Fare zones: HSL, hsl.fi, CC BY 4.0.';
+    expect(creditLine([f2, f1, f1])).toBe(span(`${f1} | ${f2}`,
+      `Data: Fintraffic / ${a('https://digitraffic.fi', 'digitraffic.fi')}, CC BY 4.0`));
   });
   it('the hover text is escaped', () => {
-    expect(creditHtml('Data: "X" <y>. Rest & more')).toBe(
-      '<span class="ltmc-credit" title="Data: &quot;X&quot; &lt;y&gt;. Rest &amp; more">Data: &quot;X&quot; &lt;y&gt;</span>');
+    expect(creditLine(['Data: "X" <y>. Rest & more'])).toBe(
+      span('Data: &quot;X&quot; &lt;y&gt;. Rest &amp; more', 'Data: &quot;X&quot; &lt;y&gt;'));
   });
-  it('no credit, nothing', () => {
-    expect(creditHtml('')).toBeNull();
-    expect(creditHtml(null)).toBeNull();
+  it('the same string with other white space is one credit', () => {
+    expect(creditLine([AMTRAK, ` ${AMTRAK} `])).toBe(creditLine([AMTRAK]));
   });
-  it('the same string always gives the same credit, so the box shows it once', () => {
-    expect(creditHtml(AMTRAK)).toBe(creditHtml(` ${AMTRAK} `));
+  it('no credit, an empty line', () => {
+    expect(creditLine([])).toBe('');
+    expect(creditLine(['', null, 4])).toBe('');
+    expect(creditLine(undefined)).toBe('');
   });
 });

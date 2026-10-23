@@ -1,13 +1,13 @@
 import { jest, describe, it, expect } from '@jest/globals';
 import EntitiesRenderService from './EntitiesRenderService.js';
-import { creditHtml } from '../../util/EntityCredits.js';
+import { creditLine } from '../../util/EntityCredits.js';
 
 jest.mock('leaflet');
 jest.mock('leaflet.markercluster', () => ({}));
 jest.mock('../../util/Logger.js');
 
-// Backlog 228: the box credits each source once, only while one of its
-// entities is drawn (not stale, not merged away, with a position).
+// Backlog 228: the box carries ONE credit line for the entities drawn now
+// (not stale, not merged away, with a position), each source once.
 
 const AMTRAK = 'Data from Amtraker (amtraker.com), ODC-By v1.0';
 const SHIPS = 'Data: aisstream.io (https://aisstream.io)';
@@ -49,17 +49,17 @@ function service(ctl, entities, stale = new Set()) {
   return svc;
 }
 
-describe('EntitiesRenderService: credits in the attribution box', () => {
-  it('credits each source once, however many of its entities are drawn', async () => {
+describe('EntitiesRenderService: the credit line in the attribution box', () => {
+  it('one line, each source once, however many of its entities are drawn', async () => {
     const ctl = control();
     const svc = service(ctl, [fakeEntity('geo_location.a1', AMTRAK), fakeEntity('geo_location.a2', AMTRAK),
       fakeEntity('geo_location.s1', SHIPS)]);
     await svc.render({ states: {} });
-    expect(ctl.shown().sort()).toEqual([creditHtml(AMTRAK), creditHtml(SHIPS)].sort());
-    expect(ctl.addAttribution).toHaveBeenCalledTimes(2);
+    expect(ctl.shown()).toEqual([creditLine([AMTRAK, SHIPS])]);
+    expect(ctl.addAttribution).toHaveBeenCalledTimes(1);
   });
 
-  it('a render that changes nothing adds and removes nothing', async () => {
+  it('a render that changes nothing touches nothing', async () => {
     const ctl = control();
     const svc = service(ctl, [fakeEntity('geo_location.a1', AMTRAK)]);
     await svc.render({ states: {} });
@@ -68,13 +68,25 @@ describe('EntitiesRenderService: credits in the attribution box', () => {
     expect(ctl.removeAttribution).not.toHaveBeenCalled();
   });
 
-  it('a source leaves the box when its last drawn entity goes', async () => {
+  it('a source leaves the line when its last drawn entity goes', async () => {
     const ctl = control();
     const svc = service(ctl, [fakeEntity('geo_location.a1', AMTRAK), fakeEntity('geo_location.s1', SHIPS)]);
     await svc.render({ states: {} });
     svc.entities = [svc.entities[1]];
     await svc.render({ states: {} });
-    expect(ctl.shown()).toEqual([creditHtml(SHIPS)]);
+    expect(ctl.shown()).toEqual([creditLine([SHIPS])]);
+    expect(svc.credits).toBe(creditLine([SHIPS]));
+  });
+
+  it('the line goes when nothing credited is drawn', async () => {
+    const ctl = control();
+    const svc = service(ctl, [fakeEntity('geo_location.a1', AMTRAK)]);
+    await svc.render({ states: {} });
+    svc.entities = [];
+    await svc.render({ states: {} });
+    expect(ctl.shown()).toEqual([]);
+    expect(svc.credits).toBe('');
+    expect(ctl.addAttribution).toHaveBeenCalledTimes(1);
   });
 
   it('a stale entity, or one with no position, credits nothing', async () => {
@@ -82,15 +94,15 @@ describe('EntitiesRenderService: credits in the attribution box', () => {
     const svc = service(ctl, [fakeEntity('geo_location.a1', AMTRAK), fakeEntity('geo_location.s1', SHIPS, null)],
       new Set(['geo_location.a1']));
     await svc.render({ states: {} });
-    expect(ctl.shown()).toEqual([]);
+    expect(ctl.addAttribution).not.toHaveBeenCalled();
   });
 
   it('an entity merged away credits nothing (D11)', () => {
     const ctl = control();
-    const svc = service(ctl, [fakeEntity('geo_location.a1', AMTRAK)]);
+    const svc = service(ctl, [fakeEntity('geo_location.a1', AMTRAK), fakeEntity('geo_location.s1', SHIPS)]);
     svc.merged = new Set(['geo_location.a1']);
     svc.refreshCredits();
-    expect(ctl.shown()).toEqual([]);
+    expect(ctl.shown()).toEqual([creditLine([SHIPS])]);
   });
 
   it('an entity with no attribution, or not a string, credits nothing', async () => {
@@ -104,7 +116,7 @@ describe('EntitiesRenderService: credits in the attribution box', () => {
     const svc = new EntitiesRenderService({}, {}, { isNone: true }, [], null, null, null, false, false);
     svc.entities = [fakeEntity('geo_location.a1', AMTRAK)];
     await expect(svc.render({ states: {} })).resolves.toBeUndefined();
-    expect(svc.credits.size).toBe(0);
+    expect(svc.credits).toBe('');
   });
 
   it('a control that throws does not stop the map drawing', async () => {

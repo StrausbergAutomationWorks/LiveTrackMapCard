@@ -74,13 +74,28 @@ export function linkify(text) {
   return out + esc(s.slice(at));
 }
 
+/** Between two credits: the separator Leaflet puts after its own prefix. */
+export const CREDIT_SEPARATOR = ' <span aria-hidden="true">|</span> ';
+
 /**
- * One credit as it goes in the box, or null when there is none to show.
- * @param {*} text an entity's `attribution`
- * @returns {string|null}
+ * Every credit as ONE line for the box, or "" when there is none. Leaflet
+ * joins separate attributions with commas, and the credits hold commas of
+ * their own, so the card writes them as one entry, separated by "|".
+ * Strings that cut to the same credit are shown once, every full string on
+ * hover (seen 2026-10-22: two Fintraffic strings, one credit). Sorted, so
+ * the same set always gives the same line.
+ * @param {Array<*>|Set<*>} texts entities' `attribution`s
+ * @returns {string}
  */
-export function creditHtml(text) {
-  const p = creditParts(text);
-  if (!p) return null;
-  return `<span class="ltmc-credit" title="${esc(p.full)}">${linkify(p.short)}</span>`;
+export function creditLine(texts) {
+  const groups = new Map();
+  for (const t of texts ?? []) {
+    const p = creditParts(t);
+    if (!p) continue;
+    if (!groups.has(p.short)) groups.set(p.short, new Set());
+    groups.get(p.short).add(p.full);
+  }
+  return [...groups.keys()].sort((a, b) => a.localeCompare(b, "en")).map((short) =>
+    `<span class="ltmc-credit" title="${esc([...groups.get(short)].sort().join(" | "))}">${linkify(short)}</span>`,
+  ).join(CREDIT_SEPARATOR);
 }
