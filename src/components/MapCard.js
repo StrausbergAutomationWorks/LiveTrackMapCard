@@ -435,6 +435,16 @@ export default class MapCard extends LitElement {
         border-radius: 4px;
         box-shadow: none !important;
       }
+      .leaflet-tooltip .hover-airports {
+        white-space: normal;
+        max-width: 20em;
+        margin-top: 2px;
+      }
+      .leaflet-tooltip .hover-source {
+        font-size: 85%;
+        opacity: 0.75;
+        margin-top: 2px;
+      }
       .distance-tooltip {
         padding: 4px 8px;
         font-size: 12px;

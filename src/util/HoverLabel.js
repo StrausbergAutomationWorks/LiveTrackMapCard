@@ -14,6 +14,18 @@
  * with no time: "Next: Irving Park". A time with no station says nothing.
  * A route the integration judged implausible is shown with a "?".
  * Anything else keeps the text it had (friendly name, "<person> is at ...").
+ *
+ * Under an aircraft's route (backlog 293, 2026-10-22), the airport names as
+ * the integration publishes them (`origin_name`, `destination_name`; the card
+ * keeps no airport table), then where the route came from (`route_source`),
+ * smaller:
+ *
+ *              South Bend International Airport
+ *              to Purdue University Airport
+ *              Filed flight plan
+ *
+ * One name alone reads "From <name>" or "To <name>". An unknown route_source
+ * says nothing rather than guess.
  */
 
 /** How often an OPEN hover box is redrawn, ms. */
@@ -114,7 +126,44 @@ export function titleLine(a, fallback) {
 }
 
 /**
- * The whole box as HTML, both lines escaped.
+ * What each published `route_source` is called in the box. Lee's study
+ * `adsb-route-accuracy`: the two are not equally trustworthy, so the box
+ * says which one it is.
+ */
+export const ROUTE_SOURCE_TEXT = Object.freeze({
+  saw_filed_routes: "Filed flight plan",
+  adsbdb: "Airline schedule (adsbdb)",
+});
+
+/**
+ * The airport-name lines under a route, plain text: [] unless the box
+ * shows a route.
+ * @param {object} a attributes
+ * @returns {string[]}
+ */
+export function airportLines(a) {
+  if (!routeText(a)) return [];
+  const o = text(a.origin_name);
+  const d = text(a.destination_name);
+  if (o && d) return [o, `to ${d}`];
+  if (o) return [`From ${o}`];
+  if (d) return [`To ${d}`];
+  return [];
+}
+
+/**
+ * Where the shown route came from, plain text, or null.
+ * @param {object} a attributes
+ * @returns {string|null}
+ */
+export function sourceText(a) {
+  if (!routeText(a)) return null;
+  const s = text(a.route_source);
+  return s && Object.prototype.hasOwnProperty.call(ROUTE_SOURCE_TEXT, s) ? ROUTE_SOURCE_TEXT[s] : null;
+}
+
+/**
+ * The whole box as HTML, every line escaped.
  * @param {object} a attributes
  * @param {string} fallback the first line when there is nothing better
  * @param {number} nowMs epoch milliseconds
@@ -123,5 +172,10 @@ export function titleLine(a, fallback) {
 export function hoverHtml(a, fallback, nowMs) {
   const first = escapeHtml(titleLine(a, fallback));
   const second = detailLine(a, nowMs);
-  return second ? `${first}<br>${escapeHtml(second)}` : first;
+  let html = second ? `${first}<br>${escapeHtml(second)}` : first;
+  const names = airportLines(a);
+  if (names.length) html += `<div class="hover-airports">${names.map(escapeHtml).join("<br>")}</div>`;
+  const source = sourceText(a);
+  if (source) html += `<div class="hover-source">${escapeHtml(source)}</div>`;
+  return html;
 }

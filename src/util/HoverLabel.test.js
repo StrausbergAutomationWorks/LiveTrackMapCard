@@ -1,5 +1,6 @@
 import { describe, it, expect } from '@jest/globals';
-import { escapeHtml, routeText, detailLine, titleLine, hoverHtml } from './HoverLabel.js';
+import { escapeHtml, routeText, detailLine, titleLine, hoverHtml,
+  airportLines, sourceText, ROUTE_SOURCE_TEXT } from './HoverLabel.js';
 
 const NOW = Date.parse('2026-10-03T01:00:00+00:00');
 const at = (sec) => new Date(NOW + sec * 1000).toISOString();
@@ -118,6 +119,81 @@ describe('hoverHtml', () => {
   });
   it('the fallback is escaped too', () => {
     expect(hoverHtml({}, '<b>', NOW)).toBe('&lt;b&gt;');
+  });
+});
+
+describe('aircraft: airport names (backlog 293)', () => {
+  const named = (extra = {}) => plane({
+    origin_name: 'Phoenix Sky Harbor International Airport',
+    destination_name: "Chicago O'Hare International Airport", ...extra });
+  it('both names: origin, then "to <destination>"', () => {
+    expect(airportLines(named())).toEqual([
+      'Phoenix Sky Harbor International Airport', "to Chicago O'Hare International Airport"]);
+  });
+  it('one name alone reads "From" or "To"', () => {
+    expect(airportLines(named({ destination_name: undefined })))
+      .toEqual(['From Phoenix Sky Harbor International Airport']);
+    expect(airportLines(named({ origin_name: '  ' })))
+      .toEqual(["To Chicago O'Hare International Airport"]);
+  });
+  it('no names, nothing', () => {
+    expect(airportLines(plane())).toEqual([]);
+    expect(airportLines(named({ origin_name: 7, destination_name: null }))).toEqual([]);
+  });
+  it('trims the names', () => {
+    expect(airportLines(plane({ origin_name: '  A ', destination_name: ' B  ' }))).toEqual(['A', 'to B']);
+  });
+  it('no route, no names: an aircraft with one end, or a train', () => {
+    expect(airportLines({ origin_icao: 'KPHX', origin_name: 'X', destination_name: 'Y' })).toEqual([]);
+    expect(airportLines({ next_stop: 'Wheaton', origin_name: 'X', destination_name: 'Y' })).toEqual([]);
+    expect(airportLines(undefined)).toEqual([]);
+  });
+  it('kept for an implausible route, whose code line carries the "?"', () => {
+    expect(airportLines(named({ route_check: 'implausible' })).length).toBe(2);
+  });
+});
+
+describe('aircraft: route source (backlog 293)', () => {
+  it('names the two published sources', () => {
+    expect(sourceText(plane({ route_source: 'saw_filed_routes' }))).toBe('Filed flight plan');
+    expect(sourceText(plane({ route_source: 'adsbdb' }))).toBe('Airline schedule (adsbdb)');
+    expect(sourceText(plane({ route_source: ' adsbdb ' }))).toBe('Airline schedule (adsbdb)');
+  });
+  it('an unknown or missing source says nothing', () => {
+    expect(sourceText(plane({ route_source: 'opensky' }))).toBeNull();
+    expect(sourceText(plane({ route_source: 'toString' }))).toBeNull();
+    expect(sourceText(plane({ route_source: 3 }))).toBeNull();
+    expect(sourceText(plane())).toBeNull();
+  });
+  it('no route, no source', () => {
+    expect(sourceText({ origin_icao: 'KPHX', route_source: 'adsbdb' })).toBeNull();
+    expect(sourceText(undefined)).toBeNull();
+  });
+  it('the table is frozen', () => {
+    expect(Object.isFrozen(ROUTE_SOURCE_TEXT)).toBe(true);
+  });
+});
+
+describe('hoverHtml: an aircraft with names and a source', () => {
+  it('route line, then the names block, then the source block', () => {
+    expect(hoverHtml(plane({ origin_name: 'South Bend International Airport',
+      destination_name: 'Purdue University Airport', route_source: 'saw_filed_routes',
+      arrival_estimated_at: at(22 * 60) }), 'x', NOW))
+      .toBe('AAL435<br>KPHX-KORD in 22 min'
+        + '<div class="hover-airports">South Bend International Airport<br>to Purdue University Airport</div>'
+        + '<div class="hover-source">Filed flight plan</div>');
+  });
+  it('the names are escaped', () => {
+    expect(hoverHtml(plane({ origin_name: '<b>A & B</b>', destination_name: "O'Hare" }), 'x', NOW))
+      .toBe('AAL435<br>KPHX-KORD<div class="hover-airports">&lt;b&gt;A &amp; B&lt;/b&gt;<br>to O&#39;Hare</div>');
+  });
+  it('a source alone, no names block', () => {
+    expect(hoverHtml(plane({ route_source: 'adsbdb' }), 'x', NOW))
+      .toBe('AAL435<br>KPHX-KORD<div class="hover-source">Airline schedule (adsbdb)</div>');
+  });
+  it('a train is unchanged', () => {
+    expect(hoverHtml({ line_name: 'UP-W', next_stop: 'Wheaton', arrival_estimated_at: at(120),
+      route_source: 'adsbdb', origin_name: 'X' }, 'x', NOW)).toBe('UP-W<br>Wheaton in 2 min');
   });
 });
 
