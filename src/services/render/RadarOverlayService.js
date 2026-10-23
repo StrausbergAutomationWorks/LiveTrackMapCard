@@ -1,6 +1,7 @@
 import L from "leaflet";
 import Logger from "../../util/Logger.js";
 import { SOURCES, tilePlan, tilesInView, sourcesForView } from "../radar/RadarSources.js";
+import { MOTION_STEPS, loopSteps, stepFrames, loopSignature, stepTiming, shownStep } from "../radar/RadarMotion.js";
 import {
   POLL_MS, parseRainViewer, parseJma, parseGeoMetCaps, parseNowCoastRegions,
   computedFiveMinute, isFresh, isoTime,
@@ -17,6 +18,9 @@ import {
 
 /** The checkbox label. */
 export const RADAR_NAME = "Weather radar";
+
+/** The second checkbox (D13 "Motion"; its label is the card chat's). OFF by default for everyone (Lee, 2026-10-09). */
+export const MOTION_NAME = "Radar motion";
 
 /** The pane the radar draws in. */
 export const RADAR_PANE = "ltmcRadar";
@@ -188,6 +192,27 @@ export function placeRadarPane(map) {
   return pane;
 }
 
+/**
+ * Size and offset an image for a plan (a source's tile at its native zoom).
+ * @param {HTMLImageElement} img
+ * @param {{scale: number, offX: number, offY: number}} p
+ */
+function placeImg(img, p) {
+  const size = 256 * p.scale;
+  img.style.cssText = `position:absolute;left:${-p.offX * 256}px;top:${-p.offY * 256}px;width:${size}px;height:${size}px;max-width:none;pointer-events:none;`;
+}
+
+/**
+ * @returns {HTMLImageElement} a decorative, undraggable image
+ */
+function blankImg() {
+  const img = document.createElement("img");
+  img.alt = "";
+  img.setAttribute("role", "presentation");
+  img.draggable = false;
+  return img;
+}
+
 let GridClass = null;
 /**
  * The grid layer class, made on first use (Leaflet is mocked in tests).
@@ -203,20 +228,15 @@ export function radarGridClass() {
     createTile(coords, done) {
       const tile = document.createElement("div");
       tile.style.overflow = "hidden";
+      if (typeof this.options.steps === "function") return this._motionTile(coords, done, tile);
       let plan = null;
       try { plan = this.options.plan(coords); } catch (e) { Logger.error("[Radar] tile plan", e); }
       if (!plan) {
         setTimeout(() => done(null, tile), 0);
         return tile;
       }
-      const img = document.createElement("img");
-      img.alt = "";
-      img.setAttribute("role", "presentation");
-      img.draggable = false;
-      const place = (p) => {
-        const size = 256 * p.scale;
-        img.style.cssText = `position:absolute;left:${-p.offX * 256}px;top:${-p.offY * 256}px;width:${size}px;height:${size}px;max-width:none;pointer-events:none;`;
-      };
+      const img = blankImg();
+      const place = (p) => placeImg(img, p);
       place(plan);
       let settled = false;
       const finish = () => { if (!settled) { settled = true; done(null, tile); } };
@@ -241,6 +261,85 @@ export function radarGridClass() {
       }
       return tile;
     },
+
+    /**
+     * A motion tile (D13 "Motion"): one image per distinct frame across the
+     * loop's steps, all hidden but the one for the step shown. The tile is
+     * done when the NEWEST step's image settles, so a new loop shows as soon
+     * as its newest frame is in; the older ones keep loading behind it.
+     * @param {object} coords
+     * @param {Function} done
+     * @param {HTMLElement} tile
+     * @returns {HTMLElement}
+     */
+    _motionTile(coords, done, tile) {
+      let plans = [];
+      try { plans = this.options.steps(coords) ?? []; } catch (e) { Logger.error("[Radar] motion plan", e); }
+      const n = plans.length;
+      const state = { imgs: [], idx: new Array(n).fill(-1), loaded: new Array(n).fill(null) };
+      tile.__ltmcMotion = state;
+      if (!this._ltmcTiles) {
+        this._ltmcTiles = new Set();
+        this.on?.("tileunload", (e) => this._ltmcTiles.delete(e?.tile));
+      }
+      this._ltmcTiles.add(tile);
+      let settled = false;
+      const newest = n - 1;
+      const finish = () => { if (!settled) { settled = true; done(null, tile); } };
+      const byUrl = new Map();
+      plans.forEach((p, k) => {
+        if (!p) return;
+        let j = byUrl.get(p.url);
+        if (j === undefined) {
+          j = state.imgs.length;
+          byUrl.set(p.url, j);
+          const img = blankImg();
+          placeImg(img, p);
+          img.style.display = "none";
+          const mark = (ok) => {
+            for (let s = 0; s < n; s++) if (state.idx[s] === j) state.loaded[s] = ok;
+            this._showTile(tile);
+            if (state.idx[newest] === j || state.idx[newest] === -1) finish();
+          };
+          img.onload = () => mark(true);
+          img.onerror = () => mark(false);
+          state.imgs.push(img);
+          tile.appendChild(img);
+          if (p.relay) {
+            Promise.resolve(this.options.sign(p.url))
+              .then((u) => { if (u) img.src = u; else img.onerror(); })
+              .catch(() => img.onerror());
+          } else {
+            img.src = p.url;
+          }
+        }
+        state.idx[k] = j;
+      });
+      if (n === 0 || state.idx[newest] === -1) setTimeout(finish, 0);
+      return tile;
+    },
+
+    /**
+     * Show, in one tile, the picture for the layer's current step.
+     * @param {HTMLElement} tile
+     */
+    _showTile(tile) {
+      const state = tile.__ltmcMotion;
+      if (!state) return;
+      const k = Number.isInteger(this._step) ? this._step : state.idx.length - 1;
+      const s = shownStep(k, state.loaded);
+      const j = s >= 0 ? state.idx[s] : -1;
+      state.imgs.forEach((img, i) => { img.style.display = i === j ? "" : "none"; });
+    },
+
+    /**
+     * Show step `k` in every tile of this layer.
+     * @param {number} k
+     */
+    setStep(k) {
+      this._step = k;
+      for (const tile of this._ltmcTiles ?? []) this._showTile(tile);
+    },
   });
   return GridClass;
 }
@@ -262,7 +361,16 @@ export default class RadarOverlayService {
     this.clearInterval = deps.clearInterval ?? ((h) => globalThis.clearInterval(h));
     this.setTimeout = deps.setTimeout ?? ((f, ms) => globalThis.setTimeout(f, ms));
     this.clearTimeout = deps.clearTimeout ?? ((h) => globalThis.clearTimeout(h));
+    // Motion is not animated for a viewer who asked for reduced motion; the newest frame is shown instead.
+    this.reducedMotion = deps.reducedMotion ?? (() => {
+      try { return !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches; } catch { return false; }
+    });
     this.hass = null;
+    /** The motion box (D13 "Motion"), its state, and the loop's step timer. */
+    this.motionGroup = null;
+    this.motion = false;
+    this.stepTimer = null;
+    this.step = MOTION_STEPS - 1;
     /** Fetched frames by source id; computed and relay frames are not kept here. */
     this.frames = new Map();
     this.nextAt = new Map();
@@ -296,6 +404,10 @@ export default class RadarOverlayService {
       this.group.on("remove", () => this._stop());
       this.map.on("moveend", this._onMove);
       this.overlays.addOverlay(this.group, RADAR_NAME, this.opt.show);
+      this.motionGroup = L.layerGroup([]);
+      this.motionGroup.on("add", () => this._setMotion(true));
+      this.motionGroup.on("remove", () => this._setMotion(false));
+      this.overlays.addOverlay(this.motionGroup, MOTION_NAME, false);
     } catch (e) {
       Logger.error("[Radar] setup failed; map unaffected", e);
     }
@@ -320,6 +432,44 @@ export default class RadarOverlayService {
     } catch (e) {
       Logger.error("[Radar] render failed; markers unaffected", e);
     }
+  }
+
+  /**
+   * The motion box changed. With "Weather radar" off it does nothing until
+   * the radar comes on (D13).
+   * @param {boolean} on
+   */
+  _setMotion(on) {
+    if (this.motion === on) return;
+    this.motion = on;
+    if (this.on) this._refresh();
+  }
+
+  /** @returns {boolean} whether the layer should be a loop now */
+  _moving() {
+    return this.motion && !this.reducedMotion();
+  }
+
+  /**
+   * Step a loop layer: each step for STEP_DWELL_MS, the newest held for
+   * NEWEST_DWELL_MS, from the newest.
+   * @param {object} layer
+   */
+  _startSteps(layer) {
+    this._stopSteps();
+    this.step = MOTION_STEPS - 1;
+    layer.setStep?.(this.step);
+    const tick = () => {
+      if (this.layer !== layer || this.disposed) return;
+      this.step = stepTiming(this.step).next;
+      layer.setStep?.(this.step);
+      this.stepTimer = this.setTimeout(tick, stepTiming(this.step).dwell);
+    };
+    this.stepTimer = this.setTimeout(tick, stepTiming(this.step).dwell);
+  }
+
+  _stopSteps() {
+    if (this.stepTimer !== null) { this.clearTimeout(this.stepTimer); this.stepTimer = null; }
   }
 
   /** @returns {object[]} sources in trying order */
@@ -362,6 +512,7 @@ export default class RadarOverlayService {
 
   _stop() {
     this.on = false;
+    this._stopSteps();
     if (this.timer !== null) { this.clearInterval(this.timer); this.timer = null; }
     for (const ctl of this.inflight.values()) { try { ctl?.abort(); } catch { /* nothing */ } }
     this.inflight.clear();
@@ -490,9 +641,28 @@ export default class RadarOverlayService {
     const snap = this.snap;
     if (!snap) return true;
     if (snap.relaySig !== this.relaySig) return true;
-    for (const id of drawing) if (snap.frames.get(id)?.key !== usable.get(id)?.key) return true;
+    const moving = this._moving();
+    if (snap.moving !== moving) return true;
+    if (moving) {
+      if (snap.loopSig !== this._loop(usable, drawing).sig) return true;
+    } else {
+      for (const id of drawing) if (snap.frames.get(id)?.key !== usable.get(id)?.key) return true;
+    }
     for (const id of snap.frames.keys()) if (wanted.has(id) && !usable.has(id)) return true;
     return false;
+  }
+
+  /**
+   * The loop for this view: its step frames and identity (RadarMotion.js).
+   * @param {Map<string, object>} usable
+   * @param {Set<string>} drawing
+   * @returns {{steps: ?number[], frames: Map<string, object>[], sig: string}}
+   */
+  _loop(usable, drawing) {
+    const steps = loopSteps(drawing, usable);
+    if (!steps) return { steps: null, frames: [], sig: "" };
+    const frames = stepFrames(this._sources(), usable, steps, this.now());
+    return { steps, frames, sig: loopSignature(frames, drawing) };
   }
 
   /**
@@ -505,23 +675,37 @@ export default class RadarOverlayService {
    */
   _swapIfChanged(usable, drawing, wanted) {
     if (!this._outOfDate(usable, drawing, wanted)) return;
-    const snap = { sources: this._sources(), frames: new Map(usable), opts: this._opts(), relaySig: this.relaySig };
+    const moving = this._moving();
+    const loop = moving ? this._loop(usable, drawing) : null;
+    const snap = {
+      sources: this._sources(), frames: new Map(usable), opts: this._opts(), relaySig: this.relaySig,
+      moving, loopSig: loop?.sig ?? "", stepFrames: loop?.frames ?? [],
+    };
     this.snap = snap;
     const Grid = radarGridClass();
     const first = !this.layer;
-    const layer = new Grid({
+    const options = {
       pane: RADAR_PANE,
       tileSize: 256,
       opacity: first ? this.opt.opacity : 0,
       updateWhenZooming: false,
       keepBuffer: 1,
-      plan: (c) => tilePlan(c.z, c.x, c.y, snap.sources, snap.frames, snap.opts),
       sign: (path) => this._sign(path),
-      onFallback: (id) => { if (this.layer === layer || this.pending?.layer === layer) this._noteFallback(id); },
-    });
+    };
+    if (moving && snap.stepFrames.length) {
+      // A frame that errors holds the previous step's picture (D13): a loop
+      // tile never tries a plan's backups (_motionTile reads only its url).
+      options.steps = (c) => snap.stepFrames.map((m) => tilePlan(c.z, c.x, c.y, snap.sources, m, snap.opts));
+      options.step = MOTION_STEPS - 1;
+    } else {
+      options.plan = (c) => tilePlan(c.z, c.x, c.y, snap.sources, snap.frames, snap.opts);
+      options.onFallback = (id) => { if (this.layer === layer || this.pending?.layer === layer) this._noteFallback(id); };
+    }
+    const layer = new Grid(options);
     if (first) {
       this.layer = layer;
       this.group.addLayer(layer);
+      if (options.steps) this._startSteps(layer); else this._stopSteps();
       return;
     }
     this._dropPending();
@@ -534,6 +718,7 @@ export default class RadarOverlayService {
       this.layer = layer;
       this.fellTo = new Set();
       this._setCredits(new Set(this.drawing));
+      if (options.steps) this._startSteps(layer); else this._stopSteps();
     };
     this.pending = { layer, timer: this.setTimeout(show, SWAP_TIMEOUT_MS) };
     layer.once("load", show);
@@ -600,6 +785,10 @@ export default class RadarOverlayService {
       if (this.group) {
         this.overlays?.removeOverlay(this.group);
         this.group.remove();
+      }
+      if (this.motionGroup) {
+        this.overlays?.removeOverlay(this.motionGroup);
+        this.motionGroup.remove();
       }
       const pane = this.map?.getPane?.(RADAR_PANE);
       pane?.remove?.();

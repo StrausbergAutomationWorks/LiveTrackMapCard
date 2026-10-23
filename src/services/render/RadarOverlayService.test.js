@@ -41,8 +41,9 @@ jest.mock("leaflet", () => {
 import L from "leaflet";
 import RadarOverlayService, {
   parseRadarOption, parseRelay, discoverRelays, orderSources, placeRadarPane, radarGridClass,
-  DEFAULT_RADAR, RADAR_NAME, RADAR_PANE, TICK_MS, SWAP_TIMEOUT_MS, FETCH_TIMEOUT_MS,
+  DEFAULT_RADAR, RADAR_NAME, RADAR_PANE, TICK_MS, SWAP_TIMEOUT_MS, FETCH_TIMEOUT_MS, MOTION_NAME,
 } from "./RadarOverlayService.js";
+import { MOTION_STEPS, STEP_DWELL_MS, NEWEST_DWELL_MS } from "../radar/RadarMotion.js";
 import { SOURCES } from "../radar/RadarSources.js";
 
 const NOW = Date.UTC(2026, 9, 6, 7, 30);
@@ -229,10 +230,10 @@ describe("the pane (D13 'Drawing' 1)", () => {
 });
 
 describe("the checkbox", () => {
-  it("one overlay named Weather radar, ticked by default", () => {
+  it("the Weather radar overlay first, ticked by default (the motion box follows it)", () => {
     const { svc, ov } = make(undefined, ALL);
     svc.setup();
-    expect(ov.addOverlay).toHaveBeenCalledTimes(1);
+    expect(ov.addOverlay).toHaveBeenCalledTimes(2);
     expect(ov.addOverlay.mock.calls[0][1]).toBe(RADAR_NAME);
     expect(ov.addOverlay.mock.calls[0][2]).toBe(true);
   });
@@ -619,5 +620,273 @@ describe("cleanup", () => {
     expect(map.off).toHaveBeenCalledWith("moveend", expect.any(Function));
     svc.render({ states: {} });
     expect(svc.disposed).toBe(true);
+  });
+});
+
+// Backlog 285 part 2, D13 "Motion": the second box and the loop.
+const GEOLOOP = `<Dimension name="time" default="2026-10-06T07:24:00Z">2026-10-06T06:54:00Z/2026-10-06T07:24:00Z/PT6M</Dimension>`;
+const LOOPED = { ...ALL, "geo.weather.gc.ca": GEOLOOP };
+
+/**
+ * Radar on (TABLE order: GeoMet draws Chicago), first frames in and shown.
+ * @param {object} [extra] deps
+ * @param {*} [option]
+ * @returns {Promise<object>}
+ */
+async function radarOn(extra, option) {
+  const m = make({ ...TABLE, ...(option ?? {}) }, LOOPED, extra);
+  m.svc.setup();
+  await flush();
+  m.svc.layer?.fire("load");
+  m.motionBox = m.ov.addOverlay.mock.calls[1]?.[0];
+  m.tick = () => { m.motionBox.onMap = true; m.motionBox.fire("add"); };
+  m.untick = () => { m.motionBox.remove(); };
+  return m;
+}
+
+describe("motion (D13 'Motion')", () => {
+  it("a second box after the radar's, unticked by default, drawing nothing of its own", async () => {
+    const { ov } = await radarOn();
+    expect(ov.addOverlay).toHaveBeenCalledTimes(2);
+    expect(ov.addOverlay.mock.calls[1][1]).toBe(MOTION_NAME);
+    expect(ov.addOverlay.mock.calls[1][2]).toBe(false);
+    expect(ov.addOverlay.mock.calls[1][0].layers).toHaveLength(0);
+  });
+  it("ticked: a loop layer of seven steps, one clock, swapped in like a new frame", async () => {
+    const { svc, tick } = await radarOn();
+    const still = svc.layer;
+    const plain = still.options.plan({ z: 8, x: 65, y: 95 });
+    tick();
+    const loop = L._Grid.made.at(-1);
+    expect(loop).not.toBe(still);
+    expect(loop.options.plan).toBeUndefined();
+    const plans = loop.options.steps({ z: 8, x: 65, y: 95 });
+    expect(plans).toHaveLength(MOTION_STEPS);
+    // E = 07:24; steps 06:54 ... 07:24; GeoMet on its 6-minute grid shows 06:54, 06:54, 07:00, 07:06, 07:12, 07:18, 07:24.
+    expect(new Set(plans.map((p) => p.url)).size).toBe(6);
+    expect(plans[0].url).toBe(plans[1].url);
+    expect(plans.at(-1).url).toBe(plain.url);
+    expect(svc.layer).toBe(still);
+    loop.fire("load");
+    expect(svc.layer).toBe(loop);
+    expect(svc.group.layers).toEqual([loop]);
+  });
+  it("US by default: every step is RainViewer's own frame at Chicago; the clock is RainViewer's alone", async () => {
+    const rv = { host: "https://tilecache.rainviewer.com", radar: { past: [0, 10, 20, 30].map((m) => ({ time: (NOW - (35 - m) * 60000) / 1000, path: `/v2/radar/m${m}` })) } };
+    const m = make(undefined, { ...LOOPED, "rainviewer.com": rv });
+    m.svc.setup();
+    await flush();
+    m.svc.layer.fire("load");
+    const box = m.ov.addOverlay.mock.calls[1][0];
+    box.onMap = true;
+    box.fire("add");
+    const plans = L._Grid.made.at(-1).options.steps({ z: 8, x: 65, y: 95 });
+    expect(plans.every((p) => p.source.id === "rainviewer")).toBe(true);
+    // E = RainViewer's newest (07:25), not GeoMet's backup frame: steps 06:55 ... 07:25 show m0 (oldest), m0, m10, m10, m20, m20, m30.
+    expect(plans.map((p) => p.url.match(/m\d+/)[0])).toEqual(["m0", "m0", "m10", "m10", "m20", "m20", "m30"]);
+  });
+  it("steps from the newest: held 2 s, then 0..6 at 0.6 s each, round again", async () => {
+    const { svc, tick, timers } = await radarOn();
+    tick();
+    const loop = L._Grid.made.at(-1);
+    loop.fire("load");
+    expect(loop._step).toBe(MOTION_STEPS - 1);
+    const next = () => { const t = timers.timeouts.at(-1); t.f(); return t.ms; };
+    expect(timers.timeouts.at(-1).ms).toBe(NEWEST_DWELL_MS);
+    next();
+    expect(loop._step).toBe(0);
+    const seen = [];
+    for (let i = 0; i < MOTION_STEPS; i++) { seen.push([loop._step, timers.timeouts.at(-1).ms]); next(); }
+    expect(seen).toEqual([[0, STEP_DWELL_MS], [1, STEP_DWELL_MS], [2, STEP_DWELL_MS], [3, STEP_DWELL_MS], [4, STEP_DWELL_MS], [5, STEP_DWELL_MS], [6, NEWEST_DWELL_MS]]);
+    expect(loop._step).toBe(0);
+    expect(svc.step).toBe(0);
+  });
+  it("a loop that is unchanged is not rebuilt on the next tick; the timer carries on", async () => {
+    const { tick, timers, advance } = await radarOn();
+    tick();
+    L._Grid.made.at(-1).fire("load");
+    const n = L._Grid.made.length;
+    advance(TICK_MS);
+    timers.intervals[0].f();
+    await flush();
+    expect(L._Grid.made.length).toBe(n);
+  });
+  it("a new frame rebuilds the loop; the old loop's timer stops when the new one shows", async () => {
+    const answers = { ...LOOPED };
+    const m = make(TABLE, answers);
+    m.svc.setup();
+    await flush();
+    m.svc.layer.fire("load");
+    const box = m.ov.addOverlay.mock.calls[1][0];
+    box.onMap = true;
+    box.fire("add");
+    const a = L._Grid.made.at(-1);
+    a.fire("load");
+    const timerA = m.svc.stepTimer;
+    answers["geo.weather.gc.ca"] = `<Dimension name="time" default="2026-10-06T07:30:00Z">2026-10-06T07:00:00Z/2026-10-06T07:30:00Z/PT6M</Dimension>`;
+    m.advance(7 * 60 * 1000);
+    m.timers.intervals[0].f();
+    await flush();
+    const b = L._Grid.made.at(-1);
+    expect(b).not.toBe(a);
+    expect(b.options.steps({ z: 8, x: 65, y: 95 })).toHaveLength(MOTION_STEPS);
+    b.fire("load");
+    expect(m.svc.clearTimeout).toHaveBeenCalledWith(timerA);
+    expect(m.svc.layer).toBe(b);
+    expect(b._step).toBe(MOTION_STEPS - 1);
+  });
+  it("unticked: back to one frame, the steps stopped, the loop's tiles released", async () => {
+    const { svc, tick, untick } = await radarOn();
+    tick();
+    const loop = L._Grid.made.at(-1);
+    loop.fire("load");
+    const t = svc.stepTimer;
+    untick();
+    const still = L._Grid.made.at(-1);
+    expect(still).not.toBe(loop);
+    expect(typeof still.options.plan).toBe("function");
+    expect(still.options.steps).toBeUndefined();
+    still.fire("load");
+    expect(svc.clearTimeout).toHaveBeenCalledWith(t);
+    expect(svc.stepTimer).toBeNull();
+    expect(svc.group.layers).toEqual([still]);
+  });
+  it("with the radar off the box does nothing until the radar comes on, then the radar starts as a loop", async () => {
+    const { svc, ov, tick } = await radarOn(undefined, { show: false });
+    tick();
+    await flush();
+    expect(svc.fetch).not.toHaveBeenCalled();
+    expect(L._Grid.made).toHaveLength(0);
+    const radar = ov.addOverlay.mock.calls[0][0];
+    radar.onMap = true;
+    radar.fire("add");
+    await flush();
+    expect(L._Grid.made).toHaveLength(1);
+    expect(L._Grid.made[0].options.steps({ z: 8, x: 65, y: 95 })).toHaveLength(MOTION_STEPS);
+    expect(svc.layer).toBe(L._Grid.made[0]);
+    expect(svc.stepTimer).not.toBeNull();
+  });
+  it("the radar box unticked stops the steps", async () => {
+    const { svc, ov, tick } = await radarOn();
+    tick();
+    L._Grid.made.at(-1).fire("load");
+    const t = svc.stepTimer;
+    ov.addOverlay.mock.calls[0][0].remove();
+    expect(svc.clearTimeout).toHaveBeenCalledWith(t);
+    expect(svc.stepTimer).toBeNull();
+  });
+  it("prefers-reduced-motion: the box is honoured as the newest frame only, never animated", async () => {
+    const { svc, tick } = await radarOn({ reducedMotion: () => true });
+    const n = L._Grid.made.length;
+    tick();
+    expect(L._Grid.made.length).toBe(n);
+    expect(svc.stepTimer).toBeNull();
+  });
+  it("a timer tick for a layer no longer shown does nothing", async () => {
+    const { svc, tick, untick, timers } = await radarOn();
+    tick();
+    const loop = L._Grid.made.at(-1);
+    loop.fire("load");
+    const stale = timers.timeouts.at(-1);
+    untick();
+    L._Grid.made.at(-1).fire("load");
+    const n = timers.timeouts.length;
+    stale.f();
+    expect(timers.timeouts.length).toBe(n);
+    expect(loop._step).toBe(MOTION_STEPS - 1);
+    expect(svc.layer).not.toBe(loop);
+  });
+  it("cleanup drops the motion box too", async () => {
+    const { svc, ov } = await radarOn();
+    svc.cleanup();
+    expect(ov.removeOverlay).toHaveBeenCalledWith(svc.motionGroup);
+  });
+});
+
+describe("motion tiles (the grid class)", () => {
+  const Grid = radarGridClass();
+  const P = (url, extra = {}) => ({ url, relay: false, scale: 1, offX: 0, offY: 0, ...extra });
+  it("one image per distinct frame; done when the NEWEST settles, not before", () => {
+    const g = new Grid({ steps: () => [P("https://a"), P("https://a"), P("https://b"), P("https://c")] });
+    const done = jest.fn();
+    const t = g.createTile({ z: 8, x: 1, y: 1 }, done);
+    const imgs = [...t.querySelectorAll("img")];
+    expect(imgs.map((i) => i.getAttribute("src"))).toEqual(["https://a", "https://b", "https://c"]);
+    expect(imgs.every((i) => i.style.display === "none")).toBe(true);
+    imgs[0].onload();
+    expect(done).not.toHaveBeenCalled();
+    imgs[2].onload();
+    expect(done).toHaveBeenCalledTimes(1);
+    imgs[2].onload();
+    expect(done).toHaveBeenCalledTimes(1);
+    // No step set yet: the newest shows.
+    expect(imgs.map((i) => i.style.display)).toEqual(["none", "none", ""]);
+  });
+  it("a newest frame that fails still finishes the tile", () => {
+    const g = new Grid({ steps: () => [P("https://a"), P("https://b")] });
+    const done = jest.fn();
+    const t = g.createTile({ z: 8, x: 1, y: 1 }, done);
+    t.querySelectorAll("img")[1].onerror();
+    expect(done).toHaveBeenCalledTimes(1);
+  });
+  it("setStep shows each tile's picture for the step; a frame not (yet) loaded holds the step before it, round the loop", () => {
+    const g = new Grid({ steps: () => [P("https://a"), P("https://b"), P("https://c")] });
+    const t = g.createTile({ z: 8, x: 1, y: 1 }, jest.fn());
+    const [a, b, c] = t.querySelectorAll("img");
+    const shown = () => [a, b, c].findIndex((i) => i.style.display === "");
+    c.onload();
+    g.setStep(0);
+    expect(shown()).toBe(2);
+    a.onload();
+    expect(shown()).toBe(0);
+    g.setStep(1);
+    expect(shown()).toBe(0);
+    b.onerror();
+    expect(shown()).toBe(0);
+    g.setStep(2);
+    expect(shown()).toBe(2);
+  });
+  it("nothing loaded: nothing shown", () => {
+    const g = new Grid({ steps: () => [P("https://a"), P("https://b")] });
+    const t = g.createTile({ z: 8, x: 1, y: 1 }, jest.fn());
+    g.setStep(0);
+    expect([...t.querySelectorAll("img")].every((i) => i.style.display === "none")).toBe(true);
+  });
+  it("no plan at the newest step (or none at all): done on the next turn", async () => {
+    for (const steps of [() => [P("https://a"), null], () => [], () => { throw new Error("x"); }]) {
+      const g = new Grid({ steps });
+      const done = jest.fn();
+      const t = g.createTile({ z: 8, x: 1, y: 1 }, done);
+      expect(done).not.toHaveBeenCalled();
+      await flush();
+      expect(done).toHaveBeenCalledWith(null, t);
+    }
+  });
+  it("each image placed at its own plan's scale", () => {
+    const g = new Grid({ steps: () => [P("https://a", { scale: 4, offX: 1, offY: 2 }), P("https://b")] });
+    const [a, b] = g.createTile({ z: 9, x: 5, y: 10 }, jest.fn()).querySelectorAll("img");
+    expect(a.style.width).toBe("1024px");
+    expect(a.style.left).toBe("-256px");
+    expect(a.style.top).toBe("-512px");
+    expect(b.style.width).toBe("256px");
+  });
+  it("a relay frame waits for its signed URL; unsigned counts as failed", async () => {
+    const sign = jest.fn((u) => Promise.resolve(u === "/ok" ? "/ok?authSig=z" : null));
+    const g = new Grid({ steps: () => [P("/no", { relay: true }), P("/ok", { relay: true })], sign });
+    const done = jest.fn();
+    const t = g.createTile({ z: 8, x: 1, y: 1 }, done);
+    await flush();
+    const [no, ok] = t.querySelectorAll("img");
+    expect(ok.getAttribute("src")).toBe("/ok?authSig=z");
+    expect(no.hasAttribute("src")).toBe(false);
+    expect(t.__ltmcMotion.loaded[0]).toBe(false);
+  });
+  it("an unloaded tile leaves the layer's registry", () => {
+    const g = new Grid({ steps: () => [P("https://a")] });
+    const t = g.createTile({ z: 8, x: 1, y: 1 }, jest.fn());
+    const u = g.createTile({ z: 8, x: 2, y: 1 }, jest.fn());
+    expect(g._ltmcTiles.size).toBe(2);
+    g.fire("tileunload", { tile: t });
+    expect([...g._ltmcTiles]).toEqual([u]);
   });
 });

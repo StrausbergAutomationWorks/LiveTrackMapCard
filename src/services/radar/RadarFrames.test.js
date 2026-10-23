@@ -40,9 +40,12 @@ describe("constants", () => {
 
 describe("RainViewer", () => {
   it("takes the newest past frame, host and path, time in ms", () => {
-    expect(parseRainViewer(RV)).toEqual({
+    const { list, ...rest } = parseRainViewer(RV);
+    expect(rest).toEqual({
       key: "/v2/radar/4cf7ce64d7d7", host: "https://tilecache.rainviewer.com", path: "/v2/radar/4cf7ce64d7d7", time: 1791271200000,
     });
+    expect(list.at(-1)).toEqual(rest);
+    expect(list.every((f, i) => i === 0 || list[i - 1].time < f.time)).toBe(true);
   });
   it("refuses an empty list, a non-https host, a path that is not a path, a missing time", () => {
     expect(parseRainViewer({ ...RV, radar: { past: [] } })).toBeNull();
@@ -60,7 +63,9 @@ describe("JMA", () => {
     expect(jmaTime("2026100607")).toBeNaN();
   });
   it("takes the first entry with basetime = validtime", () => {
-    expect(parseJma(JMA)).toEqual({ key: "20261006072500", basetime: "20261006072500", validtime: "20261006072500", time: Date.UTC(2026, 9, 6, 7, 25) });
+    const { list, ...rest } = parseJma(JMA);
+    expect(rest).toEqual({ key: "20261006072500", basetime: "20261006072500", validtime: "20261006072500", time: Date.UTC(2026, 9, 6, 7, 25) });
+    expect(list.at(-1)).toEqual(rest);
   });
   it("skips a forecast entry (validtime after basetime) and one without hrpns", () => {
     const list = [
@@ -89,13 +94,18 @@ describe("WMS capabilities", () => {
     expect(timeDefaults(null)).toEqual([]);
   });
   it("GeoMet: the default exactly as listed (on its 6-minute grid)", () => {
-    expect(parseGeoMetCaps(GEOMET)).toEqual({ key: "2026-10-06T06:48:00Z", time: Date.UTC(2026, 9, 6, 6, 48) });
+    const { list, ...rest } = parseGeoMetCaps(GEOMET);
+    expect(rest).toEqual({ key: "2026-10-06T06:48:00Z", time: Date.UTC(2026, 9, 6, 6, 48) });
+    expect(list.at(-1)).toEqual(rest);
+    expect(list.every((f) => f.time <= rest.time && (f.time - rest.time) % (6 * 60000) === 0)).toBe(true);
     expect(parseGeoMetCaps("<x/>")).toBeNull();
   });
   it("nowCOAST: each REGIONAL layer's own default (backlog 285); the group and other layers carry none", () => {
     const m = parseNowCoastRegions(NOWCOAST);
     expect([...m.keys()]).toEqual(["conus_base_reflectivity_mosaic", "alaska_base_reflectivity_mosaic", "guam_base_reflectivity_mosaic"]);
-    expect(m.get("conus_base_reflectivity_mosaic")).toEqual({ key: "2026-10-06T06:48:14Z", time: Date.UTC(2026, 9, 6, 6, 48, 14) });
+    const { list, ...rest } = m.get("conus_base_reflectivity_mosaic");
+    expect(rest).toEqual({ key: "2026-10-06T06:48:14Z", time: Date.UTC(2026, 9, 6, 6, 48, 14) });
+    expect(list.at(-1).time).toBe(rest.time);
     expect(m.get("alaska_base_reflectivity_mosaic").key).toBe("2026-10-06T06:50:02Z");
     expect(m.get("guam_base_reflectivity_mosaic").key).toBe("2026-10-06T06:40:00Z");
     expect(parseNowCoastRegions("").size).toBe(0);

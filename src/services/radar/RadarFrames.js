@@ -1,7 +1,9 @@
 /**
  * The weather radar overlay's frames (D13 "Frames"): the newest frame of each
- * source, one frame, no animation. Pure parsers and clocks; the service
- * fetches and schedules.
+ * source, and (backlog 285, D13 "Motion") the source's whole list on it as
+ * `list`, oldest first, for the 30-minute loop. The list comes from the SAME
+ * answer: nothing more is fetched for it. Pure parsers and clocks; the
+ * service fetches and schedules.
  *
  * A frame is {key, time, ...}: `key` is what goes in the tile URL (an ISO
  * time for WMS, a path for RainViewer, a basetime for JMA), `time` its moment
@@ -37,7 +39,11 @@ export function parseRainViewer(json) {
   const past = isObj(json.radar) && Array.isArray(json.radar.past) ? json.radar.past : [];
   const last = past[past.length - 1];
   if (!isObj(last) || typeof last.path !== "string" || !/^\/[\w/.-]+$/.test(last.path) || !Number.isFinite(last.time)) return null;
-  return { key: last.path, host: json.host, path: last.path, time: last.time * 1000 };
+  const list = past
+    .filter((p) => isObj(p) && typeof p.path === "string" && /^\/[\w/.-]+$/.test(p.path) && Number.isFinite(p.time))
+    .map((p) => ({ key: p.path, host: json.host, path: p.path, time: p.time * 1000 }))
+    .sort((a, b) => a.time - b.time);
+  return { key: last.path, host: json.host, path: last.path, time: last.time * 1000, list };
 }
 
 /**
@@ -58,15 +64,19 @@ export function jmaTime(s) {
  */
 export function parseJma(json) {
   if (!Array.isArray(json)) return null;
+  const list = [];
   for (const e of json) {
     if (!isObj(e)) continue;
     if (typeof e.basetime !== "string" || e.basetime !== e.validtime) continue;
     const time = jmaTime(e.basetime);
     if (!Number.isFinite(time)) continue;
     if (Array.isArray(e.elements) && !e.elements.includes("hrpns")) continue;
-    return { key: e.basetime, basetime: e.basetime, validtime: e.validtime, time };
+    if (!list.some((f) => f.key === e.basetime)) list.push({ key: e.basetime, basetime: e.basetime, validtime: e.validtime, time });
   }
-  return null;
+  if (!list.length) return null;
+  const first = list[0];
+  list.sort((a, b) => a.time - b.time);
+  return { ...first, list };
 }
 
 /**
@@ -99,6 +109,75 @@ export function timeDefaults(text) {
   return out;
 }
 
+/** A WMS time list is never expanded past this many frames. */
+export const MAX_LIST = 500;
+
+/**
+ * An ISO 8601 duration of hours, minutes and seconds ("PT6M", "PT1H30M") in ms; NaN otherwise.
+ * @param {string} s
+ * @returns {number}
+ */
+export function isoDurationMs(s) {
+  const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(String(s));
+  if (!m || (!m[1] && !m[2] && !m[3])) return NaN;
+  return ((+(m[1] ?? 0) * 60 + +(m[2] ?? 0)) * 60 + +(m[3] ?? 0)) * 1000;
+}
+
+/**
+ * A WMS time Dimension's values as frames, oldest first: a comma list, each
+ * item a time or a `start/end/period` interval. A listed time is kept
+ * EXACTLY as written (D13: request exactly a listed time); an interval's
+ * times are written as its start is (with or without fractions).
+ * @param {string} body the Dimension's text
+ * @returns {{key: string, time: number}[]}
+ */
+export function wmsTimeList(body) {
+  const out = [];
+  if (typeof body !== "string") return out;
+  for (const raw of body.split(",")) {
+    const item = raw.trim();
+    if (!item) continue;
+    const parts = item.split("/");
+    if (parts.length === 1) {
+      const t = isoTime(item);
+      if (Number.isFinite(t)) out.push({ key: item, time: t });
+    } else if (parts.length === 3) {
+      const a = isoTime(parts[0]);
+      const z = isoTime(parts[1]);
+      const step = isoDurationMs(parts[2]);
+      if (!Number.isFinite(a) || !Number.isFinite(z) || !(step > 0) || z < a) continue;
+      const frac = /\.\d+Z$/.test(parts[0]);
+      const first = Math.max(a, z - (MAX_LIST - 1) * step);
+      for (let t = a + Math.ceil((first - a) / step) * step; t <= z; t += step) {
+        const iso = new Date(t).toISOString();
+        out.push({ key: frac ? iso : iso.replace(/\.\d+Z$/, "Z"), time: t });
+      }
+    }
+    if (out.length > 4 * MAX_LIST) break;
+  }
+  const seen = new Set();
+  return out.sort((x, y) => x.time - y.time).filter((f) => !seen.has(f.time) && seen.add(f.time)).slice(-MAX_LIST);
+}
+
+/**
+ * The `time` Dimensions of a capabilities document: each one's `default`
+ * and its values text.
+ * @param {string} text
+ * @returns {{default: ?string, values: string}[]}
+ */
+export function timeDimensions(text) {
+  const out = [];
+  if (typeof text !== "string") return out;
+  const re = /<(?:\w+:)?Dimension\b([^>]*)>([^<]*)</g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    if (!/\bname="time"/.test(m[1])) continue;
+    const d = /\bdefault="([^"]+)"/.exec(m[1]);
+    out.push({ default: d ? d[1] : null, values: m[2] });
+  }
+  return out;
+}
+
 /**
  * GeoMet's per-layer capabilities: the time Dimension's `default` is the
  * newest frame, and the ONLY kind of time it accepts is one on its grid
@@ -108,9 +187,11 @@ export function timeDefaults(text) {
  * @returns {?{key: string, time: number}}
  */
 export function parseGeoMetCaps(text) {
-  for (const d of timeDefaults(text)) {
-    const t = isoTime(d);
-    if (Number.isFinite(t)) return { key: d, time: t };
+  for (const dim of timeDimensions(text)) {
+    const t = isoTime(dim.default);
+    if (!Number.isFinite(t)) continue;
+    const list = wmsTimeList(dim.values).filter((f) => f.time <= t);
+    return { key: dim.default, time: t, list: list.length ? list : [{ key: dim.default, time: t }] };
   }
   return null;
 }
@@ -133,9 +214,12 @@ export function parseNowCoastRegions(text) {
     const name = names[k][1].trim();
     if (!/^[a-z]+_base_reflectivity_mosaic$/.test(name)) continue;
     const end = k + 1 < names.length ? names[k + 1].index : text.length;
-    const d = timeDefaults(text.slice(names[k].index, end))[0];
+    const dim = timeDimensions(text.slice(names[k].index, end))[0];
+    const d = dim?.default;
     const t = isoTime(d);
-    if (Number.isFinite(t) && !out.has(name)) out.set(name, { key: d, time: t });
+    if (!Number.isFinite(t) || out.has(name)) continue;
+    const list = wmsTimeList(dim.values).filter((f) => f.time <= t);
+    out.set(name, { key: d, time: t, list: list.length ? list : [{ key: d, time: t }] });
   }
   return out;
 }
@@ -150,6 +234,23 @@ export function computedFiveMinute(now) {
   const step = 5 * 60 * 1000;
   const t = Math.floor((now - step) / step) * step;
   return { key: new Date(t).toISOString().replace(".000Z", "Z"), time: t };
+}
+
+/**
+ * FMI and DWD's frames back from the computed newest, oldest first. Never
+ * one after it (D13: DWD answered an image for a time past its newest).
+ * @param {number} now epoch ms
+ * @param {number} [count]
+ * @returns {{key: string, time: number}[]}
+ */
+export function computedList(now, count = 13) {
+  const newest = computedFiveMinute(now);
+  const out = [];
+  for (let k = count - 1; k >= 0; k--) {
+    const t = newest.time - k * 5 * 60 * 1000;
+    out.push({ key: new Date(t).toISOString().replace(".000Z", "Z"), time: t });
+  }
+  return out;
 }
 
 /**
