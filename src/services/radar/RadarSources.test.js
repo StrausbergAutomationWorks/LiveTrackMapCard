@@ -3,6 +3,7 @@ import {
   SOURCES, defaultOrder, wrapX, tileBounds, tileInBox, chainFor, pickSource, nativeTile,
   mercatorBbox, wmsTileUrl, rainviewerTileUrl, jmaTileUrl, relayTilePath, tilePlan,
   tilesInView, sourcesForView, MERC_R, RAINVIEWER_MAX_ZOOM, JMA_MAX_ZOOM,
+  inUs, US_BOXES, NOWCOAST_REGIONS, RAINVIEWER_STYLE,
 } from "./RadarSources.js";
 
 // Backlog 280, 06_MAP_CONTRACT_OVERLAYS.md D13: the per-tile source choice.
@@ -26,14 +27,22 @@ const ids = (list) => list.map((s) => s.id);
 
 describe("the source table", () => {
   it("is in D13's trying order, RainViewer last", () => {
-    expect(defaultOrder()).toEqual(["fmi", "dwd", "jma", "geomet", "nowcoast", "rainviewer"]);
+    expect(defaultOrder()).toEqual(["fmi", "dwd", "jma", "geomet", "nowcoast_conus", "nowcoast_alaska", "nowcoast_hawaii", "nowcoast_caribbean", "nowcoast_guam", "rainviewer"]);
+  });
+  it("nowCOAST is its five REGIONAL layers, one capabilities list, each requested as itself (backlog 285)", () => {
+    const nc = SOURCES.filter((s) => s.group === "nowcoast");
+    expect(nc.map((s) => s.layer)).toEqual(NOWCOAST_REGIONS.map((r) => `${r.region}_base_reflectivity_mosaic`));
+    expect(new Set(nc.map((s) => s.list)).size).toBe(1);
+    expect(nc.map((s) => s.boxes)).toEqual(NOWCOAST_REGIONS.map((r) => [r.box]));
+    expect(US_BOXES).toEqual(NOWCOAST_REGIONS.map((r) => r.box));
+    expect(byId("nowcoast_conus").boxes).toEqual([{ w: -130, e: -60, s: 20, n: 55 }]);
   });
   it("caps RainViewer at z7 and JMA at z10, WMS at none", () => {
     expect(byId("rainviewer").maxNativeZoom).toBe(7);
     expect(RAINVIEWER_MAX_ZOOM).toBe(7);
     expect(byId("jma").maxNativeZoom).toBe(10);
     expect(JMA_MAX_ZOOM).toBe(10);
-    for (const id of ["fmi", "dwd", "geomet", "nowcoast"]) expect(byId(id).maxNativeZoom).toBeNull();
+    for (const id of ["fmi", "dwd", "geomet", "nowcoast_conus", "nowcoast_alaska", "nowcoast_hawaii", "nowcoast_caribbean", "nowcoast_guam"]) expect(byId(id).maxNativeZoom).toBeNull();
   });
   it("carries GeoMet's box from its capabilities", () => {
     expect(byId("geomet").boxes).toEqual([{ w: -170.32, e: -50.0, s: 16.93, n: 67.19 }]);
@@ -68,10 +77,50 @@ describe("tile geometry", () => {
 });
 
 describe("which source a tile tries", () => {
-  it("Chicago z8: GeoMet, then nowCOAST CONUS, then RainViewer", () => {
+  it("Chicago z8 in the table's order (an explicit order): GeoMet, then nowCOAST CONUS, then RainViewer", () => {
     const { x, y } = txy(41.88, -87.63, 8);
-    expect(ids(chainFor(8, x, y, SOURCES))).toEqual(["geomet", "nowcoast", "rainviewer"]);
+    expect(ids(chainFor(8, x, y, SOURCES))).toEqual(["geomet", "nowcoast_conus", "rainviewer"]);
     expect(pickSource(8, x, y, SOURCES, all).id).toBe("geomet");
+  });
+  it("Chicago z8 in the US order (D13, Lee 2026-10-12): RainViewer, then GeoMet, then nowCOAST", () => {
+    const { x, y } = txy(41.88, -87.63, 8);
+    expect(ids(chainFor(8, x, y, SOURCES, { us: true }))).toEqual(["rainviewer", "geomet", "nowcoast_conus"]);
+    expect(pickSource(8, x, y, SOURCES, all, { us: true }).id).toBe("rainviewer");
+    expect(pickSource(8, x, y, SOURCES, (s) => s.id !== "rainviewer", { us: true }).id).toBe("geomet");
+  });
+  it("the US order keeps a relay first, and leaves tiles outside the US boxes alone", () => {
+    const relay = { id: "relay:x", kind: "relay", boxes: [{ w: -100, e: -80, s: 35, n: 50 }] };
+    const { x, y } = txy(41.88, -87.63, 8);
+    expect(ids(chainFor(8, x, y, [relay, ...SOURCES], { us: true }))).toEqual(["relay:x", "rainviewer", "geomet", "nowcoast_conus"]);
+    const t = txy(60, -100, 8);
+    expect(ids(chainFor(8, t.x, t.y, SOURCES, { us: true }))).toEqual(["geomet", "rainviewer"]);
+    const fi = txy(61.0, 25.0, 8);
+    expect(pickSource(8, fi.x, fi.y, SOURCES, all, { us: true }).id).toBe("fmi");
+  });
+  it("US order: where two nowCOAST regions hold a tile (CONUS and Caribbean over Havana), the table's order stands", () => {
+    const t = txy(23.1, -82.4, 8);
+    expect(ids(chainFor(8, t.x, t.y, SOURCES, { us: true }))).toEqual(["rainviewer", "geomet", "nowcoast_conus", "nowcoast_caribbean"]);
+  });
+  it("US backups are GeoMet and nowCOAST only: another source in a US box is not offered", () => {
+    const { x, y } = txy(41.88, -87.63, 8);
+    const other = { id: "other", kind: "wms", url: "https://o", layer: "l", boxes: [{ w: -130, e: -60, s: 20, n: 55 }], maxNativeZoom: null };
+    const list = [byId("geomet"), other, byId("rainviewer")];
+    const f = { key: "2026-10-23T05:00:00Z", time: 0 };
+    const p = tilePlan(8, x, y, list, new Map([["rainviewer", { key: "/p", host: "https://h", path: "/p", time: 0 }], ["geomet", f], ["other", f]]), { us: true });
+    expect(p.source.id).toBe("rainviewer");
+    expect(p.fallbacks.map((b) => b.source.id)).toEqual(["geomet"]);
+    const r = sourcesForView(8, [{ x, y }], list, all, { us: true });
+    expect([...r.wanted].sort()).toEqual(["geomet", "rainviewer"]);
+  });
+  it("inUs: the whole tile inside one of nowCOAST's five boxes (rectangles: southern Canada counts)", () => {
+    const at = (lat, lon, z = 8) => { const p = txy(lat, lon, z); return inUs(tileBounds(z, p.x, p.y)); };
+    expect(at(41.88, -87.63)).toBe(true);
+    expect(at(43.65, -79.38)).toBe(true);
+    expect(at(13.45, 144.79)).toBe(true);
+    expect(at(21.3, -157.85)).toBe(true);
+    expect(at(51.5, -0.12)).toBe(false);
+    expect(at(60, -100)).toBe(false);
+    expect(at(45, -95, 2)).toBe(false);
   });
   it("southern Finland z8: FMI; Frankfurt z8: DWD; Tokyo z8: JMA; London z8: RainViewer only", () => {
     let t = txy(61.0, 25.0, 8);
@@ -85,7 +134,8 @@ describe("which source a tile tries", () => {
   });
   it("Guam z7: nowCOAST, not GeoMet (east of the date line)", () => {
     const t = txy(13.45, 144.79, 7);
-    expect(ids(chainFor(7, t.x, t.y, SOURCES))).toEqual(["nowcoast", "rainviewer"]);
+    expect(ids(chainFor(7, t.x, t.y, SOURCES))).toEqual(["nowcoast_guam", "rainviewer"]);
+    expect(ids(chainFor(7, t.x, t.y, SOURCES, { us: true }))).toEqual(["rainviewer", "nowcoast_guam"]);
   });
   it("Attu (far Aleutians, 173E) z7: RainViewer only; Unalaska (-166.5) z7: GeoMet", () => {
     let t = txy(52.9, 173.2, 7);
@@ -107,7 +157,7 @@ describe("which source a tile tries", () => {
   });
   it("an unusable source falls to the next; none usable: null", () => {
     const { x, y } = txy(41.88, -87.63, 8);
-    expect(pickSource(8, x, y, SOURCES, (s) => s.id !== "geomet").id).toBe("nowcoast");
+    expect(pickSource(8, x, y, SOURCES, (s) => s.id !== "geomet").id).toBe("nowcoast_conus");
     expect(pickSource(8, x, y, SOURCES, (s) => s.id === "rainviewer").id).toBe("rainviewer");
     expect(pickSource(8, x, y, SOURCES, () => false)).toBeNull();
   });
@@ -149,9 +199,15 @@ describe("URLs", () => {
   it("WMS encodes a namespaced layer", () => {
     expect(wmsTileUrl(byId("fmi"), 5, 18, 8, "2026-10-06T07:00:00Z")).toContain("layers=Radar%3Asuomi_dbz_eureffin");
   });
-  it("RainViewer: host + path + 256/z/x/y/scheme/1_1.png", () => {
-    expect(rainviewerTileUrl({ host: "https://tilecache.rainviewer.com", path: "/v2/radar/abc" }, 7, 33, 47, 2))
+  it("RainViewer: host + path + 256/z/x/y/2/1_1.png, the scheme fixed (it is ignored, backlog 285)", () => {
+    expect(rainviewerTileUrl({ host: "https://tilecache.rainviewer.com", path: "/v2/radar/abc" }, 7, 33, 47))
       .toBe("https://tilecache.rainviewer.com/v2/radar/abc/256/7/33/47/2/1_1.png");
+    expect(RAINVIEWER_STYLE).toBe("2/1_1");
+  });
+  it("nowCOAST requests the REGIONAL layer at its own time", () => {
+    const u = wmsTileUrl(byId("nowcoast_conus"), 8, 65, 95, "2026-10-23T05:08:19Z");
+    expect(u).toContain("layers=conus_base_reflectivity_mosaic");
+    expect(u).toContain("time=2026-10-23T05%3A08%3A19Z");
   });
   it("JMA: basetime/none/validtime/surf/hrpns/z/x/y.png", () => {
     expect(jmaTileUrl(byId("jma"), { basetime: "20261006072500", validtime: "20261006072500" }, 10, 909, 403))
@@ -167,39 +223,66 @@ describe("tilePlan", () => {
   const geo = { key: "2026-10-06T06:48:00Z", time: 0 };
   it("Chicago z8 with GeoMet: one WMS tile, unscaled", () => {
     const { x, y } = txy(41.88, -87.63, 8);
-    const p = tilePlan(8, x, y, SOURCES, new Map([["geomet", geo], ["rainviewer", rv]]), { scheme: 2 });
+    const p = tilePlan(8, x, y, SOURCES, new Map([["geomet", geo], ["rainviewer", rv]]));
     expect(p.source.id).toBe("geomet");
+    expect(p.fallbacks).toEqual([]);
     expect(p.url).toContain("time=2026-10-06T06%3A48%3A00Z");
     expect(p.scale).toBe(1);
     expect(p.relay).toBe(false);
   });
   it("London z9 with RainViewer: the z7 parent, scaled by 4, never z8+", () => {
     const { x, y } = txy(51.5, -0.12, 9);
-    const p = tilePlan(9, x, y, SOURCES, new Map([["rainviewer", rv]]), { scheme: 2 });
+    const p = tilePlan(9, x, y, SOURCES, new Map([["rainviewer", rv]]));
     expect(p.source.id).toBe("rainviewer");
     expect(p.url).toMatch(/\/256\/7\/\d+\/\d+\/2\/1_1\.png$/);
     expect(p.scale).toBe(4);
     expect(p.offX).toBe(x % 4);
     expect(p.offY).toBe(y % 4);
   });
-  it("the scheme option reaches the RainViewer URL", () => {
+  it("the RainViewer URL keeps /2/1_1 whatever the options (the scheme option is gone, backlog 285)", () => {
     const { x, y } = txy(51.5, -0.12, 5);
-    expect(tilePlan(5, x, y, SOURCES, new Map([["rainviewer", rv]]), { scheme: 4 }).url).toMatch(/\/4\/1_1\.png$/);
+    expect(tilePlan(5, x, y, SOURCES, new Map([["rainviewer", rv]]), { scheme: 4 }).url).toMatch(/\/2\/1_1\.png$/);
+  });
+  it("US: Chicago draws RainViewer, its fallbacks GeoMet then nowCOAST CONUS, each at its own zoom (D13 backups)", () => {
+    const { x, y } = txy(41.88, -87.63, 8);
+    const nc = { key: "2026-10-23T05:08:19Z", time: 0 };
+    const p = tilePlan(8, x, y, SOURCES, new Map([["rainviewer", rv], ["geomet", geo], ["nowcoast_conus", nc]]), { us: true });
+    expect(p.source.id).toBe("rainviewer");
+    expect(p.scale).toBe(2);
+    expect(p.fallbacks.map((f) => f.source.id)).toEqual(["geomet", "nowcoast_conus"]);
+    expect(p.fallbacks.map((f) => f.scale)).toEqual([1, 1]);
+    expect(p.fallbacks[0].url).toContain("layers=RADAR_1KM_RRAI");
+    expect(p.fallbacks[1].url).toContain("layers=conus_base_reflectivity_mosaic");
+  });
+  it("US: a backup without a usable frame is not offered; no backups when RainViewer is not the source", () => {
+    const { x, y } = txy(41.88, -87.63, 8);
+    let p = tilePlan(8, x, y, SOURCES, new Map([["rainviewer", rv], ["geomet", geo]]), { us: true });
+    expect(p.fallbacks.map((f) => f.source.id)).toEqual(["geomet"]);
+    p = tilePlan(8, x, y, SOURCES, new Map([["geomet", geo]]), { us: true });
+    expect(p.source.id).toBe("geomet");
+    expect(p.fallbacks).toEqual([]);
+  });
+  it("outside the US, and with an explicit order, a RainViewer tile has no backups", () => {
+    let t = txy(51.5, -0.12, 8);
+    expect(tilePlan(8, t.x, t.y, SOURCES, new Map([["rainviewer", rv], ["geomet", geo]]), { us: true }).fallbacks).toEqual([]);
+    t = txy(41.88, -87.63, 8);
+    const order = [byId("rainviewer"), byId("geomet")];
+    expect(tilePlan(8, t.x, t.y, order, new Map([["rainviewer", rv], ["geomet", geo]])).fallbacks).toEqual([]);
   });
   it("Tokyo z12 with JMA: the z10 parent", () => {
     const { x, y } = txy(35.68, 139.69, 12);
-    const p = tilePlan(12, x, y, SOURCES, new Map([["jma", { key: "b", basetime: "b", validtime: "b", time: 0 }]]), { scheme: 2 });
+    const p = tilePlan(12, x, y, SOURCES, new Map([["jma", { key: "b", basetime: "b", validtime: "b", time: 0 }]]));
     expect(p.url).toContain("/surf/hrpns/10/");
     expect(p.scale).toBe(4);
   });
   it("no usable frame: null (blank)", () => {
     const { x, y } = txy(41.88, -87.63, 8);
-    expect(tilePlan(8, x, y, SOURCES, new Map(), { scheme: 2 })).toBeNull();
+    expect(tilePlan(8, x, y, SOURCES, new Map())).toBeNull();
   });
   it("a relay comes first and is marked for signing", () => {
     const relay = { id: "relay:knmi", kind: "relay", tiles: "/api/k/{z}/{x}/{y}.png", boxes: [{ w: 3, e: 8, s: 50, n: 54 }], maxNativeZoom: 10 };
     const { x, y } = txy(52.1, 5.1, 8);
-    const p = tilePlan(8, x, y, [relay, ...SOURCES], new Map([["relay:knmi", { key: "t", time: 0 }], ["rainviewer", rv]]), { scheme: 2 });
+    const p = tilePlan(8, x, y, [relay, ...SOURCES], new Map([["relay:knmi", { key: "t", time: 0 }], ["rainviewer", rv]]));
     expect(p.source.id).toBe("relay:knmi");
     expect(p.relay).toBe(true);
     expect(p.url).toBe(`/api/k/8/${x}/${y}.png`);
@@ -224,9 +307,21 @@ describe("the view", () => {
     expect([...r.wanted].sort()).toEqual(["geomet", "rainviewer"]);
     r = sourcesForView(8, [chi], SOURCES, () => false);
     expect([...r.drawing]).toEqual([]);
-    expect([...r.wanted]).toEqual(["geomet", "nowcoast", "rainviewer"]);
-    r = sourcesForView(8, [chi], SOURCES, (s) => s.id === "nowcoast");
-    expect([...r.drawing]).toEqual(["nowcoast"]);
-    expect([...r.wanted]).toEqual(["geomet", "nowcoast"]);
+    expect([...r.wanted]).toEqual(["geomet", "nowcoast_conus", "rainviewer"]);
+    r = sourcesForView(8, [chi], SOURCES, (s) => s.id === "nowcoast_conus");
+    expect([...r.drawing]).toEqual(["nowcoast_conus"]);
+    expect([...r.wanted]).toEqual(["geomet", "nowcoast_conus"]);
+  });
+  it("US: while RainViewer draws, its backups are wanted too, so their frames are ready (D13)", () => {
+    const chi = txy(41.88, -87.63, 8);
+    const lon = txy(51.5, -0.12, 8);
+    let r = sourcesForView(8, [chi, lon], SOURCES, all, { us: true });
+    expect([...r.drawing]).toEqual(["rainviewer"]);
+    expect([...r.wanted].sort()).toEqual(["geomet", "nowcoast_conus", "rainviewer"]);
+    r = sourcesForView(8, [lon], SOURCES, all, { us: true });
+    expect([...r.wanted]).toEqual(["rainviewer"]);
+    r = sourcesForView(8, [chi], SOURCES, (s) => s.id !== "rainviewer", { us: true });
+    expect([...r.drawing]).toEqual(["geomet"]);
+    expect([...r.wanted]).toEqual(["rainviewer", "geomet"]);
   });
 });

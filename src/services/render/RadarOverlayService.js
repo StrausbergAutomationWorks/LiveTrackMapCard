@@ -2,7 +2,7 @@ import L from "leaflet";
 import Logger from "../../util/Logger.js";
 import { SOURCES, tilePlan, tilesInView, sourcesForView } from "../radar/RadarSources.js";
 import {
-  POLL_MS, parseRainViewer, parseJma, parseGeoMetCaps, parseNowCoastCaps,
+  POLL_MS, parseRainViewer, parseJma, parseGeoMetCaps, parseNowCoastRegions,
   computedFiveMinute, isFresh, isoTime,
 } from "../radar/RadarFrames.js";
 
@@ -35,10 +35,12 @@ export const SIGN_SECONDS = 600;
 
 /**
  * Defaults; `weather_radar` in the card config overrides each. Opacity 0.5
- * and RainViewer scheme 2 chosen by Lee from pictures of 0.5 / 0.65 / 0.8 and
- * schemes 2 / 4 / 6 with alerts and rail on, 2026-10-06 (D13 "Drawing" 2, 6).
+ * chosen by Lee from pictures of 0.5 / 0.65 / 0.8 with alerts and rail on,
+ * 2026-10-06 (D13 "Drawing" 2). `rainviewer_scheme` is no longer read:
+ * RainViewer ignores the scheme (D13 "Drawing" 6, backlog 285; Lee
+ * 2026-10-12 00:01), so an old config holding it changes nothing.
  */
-export const DEFAULT_RADAR = Object.freeze({ enabled: true, opacity: 0.5, show: true, scheme: 2, order: null });
+export const DEFAULT_RADAR = Object.freeze({ enabled: true, opacity: 0.5, show: true, order: null });
 
 /**
  * @param {*} v
@@ -51,10 +53,12 @@ function isObj(v) {
 /**
  * `weather_radar`: absent or true offers the overlay with D13's defaults;
  * false turns it off (no checkbox, no fetch); a mapping overrides `opacity`,
- * `show` (the checkbox's start state), `rainviewer_scheme` and `sources`
- * (ids to keep, in trying order; a relay by its own `id`).
+ * `show` (the checkbox's start state) and `sources` (ids to keep, in trying
+ * order; a relay by its own `id`; `nowcoast` means its five regional layers).
+ * An explicit `sources` also turns off D13's US order: the order given is
+ * the order everywhere.
  * @param {*} input
- * @returns {{enabled: boolean, opacity: number, show: boolean, scheme: number, order: ?string[]}}
+ * @returns {{enabled: boolean, opacity: number, show: boolean, order: ?string[]}}
  */
 export function parseRadarOption(input) {
   if (input === undefined || input === null || input === true || input === "auto") return { ...DEFAULT_RADAR };
@@ -66,7 +70,6 @@ export function parseRadarOption(input) {
   }
   if (typeof input.opacity === "number" && Number.isFinite(input.opacity) && input.opacity >= 0 && input.opacity <= 1) o.opacity = input.opacity;
   if (typeof input.show === "boolean") o.show = input.show;
-  if (Number.isInteger(input.rainviewer_scheme) && input.rainviewer_scheme >= 0 && input.rainviewer_scheme <= 8) o.scheme = input.rainviewer_scheme;
   if (Array.isArray(input.sources)) {
     o.order = [...new Set(input.sources.filter((s) => typeof s === "string" && s.trim() !== "").map((s) => s.trim()))];
   }
@@ -79,6 +82,16 @@ export function parseRadarOption(input) {
  */
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+/**
+ * The frame list a source is read from: its group (nowCOAST's five regional
+ * layers share one capabilities document), else itself.
+ * @param {object} s
+ * @returns {string}
+ */
+function listKey(s) {
+  return s.group ?? s.id;
 }
 
 /**
@@ -150,8 +163,11 @@ export function discoverRelays(states) {
 export function orderSources(relays, order) {
   const all = [...relays, ...SOURCES];
   if (!order) return all;
-  const byName = new Map(all.map((s) => [s.kind === "relay" ? s.relayId : s.id, s]));
-  return order.map((n) => byName.get(n)).filter(Boolean);
+  const byName = new Map(all.map((s) => [s.kind === "relay" ? s.relayId : s.id, [s]]));
+  for (const s of SOURCES) if (s.group) byName.set(s.group, [...(byName.get(s.group) ?? []), s]);
+  const out = [];
+  for (const n of order) for (const s of byName.get(n) ?? []) if (!out.includes(s)) out.push(s);
+  return out;
 }
 
 /**
@@ -197,12 +213,24 @@ export function radarGridClass() {
       img.alt = "";
       img.setAttribute("role", "presentation");
       img.draggable = false;
-      const size = 256 * plan.scale;
-      img.style.cssText = `position:absolute;left:${-plan.offX * 256}px;top:${-plan.offY * 256}px;width:${size}px;height:${size}px;max-width:none;pointer-events:none;`;
+      const place = (p) => {
+        const size = 256 * p.scale;
+        img.style.cssText = `position:absolute;left:${-p.offX * 256}px;top:${-p.offY * 256}px;width:${size}px;height:${size}px;max-width:none;pointer-events:none;`;
+      };
+      place(plan);
       let settled = false;
       const finish = () => { if (!settled) { settled = true; done(null, tile); } };
+      // In the US a failed RainViewer image tries its backups in turn (D13),
+      // and the source that drew is reported for the credit line.
+      const backups = Array.isArray(plan.fallbacks) ? [...plan.fallbacks] : [];
       img.onload = finish;
-      img.onerror = () => { img.remove(); finish(); };
+      img.onerror = () => {
+        const next = backups.shift();
+        if (!next) { img.remove(); finish(); return; }
+        place(next);
+        try { this.options.onFallback?.(next.source.id); } catch (e) { Logger.error("[Radar] fallback credit", e); }
+        img.src = next.url;
+      };
       tile.appendChild(img);
       if (plan.relay) {
         Promise.resolve(this.options.sign(plan.url))
@@ -249,6 +277,9 @@ export default class RadarOverlayService {
     /** What the newest layer (pending or shown) draws with. */
     this.snap = null;
     this.credits = new Set();
+    /** Sources drawing on screen as the view computes them, and those a failed tile fell to (D13 backups). */
+    this.drawing = new Set();
+    this.fellTo = new Set();
     this.on = false;
     this.timer = null;
     this.disposed = false;
@@ -337,6 +368,8 @@ export default class RadarOverlayService {
     this._dropPending();
     if (this.layer) { this.group?.removeLayer(this.layer); this.layer = null; }
     this.snap = null;
+    this.drawing = new Set();
+    this.fellTo = new Set();
     this._setCredits(new Set());
   }
 
@@ -347,16 +380,19 @@ export default class RadarOverlayService {
       const sources = this._sources();
       const usable = this._usableFrames();
       const { z, tiles } = this._view();
-      const { drawing, wanted } = sourcesForView(z, tiles, sources, (s) => usable.has(s.id));
+      const { drawing, wanted } = sourcesForView(z, tiles, sources, (s) => usable.has(s.id), this._opts());
       const now = this.now();
+      const asked = new Set();
       for (const s of sources) {
-        if (!wanted.has(s.id) || !s.list || this.inflight.has(s.id)) continue;
-        if ((this.nextAt.get(s.id) ?? 0) > now) continue;
+        const key = listKey(s);
+        if (!wanted.has(s.id) || !s.list || asked.has(key) || this.inflight.has(key)) continue;
+        asked.add(key);
+        if ((this.nextAt.get(key) ?? 0) > now) continue;
         this._fetchFrame(s);
       }
       const rv = this.frames.get("rainviewer");
       if (wanted.has("rainviewer") && rv && !usable.has("rainviewer")) {
-        this._warnOnce("rv-stale", "[Radar] RainViewer's newest frame is over 30 minutes old: no radar where it is the source");
+        this._warnOnce("rv-stale", "[Radar] RainViewer's newest frame is over 30 minutes old: its tiles fall to the next source (in the US GeoMet, then nowCOAST), else no radar");
       }
       // No new layer while a frame list is still on its way: MEASURED 2026-10-06, a cold
       // view over Florida otherwise drew nowCOAST (whose list answered first) and then
@@ -364,18 +400,38 @@ export default class RadarOverlayService {
       // last list to settle refreshes again (its finally), so the layer follows at once.
       if (this.inflight.size === 0) {
         this._swapIfChanged(usable, drawing, wanted);
-        this._setCredits(drawing);
+        this.drawing = drawing;
+        this._setCredits(new Set([...drawing, ...this.fellTo]));
       }
     } catch (e) {
       Logger.error("[Radar] refresh failed; map unaffected", e);
     }
   }
 
-  /** @param {object} s a listed source */
+  /**
+   * D13's US order applies unless the config gave an explicit `sources` order.
+   * @returns {{us: boolean}}
+   */
+  _opts() {
+    return { us: this.opt.order === null };
+  }
+
+  /**
+   * A tile fell from RainViewer to a backup: credit it while that layer shows.
+   * @param {string} id
+   */
+  _noteFallback(id) {
+    if (this.fellTo.has(id)) return;
+    this.fellTo.add(id);
+    this._setCredits(new Set([...this.drawing, ...this.fellTo]));
+  }
+
+  /** @param {object} s a listed source; sources sharing a list (nowCOAST's regions) are read once */
   _fetchFrame(s) {
+    const key = listKey(s);
     const ctl = typeof AbortController === "function" ? new AbortController() : null;
-    this.inflight.set(s.id, ctl);
-    this.nextAt.set(s.id, this.now() + (POLL_MS[s.id] ?? 5 * 60 * 1000));
+    this.inflight.set(key, ctl);
+    this.nextAt.set(key, this.now() + (POLL_MS[key] ?? 5 * 60 * 1000));
     const json = s.frame === "rainviewer" || s.frame === "jma";
     let timedOut = false;
     const timer = this.setTimeout(() => { timedOut = true; try { ctl?.abort(); } catch { /* nothing */ } }, FETCH_TIMEOUT_MS);
@@ -391,7 +447,18 @@ export default class RadarOverlayService {
         return json ? r.json() : r.text();
       })
       .then((body) => {
-        const parse = { rainviewer: parseRainViewer, jma: parseJma, geomet: parseGeoMetCaps, nowcoast: parseNowCoastCaps }[s.frame];
+        if (s.frame === "nowcoast") {
+          const regions = parseNowCoastRegions(body);
+          let found = 0;
+          for (const r of SOURCES) {
+            if (r.group !== s.group) continue;
+            const f = regions.get(r.layer);
+            if (f) { this.frames.set(r.id, f); found += 1; }
+          }
+          if (!found) throw new Error("no regional frame in the answer");
+          return;
+        }
+        const parse = { rainviewer: parseRainViewer, jma: parseJma, geomet: parseGeoMetCaps }[s.frame];
         const f = parse ? parse(body) : null;
         if (!f) throw new Error("no frame in the answer");
         this.frames.set(s.id, f);
@@ -399,11 +466,11 @@ export default class RadarOverlayService {
       .catch((e) => {
         if (e?.name === "AbortError" && !timedOut) return;
         const why = timedOut ? `no answer in ${FETCH_TIMEOUT_MS / 1000} s` : (e?.message ?? e);
-        this._warnOnce(`fetch:${s.id}`, `[Radar] ${s.id} frame list not read (${why}); its tiles fall to the next source`);
+        this._warnOnce(`fetch:${key}`, `[Radar] ${key} frame list not read (${why}); its tiles fall to the next source`);
       })
       .finally(() => {
         this.clearTimeout(timer);
-        if (this.inflight.get(s.id) === ctl) this.inflight.delete(s.id);
+        if (this.inflight.get(key) === ctl) this.inflight.delete(key);
         if (this.on && !this.disposed) this._refresh();
       });
   }
@@ -438,7 +505,7 @@ export default class RadarOverlayService {
    */
   _swapIfChanged(usable, drawing, wanted) {
     if (!this._outOfDate(usable, drawing, wanted)) return;
-    const snap = { sources: this._sources(), frames: new Map(usable), scheme: this.opt.scheme, relaySig: this.relaySig };
+    const snap = { sources: this._sources(), frames: new Map(usable), opts: this._opts(), relaySig: this.relaySig };
     this.snap = snap;
     const Grid = radarGridClass();
     const first = !this.layer;
@@ -448,8 +515,9 @@ export default class RadarOverlayService {
       opacity: first ? this.opt.opacity : 0,
       updateWhenZooming: false,
       keepBuffer: 1,
-      plan: (c) => tilePlan(c.z, c.x, c.y, snap.sources, snap.frames, { scheme: snap.scheme }),
+      plan: (c) => tilePlan(c.z, c.x, c.y, snap.sources, snap.frames, snap.opts),
       sign: (path) => this._sign(path),
+      onFallback: (id) => { if (this.layer === layer || this.pending?.layer === layer) this._noteFallback(id); },
     });
     if (first) {
       this.layer = layer;
@@ -464,6 +532,8 @@ export default class RadarOverlayService {
       layer.setOpacity(this.opt.opacity);
       if (this.layer) this.group.removeLayer(this.layer);
       this.layer = layer;
+      this.fellTo = new Set();
+      this._setCredits(new Set(this.drawing));
     };
     this.pending = { layer, timer: this.setTimeout(show, SWAP_TIMEOUT_MS) };
     layer.once("load", show);

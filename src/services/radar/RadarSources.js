@@ -18,6 +18,29 @@ export const RAINVIEWER_MAX_ZOOM = 7;
 /** JMA's nowcast tiles stop at z10 (D13). */
 export const JMA_MAX_ZOOM = 10;
 
+/** RainViewer's colour scheme and options in the tile URL. The scheme is IGNORED by RainViewer (D13, backlog 285); the options `1_1` are not. */
+export const RAINVIEWER_STYLE = "2/1_1";
+
+/** nowCOAST's capabilities: one document lists every regional layer's frames. */
+const NOWCOAST_CAPS = "https://nowcoast.noaa.gov/geoserver/observations/weather_radar/wms?service=WMS&version=1.3.0&request=GetCapabilities";
+
+/**
+ * nowCOAST's five REGIONAL layers, each with its own box and time list
+ * (D13, backlog 285: the group layer has no time list, and the regional
+ * layer draws the same picture for 60% of the bytes). These boxes are also
+ * what D13 calls "the US" (Lee, 2026-10-12 00:50).
+ */
+export const NOWCOAST_REGIONS = Object.freeze([
+  { region: "conus", box: { w: -130, e: -60, s: 20, n: 55 } },
+  { region: "alaska", box: { w: -176, e: -126, s: 50, n: 72 } },
+  { region: "hawaii", box: { w: -164, e: -151, s: 15, n: 26 } },
+  { region: "caribbean", box: { w: -90, e: -60, s: 10, n: 25 } },
+  { region: "guam", box: { w: 140, e: 150, s: 9, n: 18 } },
+]);
+
+/** "The US" for the source order (D13): nowCOAST's five regional boxes. */
+export const US_BOXES = Object.freeze(NOWCOAST_REGIONS.map((r) => r.box));
+
 /**
  * Source table, in the order a tile tries them (D13). `boxes` are
  * {w, e, s, n} in degrees; a tile must sit wholly inside one of them.
@@ -52,21 +75,15 @@ export const SOURCES = Object.freeze([
     boxes: [{ w: -170.32, e: -50.0, s: 16.93, n: 67.19 }], maxNativeZoom: null,
     credit: 'Radar: <a href="https://eccc-msc.github.io/open-data/">Environment and Climate Change Canada</a>. Contains information licensed under the <a href="https://open.canada.ca/en/open-government-licence-canada">Open Government Licence – Canada</a>.',
   },
-  {
-    id: "nowcoast", kind: "wms", frame: "nowcoast",
-    url: "https://nowcoast.noaa.gov/geoserver/observations/weather_radar/wms", layer: "base_reflectivity_mosaic",
-    list: "https://nowcoast.noaa.gov/geoserver/observations/weather_radar/wms?service=WMS&version=1.3.0&request=GetCapabilities",
-    // Its five regional boxes, from its capabilities (D13).
-    boxes: [
-      { w: -130, e: -60, s: 20, n: 55 },
-      { w: -176, e: -126, s: 50, n: 72 },
-      { w: -164, e: -151, s: 15, n: 26 },
-      { w: -90, e: -60, s: 10, n: 25 },
-      { w: 140, e: 150, s: 9, n: 18 },
-    ],
-    maxNativeZoom: null,
+  // nowCOAST: one source per regional layer, all read from one capabilities
+  // document (`group`), each requested as ITSELF at its own listed time.
+  ...NOWCOAST_REGIONS.map(({ region, box }) => ({
+    id: `nowcoast_${region}`, group: "nowcoast", kind: "wms", frame: "nowcoast",
+    url: "https://nowcoast.noaa.gov/geoserver/observations/weather_radar/wms", layer: `${region}_base_reflectivity_mosaic`,
+    list: NOWCOAST_CAPS,
+    boxes: [box], maxNativeZoom: null,
     credit: 'Radar: <a href="https://nowcoast.noaa.gov/">NOAA nowCOAST</a>',
-  },
+  })),
   {
     id: "rainviewer", kind: "rainviewer", frame: "rainviewer",
     list: "https://api.rainviewer.com/public/weather-maps.json",
@@ -135,16 +152,44 @@ export function sourceHoldsTile(t, src) {
 }
 
 /**
- * The sources whose boxes hold this tile, in trying order.
+ * @param {{w: number, e: number, s: number, n: number}} t a tile's box
+ * @returns {boolean} whether the whole tile lies inside one of "the US" boxes (D13)
+ */
+export function inUs(t) {
+  return US_BOXES.some((b) => tileInBox(t, b));
+}
+
+/**
+ * A source's place in the US order (D13, Lee 2026-10-12 00:22): relays
+ * first, then RainViewer, GeoMet, nowCOAST, then anything else.
+ * @param {object} s
+ * @returns {number}
+ */
+function usRank(s) {
+  if (s.kind === "relay") return 0;
+  if (s.id === "rainviewer") return 1;
+  if (s.id === "geomet") return 2;
+  if (s.group === "nowcoast") return 3;
+  return 4;
+}
+
+/**
+ * The sources whose boxes hold this tile, in trying order. With `opts.us`
+ * (the default order, no `sources` option) a tile wholly inside "the US"
+ * tries RainViewer, then GeoMet, then nowCOAST (D13); elsewhere, and with
+ * an explicit order, the order given.
  * @param {number} z
  * @param {number} x
  * @param {number} y
  * @param {object[]} sources in trying order
+ * @param {{us?: boolean}} [opts]
  * @returns {object[]}
  */
-export function chainFor(z, x, y, sources) {
+export function chainFor(z, x, y, sources, opts = {}) {
   const t = tileBounds(z, x, y);
-  return sources.filter((s) => sourceHoldsTile(t, s));
+  const held = sources.filter((s) => sourceHoldsTile(t, s));
+  if (!opts.us || !inUs(t)) return held;
+  return held.map((s, i) => [s, i]).sort((a, b) => usRank(a[0]) - usRank(b[0]) || a[1] - b[1]).map((p) => p[0]);
 }
 
 /**
@@ -155,11 +200,22 @@ export function chainFor(z, x, y, sources) {
  * @param {number} y
  * @param {object[]} sources in trying order
  * @param {function(object): boolean} usable
+ * @param {{us?: boolean}} [opts]
  * @returns {?object}
  */
-export function pickSource(z, x, y, sources, usable) {
-  for (const s of chainFor(z, x, y, sources)) if (usable(s)) return s;
+export function pickSource(z, x, y, sources, usable, opts = {}) {
+  for (const s of chainFor(z, x, y, sources, opts)) if (usable(s)) return s;
   return null;
+}
+
+/**
+ * In the US, the backups a RainViewer tile falls to when it fails: GeoMet,
+ * then nowCOAST (D13 "Backups take over").
+ * @param {object} s
+ * @returns {boolean}
+ */
+function isUsBackup(s) {
+  return s.id === "geomet" || s.group === "nowcoast";
 }
 
 /**
@@ -222,11 +278,10 @@ export function wmsTileUrl(src, z, x, y, time) {
  * @param {number} z
  * @param {number} x
  * @param {number} y
- * @param {number} scheme RainViewer colour scheme
  * @returns {string}
  */
-export function rainviewerTileUrl(frame, z, x, y, scheme) {
-  return `${frame.host}${frame.path}/256/${z}/${x}/${y}/${scheme}/1_1.png`;
+export function rainviewerTileUrl(frame, z, x, y) {
+  return `${frame.host}${frame.path}/256/${z}/${x}/${y}/${RAINVIEWER_STYLE}.png`;
 }
 
 /**
@@ -254,28 +309,54 @@ export function relayTilePath(template, z, x, y) {
 }
 
 /**
+ * One source's plan for one display tile, or null for a kind it cannot draw.
+ * @param {object} src
+ * @param {object} f its usable frame
+ * @param {number} z
+ * @param {number} x
+ * @param {number} y
+ * @returns {?{source: object, url: string, relay: boolean, scale: number, offX: number, offY: number}}
+ */
+function planFor(src, f, z, x, y) {
+  const nt = nativeTile(z, x, y, src.maxNativeZoom ?? null);
+  let url;
+  if (src.kind === "wms") url = wmsTileUrl(src, nt.z, nt.x, nt.y, f.key);
+  else if (src.kind === "rainviewer") url = rainviewerTileUrl(f, nt.z, nt.x, nt.y);
+  else if (src.kind === "jma") url = jmaTileUrl(src, f, nt.z, nt.x, nt.y);
+  else if (src.kind === "relay") url = relayTilePath(src.tiles, nt.z, nt.x, nt.y);
+  else return null;
+  return { source: src, url, relay: src.kind === "relay", scale: nt.scale, offX: nt.offX, offY: nt.offY };
+}
+
+/**
  * What one display tile shows: which source, which URL, and how the
- * fetched image sits in the tile. Null: blank.
+ * fetched image sits in the tile. Null: blank. In the US (`opts.us`) a
+ * RainViewer plan carries `fallbacks`: the usable GeoMet and nowCOAST plans
+ * for the same tile, in order, which the tile tries when RainViewer's image
+ * fails (D13 "Backups take over").
  * @param {number} z
  * @param {number} x
  * @param {number} y
  * @param {object[]} sources in trying order (relays first)
  * @param {Map<string, object>} frames usable frames by source id
- * @param {{scheme: number}} opts
- * @returns {?{source: object, url: string, relay: boolean, scale: number, offX: number, offY: number}}
+ * @param {{us?: boolean}} [opts]
+ * @returns {?{source: object, url: string, relay: boolean, scale: number, offX: number, offY: number, fallbacks: object[]}}
  */
-export function tilePlan(z, x, y, sources, frames, opts) {
-  const src = pickSource(z, x, y, sources, (s) => frames.has(s.id));
+export function tilePlan(z, x, y, sources, frames, opts = {}) {
+  const chain = chainFor(z, x, y, sources, opts).filter((s) => frames.has(s.id));
+  const src = chain[0];
   if (!src) return null;
-  const f = frames.get(src.id);
-  const nt = nativeTile(z, x, y, src.maxNativeZoom ?? null);
-  let url;
-  if (src.kind === "wms") url = wmsTileUrl(src, nt.z, nt.x, nt.y, f.key);
-  else if (src.kind === "rainviewer") url = rainviewerTileUrl(f, nt.z, nt.x, nt.y, opts.scheme);
-  else if (src.kind === "jma") url = jmaTileUrl(src, f, nt.z, nt.x, nt.y);
-  else if (src.kind === "relay") url = relayTilePath(src.tiles, nt.z, nt.x, nt.y);
-  else return null;
-  return { source: src, url, relay: src.kind === "relay", scale: nt.scale, offX: nt.offX, offY: nt.offY };
+  const plan = planFor(src, frames.get(src.id), z, x, y);
+  if (!plan) return null;
+  plan.fallbacks = [];
+  if (opts.us && src.id === "rainviewer" && inUs(tileBounds(z, x, y))) {
+    for (const s of chain.slice(1)) {
+      if (!isUsBackup(s)) continue;
+      const p = planFor(s, frames.get(s.id), z, x, y);
+      if (p) plan.fallbacks.push(p);
+    }
+  }
+  return plan;
 }
 
 /**
@@ -311,19 +392,29 @@ export function tilesInView(z, px, cap = 400) {
  * that must have a frame (for polling) - every source in a tile's chain up
  * to and including the first usable one, so a source is fetched exactly
  * while a visible tile would use it, and its fallback stays fed.
+ * In the US, while RainViewer draws a tile, its backups are WANTED too, so
+ * their frames are ready the moment one of its tiles fails (D13).
  * @param {number} z
  * @param {{x: number, y: number}[]} tiles
  * @param {object[]} sources in trying order
  * @param {function(object): boolean} usable
+ * @param {{us?: boolean}} [opts]
  * @returns {{drawing: Set<string>, wanted: Set<string>}}
  */
-export function sourcesForView(z, tiles, sources, usable) {
+export function sourcesForView(z, tiles, sources, usable, opts = {}) {
   const drawing = new Set();
   const wanted = new Set();
   for (const { x, y } of tiles) {
-    for (const s of chainFor(z, x, y, sources)) {
+    const chain = chainFor(z, x, y, sources, opts);
+    for (let i = 0; i < chain.length; i++) {
+      const s = chain[i];
       wanted.add(s.id);
-      if (usable(s)) { drawing.add(s.id); break; }
+      if (!usable(s)) continue;
+      drawing.add(s.id);
+      if (opts.us && s.id === "rainviewer" && inUs(tileBounds(z, x, y))) {
+        for (const b of chain.slice(i + 1)) if (isUsBackup(b)) wanted.add(b.id);
+      }
+      break;
     }
   }
   return { drawing, wanted };

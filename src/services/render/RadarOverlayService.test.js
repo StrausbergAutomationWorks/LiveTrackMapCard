@@ -48,7 +48,7 @@ import { SOURCES } from "../radar/RadarSources.js";
 const NOW = Date.UTC(2026, 9, 6, 7, 30);
 const RVJSON = { host: "https://tilecache.rainviewer.com", radar: { past: [{ time: NOW / 1000 - 300, path: "/v2/radar/aaa" }] } };
 const GEOCAPS = `<Dimension name="time" default="2026-10-06T07:24:00Z">x</Dimension>`;
-const NCCAPS = `<Dimension name="time" default="2026-10-06T07:26:00Z">x</Dimension>`;
+const NCCAPS = `<Layer><Name>conus_base_reflectivity_mosaic</Name><Dimension name="time" default="2026-10-06T07:26:00Z">x</Dimension></Layer>`;
 
 /**
  * Chicago at z8, as the map would report it.
@@ -132,6 +132,11 @@ function make(option, answers, extra = {}) {
 
 const ALL = { "rainviewer.com": RVJSON, "geo.weather.gc.ca": GEOCAPS, "nowcoast.noaa.gov": NCCAPS };
 
+// D13's US order (backlog 285) puts RainViewer first at Chicago. The swap and
+// fetch mechanics below are tested through GeoMet, so they give the table's
+// own order explicitly, which is also how a config turns the US order off.
+const TABLE = { sources: ["fmi", "dwd", "jma", "geomet", "nowcoast", "rainviewer"] };
+
 let warn;
 beforeEach(() => {
   L._Grid.made.length = 0;
@@ -144,16 +149,16 @@ describe("weather_radar option", () => {
   it("absent, true, auto: on, ticked, D13 defaults", () => {
     for (const v of [undefined, null, true, "auto"]) expect(parseRadarOption(v)).toEqual({ ...DEFAULT_RADAR });
     expect(DEFAULT_RADAR.show).toBe(true);
-    expect(DEFAULT_RADAR.scheme).toBe(2);
+    expect("scheme" in DEFAULT_RADAR).toBe(false);
     expect(DEFAULT_RADAR.opacity).toBe(0.5); // Lee, 2026-10-06, from pictures
   });
   it("false or off: disabled", () => {
     expect(parseRadarOption(false).enabled).toBe(false);
     expect(parseRadarOption("off").enabled).toBe(false);
   });
-  it("a mapping overrides opacity, show, scheme, sources; bad values ignored", () => {
+  it("a mapping overrides opacity, show, sources; rainviewer_scheme is no longer read (backlog 285); bad values ignored", () => {
     expect(parseRadarOption({ opacity: 0.3, show: false, rainviewer_scheme: 4, sources: ["rainviewer", " geomet ", "rainviewer", 3] }))
-      .toEqual({ enabled: true, opacity: 0.3, show: false, scheme: 4, order: ["rainviewer", "geomet"] });
+      .toEqual({ enabled: true, opacity: 0.3, show: false, order: ["rainviewer", "geomet"] });
     expect(parseRadarOption({ opacity: 2, show: "no", rainviewer_scheme: 9 })).toEqual({ ...DEFAULT_RADAR });
     expect(parseRadarOption("weird")).toEqual({ ...DEFAULT_RADAR });
   });
@@ -195,6 +200,12 @@ describe("relays (D13 'Relays')", () => {
     const relay = parseRelay(good());
     expect(orderSources([relay], null).map((s) => s.id)).toEqual(["relay:knmi", ...SOURCES.map((s) => s.id)]);
     expect(orderSources([relay], ["rainviewer", "knmi", "nope"]).map((s) => s.id)).toEqual(["rainviewer", "relay:knmi"]);
+  });
+  it("in a sources list, nowcoast means its five regional layers; one named alone is just that one", () => {
+    expect(orderSources([], ["nowcoast", "rainviewer"]).map((s) => s.id))
+      .toEqual(["nowcoast_conus", "nowcoast_alaska", "nowcoast_hawaii", "nowcoast_caribbean", "nowcoast_guam", "rainviewer"]);
+    expect(orderSources([], ["nowcoast_guam", "nowcoast"]).map((s) => s.id)[0]).toBe("nowcoast_guam");
+    expect(orderSources([], ["nowcoast_guam", "nowcoast"]).map((s) => s.id)).toHaveLength(5);
   });
 });
 
@@ -257,8 +268,53 @@ describe("frames (D13 'Frames')", () => {
     expect(urls.some((u) => u.includes("rainviewer.com"))).toBe(true);
     expect(urls.some((u) => u.includes("jma.go.jp") || u.includes("fmi.fi") || u.includes("dwd.de"))).toBe(false);
   });
+  it("nowCOAST's five regions are read from ONE capabilities fetch, each region keeping its own frame", async () => {
+    const two = `${NCCAPS}<Layer><Name>alaska_base_reflectivity_mosaic</Name><Dimension name="time" default="2026-10-06T07:27:00Z">x</Dimension></Layer>`;
+    const { svc } = make(undefined, { ...ALL, "nowcoast.noaa.gov": two });
+    svc.setup();
+    await flush();
+    expect(svc.fetch.mock.calls.filter((c) => c[0].includes("nowcoast.noaa.gov"))).toHaveLength(1);
+    expect(svc.frames.get("nowcoast_conus").key).toBe("2026-10-06T07:26:00Z");
+    expect(svc.frames.get("nowcoast_alaska").key).toBe("2026-10-06T07:27:00Z");
+    expect(svc.frames.has("nowcoast_guam")).toBe(false);
+  });
+  it("US by default: Chicago draws RainViewer, with GeoMet then nowCOAST CONUS as tile backups (D13)", async () => {
+    const { svc, map } = make(undefined, ALL);
+    svc.setup();
+    await flush();
+    const p = svc.layer.options.plan({ z: 8, x: 65, y: 95 });
+    expect(p.source.id).toBe("rainviewer");
+    expect(p.fallbacks.map((f) => f.source.id)).toEqual(["geomet", "nowcoast_conus"]);
+    expect(map.attributionControl.addAttribution).toHaveBeenCalledWith(SOURCES.find((s) => s.id === "rainviewer").credit);
+    expect(map.attributionControl.addAttribution).not.toHaveBeenCalledWith(SOURCES.find((s) => s.id === "geomet").credit);
+  });
+  it("a nowCOAST answer with no regional layer is a failed list: warned once, its tiles fall through", async () => {
+    const { svc } = make(TABLE, { ...ALL, "nowcoast.noaa.gov": `<Dimension name="time" default="2026-10-06T07:26:00Z">x</Dimension>`, "geo.weather.gc.ca": new Error("x") });
+    svc.setup();
+    await flush();
+    expect(warn.mock.calls.filter((c) => String(c.join(" ")).includes("nowcoast frame list not read (no regional frame in the answer)")).length).toBe(1);
+    expect(svc.layer.options.plan({ z: 8, x: 65, y: 95 }).source.id).toBe("rainviewer");
+  });
+  it("US: RainViewer's list failing hands every tile to GeoMet (backups take over)", async () => {
+    const { svc } = make(undefined, { ...ALL, "rainviewer.com": new Error("down") });
+    svc.setup();
+    await flush();
+    expect(svc.layer.options.plan({ z: 8, x: 65, y: 95 }).source.id).toBe("geomet");
+    expect(warn.mock.calls.filter((c) => String(c.join(" ")).includes("rainviewer frame list not read")).length).toBe(1);
+  });
+  it("US: a tile that fell to a backup credits that backup while its layer shows", async () => {
+    const { svc, map } = make(undefined, ALL);
+    svc.setup();
+    await flush();
+    const geo = SOURCES.find((s) => s.id === "geomet").credit;
+    svc.layer.options.onFallback("geomet");
+    expect(map.attributionControl.addAttribution).toHaveBeenCalledWith(geo);
+    expect(svc.fellTo.has("geomet")).toBe(true);
+    svc.layer.options.onFallback("geomet");
+    expect(map.attributionControl.addAttribution.mock.calls.filter((c) => c[0] === geo)).toHaveLength(1);
+  });
   it("once GeoMet is usable, a later tick fetches neither nowCOAST nor RainViewer again", async () => {
-    const { svc, timers, advance } = make(undefined, ALL);
+    const { svc, timers, advance } = make(TABLE, ALL);
     svc.setup();
     await flush();
     const before = svc.fetch.mock.calls.length;
@@ -281,7 +337,7 @@ describe("frames (D13 'Frames')", () => {
     expect(timers.intervals[0].ms).toBe(TICK_MS);
   });
   it("a failed list warns once and never throws; tiles fall to the next source", async () => {
-    const { svc, timers, advance } = make(undefined, { "rainviewer.com": RVJSON, "nowcoast.noaa.gov": NCCAPS, "geo.weather.gc.ca": new Error("boom") });
+    const { svc, timers, advance } = make(TABLE, { "rainviewer.com": RVJSON, "nowcoast.noaa.gov": NCCAPS, "geo.weather.gc.ca": new Error("boom") });
     svc.setup();
     await flush();
     advance(7 * 60 * 1000);
@@ -290,7 +346,7 @@ describe("frames (D13 'Frames')", () => {
     expect(warn.mock.calls.filter((c) => String(c.join(" ")).includes("geomet frame list")).length).toBe(1);
     // The newest layer (pending until its tiles load) carries the newest frames.
     const layer = L._Grid.made[L._Grid.made.length - 1];
-    expect(layer.options.plan({ z: 8, x: 65, y: 95 }).source.id).toBe("nowcoast");
+    expect(layer.options.plan({ z: 8, x: 65, y: 95 }).source.id).toBe("nowcoast_conus");
     expect(svc.fetch.mock.calls.filter((c) => c[0].includes("geo.weather.gc.ca")).length).toBe(2);
   });
 });
@@ -302,7 +358,7 @@ describe("frames (D13 'Frames')", () => {
  */
 async function toSwap(option) {
   const answers = { ...ALL };
-  const m = make(option, answers);
+  const m = make({ ...TABLE, ...(option ?? {}) }, answers);
   m.svc.setup();
   await flush();
   const first = m.svc.layer;
@@ -315,7 +371,7 @@ async function toSwap(option) {
 
 describe("the frame swap (D13: never a blank)", () => {
   it("no layer while a frame list is on its way; the first goes straight on when they settle", async () => {
-    const { svc } = make({ opacity: 0.5 }, ALL);
+    const { svc } = make({ ...TABLE, opacity: 0.5 }, ALL);
     svc.setup();
     expect(L._Grid.made).toHaveLength(0);
     await flush();
@@ -358,7 +414,7 @@ describe("the frame swap (D13: never a blank)", () => {
   });
   it("a swap superseded by a newer one never shows", async () => {
     const answers = { ...ALL };
-    const { svc, timers, advance } = make(undefined, answers);
+    const { svc, timers, advance } = make(TABLE, answers);
     svc.setup();
     await flush();
     const first = svc.layer;
@@ -421,7 +477,7 @@ describe("the frame swap (D13: never a blank)", () => {
 
 describe("credits (D13 table)", () => {
   it("the credit of every drawing source, and none after the box is unticked", async () => {
-    const { svc, map, ov } = make(undefined, ALL);
+    const { svc, map, ov } = make(TABLE, ALL);
     svc.setup();
     await flush();
     const geo = SOURCES.find((s) => s.id === "geomet").credit;
@@ -486,6 +542,46 @@ describe("tiles (the grid class)", () => {
     expect(img.style.top).toBe("-512px");
     expect(img.hasAttribute("crossorigin")).toBe(false);
     expect(t.style.overflow).toBe("hidden");
+  });
+  it("US backups: a failed RainViewer image tries GeoMet, then nowCOAST, each placed at its own scale, then blank", () => {
+    const onFallback = jest.fn();
+    const plan = {
+      url: "https://rv/7/1/2.png", relay: false, scale: 2, offX: 1, offY: 0, source: { id: "rainviewer" },
+      fallbacks: [
+        { url: "https://geo/x", relay: false, scale: 1, offX: 0, offY: 0, source: { id: "geomet" } },
+        { url: "https://nc/x", relay: false, scale: 1, offX: 0, offY: 0, source: { id: "nowcoast_conus" } },
+      ],
+    };
+    const g = new Grid({ plan: () => plan, onFallback });
+    const done = jest.fn();
+    const t = g.createTile({ z: 8, x: 3, y: 4 }, done);
+    const img = t.querySelector("img");
+    expect(img.style.width).toBe("512px");
+    img.onerror();
+    expect(img.getAttribute("src")).toBe("https://geo/x");
+    expect(img.style.width).toBe("256px");
+    expect(img.style.left).toBe("0px");
+    expect(onFallback).toHaveBeenLastCalledWith("geomet");
+    img.onerror();
+    expect(img.getAttribute("src")).toBe("https://nc/x");
+    expect(onFallback).toHaveBeenLastCalledWith("nowcoast_conus");
+    expect(done).not.toHaveBeenCalled();
+    img.onerror();
+    expect(t.querySelector("img")).toBeNull();
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(plan.fallbacks).toHaveLength(2);
+  });
+  it("a backup that loads finishes the tile once", () => {
+    const g = new Grid({ plan: () => ({ url: "https://rv", relay: false, scale: 1, offX: 0, offY: 0, source: { id: "rainviewer" },
+      fallbacks: [{ url: "https://geo", relay: false, scale: 1, offX: 0, offY: 0, source: { id: "geomet" } }] }) });
+    const done = jest.fn();
+    const t = g.createTile({ z: 8, x: 3, y: 4 }, done);
+    const img = t.querySelector("img");
+    img.onerror();
+    img.onload();
+    img.onload();
+    expect(t.querySelector("img")).not.toBeNull();
+    expect(done).toHaveBeenCalledTimes(1);
   });
   it("an image that fails (or is XML) is removed; done once", () => {
     const g = new Grid({ plan: () => ({ url: "https://h/x", relay: false, scale: 1, offX: 0, offY: 0 }) });

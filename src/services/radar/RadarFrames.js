@@ -116,20 +116,28 @@ export function parseGeoMetCaps(text) {
 }
 
 /**
- * nowCOAST's capabilities. MEASURED 2026-10-06: `base_reflectivity_mosaic`
- * is a layer GROUP with no time list of its own; each of its five regional
- * sublayers carries one (`nearestValue="1"`). The newest default across them
- * is the frame; a region whose own newest is a moment older snaps to it.
+ * nowCOAST's capabilities, per REGIONAL layer (D13, backlog 285): the group
+ * `base_reflectivity_mosaic` has no time list; each regional layer
+ * (`conus_base_reflectivity_mosaic`, ...) carries its own, and the regions'
+ * newest times differ by seconds. MEASURED 2026-10-23: each layer's `<Name>`
+ * is followed by its time Dimension before the next `<Name>` (a style's).
+ * Each regional layer is requested as itself at its own `default`.
  * @param {string} text
- * @returns {?{key: string, time: number}}
+ * @returns {Map<string, {key: string, time: number}>} frame by layer name; empty when none
  */
-export function parseNowCoastCaps(text) {
-  let best = null;
-  for (const d of timeDefaults(text)) {
+export function parseNowCoastRegions(text) {
+  const out = new Map();
+  if (typeof text !== "string") return out;
+  const names = [...text.matchAll(/<Name>([^<]+)<\/Name>/g)];
+  for (let k = 0; k < names.length; k++) {
+    const name = names[k][1].trim();
+    if (!/^[a-z]+_base_reflectivity_mosaic$/.test(name)) continue;
+    const end = k + 1 < names.length ? names[k + 1].index : text.length;
+    const d = timeDefaults(text.slice(names[k].index, end))[0];
     const t = isoTime(d);
-    if (Number.isFinite(t) && (best === null || t > best.time)) best = { key: d, time: t };
+    if (Number.isFinite(t) && !out.has(name)) out.set(name, { key: d, time: t });
   }
-  return best;
+  return out;
 }
 
 /**

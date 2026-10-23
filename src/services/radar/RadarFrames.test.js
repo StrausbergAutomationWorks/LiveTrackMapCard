@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   STALE_MS, POLL_MS, parseRainViewer, jmaTime, parseJma, isoTime, timeDefaults,
-  parseGeoMetCaps, parseNowCoastCaps, computedFiveMinute, isFresh,
+  parseGeoMetCaps, parseNowCoastRegions, computedFiveMinute, isFresh,
 } from "./RadarFrames.js";
 
 // Backlog 280, D13 "Frames". Shapes taken from the live answers of
@@ -92,9 +92,29 @@ describe("WMS capabilities", () => {
     expect(parseGeoMetCaps(GEOMET)).toEqual({ key: "2026-10-06T06:48:00Z", time: Date.UTC(2026, 9, 6, 6, 48) });
     expect(parseGeoMetCaps("<x/>")).toBeNull();
   });
-  it("nowCOAST: the group has no list; the newest regional default wins", () => {
-    expect(parseNowCoastCaps(NOWCOAST)).toEqual({ key: "2026-10-06T06:50:02Z", time: Date.UTC(2026, 9, 6, 6, 50, 2) });
-    expect(parseNowCoastCaps("")).toBeNull();
+  it("nowCOAST: each REGIONAL layer's own default (backlog 285); the group and other layers carry none", () => {
+    const m = parseNowCoastRegions(NOWCOAST);
+    expect([...m.keys()]).toEqual(["conus_base_reflectivity_mosaic", "alaska_base_reflectivity_mosaic", "guam_base_reflectivity_mosaic"]);
+    expect(m.get("conus_base_reflectivity_mosaic")).toEqual({ key: "2026-10-06T06:48:14Z", time: Date.UTC(2026, 9, 6, 6, 48, 14) });
+    expect(m.get("alaska_base_reflectivity_mosaic").key).toBe("2026-10-06T06:50:02Z");
+    expect(m.get("guam_base_reflectivity_mosaic").key).toBe("2026-10-06T06:40:00Z");
+    expect(parseNowCoastRegions("").size).toBe(0);
+    expect(parseNowCoastRegions(null).size).toBe(0);
+  });
+  it("nowCOAST: a layer listed twice keeps its FIRST time", () => {
+    const caps = '<Layer><Name>conus_base_reflectivity_mosaic</Name><Dimension name="time" default="2026-10-23T05:08:19Z">x</Dimension></Layer>'
+      + '<Layer><Name>conus_base_reflectivity_mosaic</Name><Dimension name="time" default="2026-10-23T06:00:00Z">x</Dimension></Layer>';
+    expect(parseNowCoastRegions(caps).get("conus_base_reflectivity_mosaic").key).toBe("2026-10-23T05:08:19Z");
+  });
+  it("nowCOAST as served 2026-10-23: a style's <Name> follows each layer's time; a layer without one takes nobody's", () => {
+    const caps = '<Layer><Name>conus_base_reflectivity_mosaic</Name><Dimension name="time" default="2026-10-23T05:08:19Z">x</Dimension>'
+      + '<Style><Name>weather_radar_base_reflectivity</Name></Style></Layer>'
+      + '<Layer><Name>alaska_base_reflectivity_mosaic</Name><Style><Name>weather_radar_base_reflectivity</Name></Style></Layer>'
+      + '<Layer><Name>default-style-base_reflectivity_mosaic</Name><Dimension name="time" default="2026-10-23T06:00:00Z">x</Dimension></Layer>';
+    const m = parseNowCoastRegions(caps);
+    expect(m.get("conus_base_reflectivity_mosaic").key).toBe("2026-10-23T05:08:19Z");
+    expect(m.has("alaska_base_reflectivity_mosaic")).toBe(false);
+    expect(m.size).toBe(1);
   });
 });
 
