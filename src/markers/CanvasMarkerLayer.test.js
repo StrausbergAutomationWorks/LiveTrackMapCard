@@ -85,7 +85,7 @@ function domMarker({ z = 0, ll = [41.9, -67.9], attrs = {} } = {}) {
   const s = Object.entries(a).map(([k, v]) => `${k}="${v}"`).join(' ');
   return L.marker(ll, { zIndexOffset: z, icon: L.divIcon({ html: `<${TAG} ${s}></${TAG}>` }) });
 }
-const entity = () => ({ map, config: {}, _startTooltipClock: jest.fn(), _stopTooltipClock: jest.fn() });
+const entity = (id = 'geo_location.x') => ({ id, map, config: {}, _startTooltipClock: jest.fn(), _stopTooltipClock: jest.fn() });
 
 /**
  * What createMapMarker does with the canvas on: the DOM marker banded, then a canvas stand-in if plain.
@@ -205,6 +205,34 @@ describe('isPlain', () => {
   it('reads the attributes Entity writes', () => {
     expect(parseAttrs(`<${TAG} picture="/p.svg" size='60' entity-id="geo_location.x"></${TAG}>`))
       .toEqual({ picture: '/p.svg', size: '60', 'entity-id': 'geo_location.x' });
+  });
+});
+
+describe('what goes on the canvas', () => {
+  it('only geo_location entities: a person or a zone stays DOM, in its order with the others', () => {
+    for (const id of ['person.lee', 'zone.home', 'device_tracker.phone', 'sensor.x']) {
+      expect(canvasMarkerFor(bandMarker(domMarker({ attrs: { picture: '/me.jpg' } }), map), entity(id), TAG)).toBeNull();
+    }
+    expect(canvasMarkerFor(bandMarker(domMarker({ attrs: { picture: '/b737.svg' } }), map), entity('geo_location.a'), TAG)).not.toBeNull();
+  });
+
+  it('a picture that has not loaded draws its disc and border, as the DOM does, not nothing', () => {
+    const m = place({ z: 0, attrs: { picture: '/broken.jpg', size: '40', color: '#757575' } });
+    m.layer._img = () => null;
+    m.layer.dirty();
+    tick();
+    const p = map.latLngToLayerPoint(m.getLatLng());
+    const arcs = m.layer._ctx.arcs.filter((a) => a.x === p.x && a.y === p.y);
+    expect(arcs.map((a) => a.r)).toEqual([20, 19.5]);
+  });
+
+  it('a transparent picture that has not loaded draws nothing, as the DOM shows nothing', () => {
+    const m = place({ z: 40000, attrs: { picture: '/b737.svg', size: '60', color: 'transparent' } });
+    m.layer._img = () => null;
+    m.layer._ctx.arcs.length = 0;
+    m.layer.dirty();
+    tick();
+    expect(m.layer._ctx.arcs).toHaveLength(0);
   });
 });
 

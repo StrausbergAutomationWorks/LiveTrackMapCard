@@ -368,6 +368,26 @@ function buildPictureSprite(layer, img, s, bg, bd, ang, sh, m) {
 }
 
 /**
+ * A picture marker whose picture has not loaded (or failed): its disc and border only, as
+ * the DOM marker shows it with no background image. Found on the look page 2026-10-26: the
+ * canvas drew nothing at all.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {CanvasMarker} it
+ * @param {object} p layer point
+ */
+function drawEmptyDisc(ctx, it, p) {
+  const a = it.a, r = it.size / 2;
+  const bg = String(a.color || "").trim();
+  const bd = has(a["ring-color"]) ? String(a["ring-color"]).trim() : bg;
+  if (has(bg) && bg.toLowerCase() !== "transparent") {
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 2 * Math.PI); ctx.fillStyle = bg; ctx.fill();
+  }
+  if (has(bd) && bd.toLowerCase() !== "transparent") {
+    ctx.beginPath(); ctx.arc(p.x, p.y, r - 0.5, 0, 2 * Math.PI); ctx.lineWidth = 1; ctx.strokeStyle = bd; ctx.stroke();
+  }
+}
+
+/**
  * A disc with its label and arrow (MapCardEntityMarker labelTextStyle, _arrow).
  * @param {CanvasRenderingContext2D} ctx
  * @param {CanvasMarker} it
@@ -670,6 +690,7 @@ export const CanvasMarkerLayer = Renderer.extend({
         if (has(it.a.picture)) {
           const spr = this._sprite(it, now);
           if (spr) ctx.drawImage(spr.c, it._pt.x - spr.half, it._pt.y - spr.half, spr.w, spr.w);
+          else drawEmptyDisc(ctx, it, it._pt);
         } else {
           drawDisc(ctx, it, it._pt, now, this);
         }
@@ -693,6 +714,10 @@ export const CanvasMarkerLayer = Renderer.extend({
  */
 export function canvasMarkerFor(dom, entity, tag, wrapDom) {
   if (entity.config?.distanceEntity) return null;
+  // Only the tracked objects: people, zones and the like are a handful of markers, cost
+  // nothing as DOM, and keep their order with the zone they stand in (look page 2026-10-26:
+  // on the canvas, the people at home were drawn under the home zone's icon).
+  if (!String(entity.id ?? entity.config?.id ?? "").startsWith("geo_location.")) return null;
   const a = parseAttrs(dom.options?.icon?.options?.html);
   if (!isPlain(a)) return null;
   const map = entity.map;
