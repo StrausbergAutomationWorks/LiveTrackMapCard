@@ -12,17 +12,20 @@ export const CULL_PAD = 0.3;
 function registry(map) {
   if (map.__ltmcCull) return map.__ltmcCull;
   const reg = { set: new Set(), bounds: null };
-  reg.refresh = () => { reg.bounds = map.getBounds().pad(CULL_PAD); };
+  // A map with no view yet (the card builds its entities before its initial view) has no
+  // bounds: getBounds() throws "Set map center and zoom first". Everything is kept on it
+  // until it loads, then checked.
+  reg.refresh = () => { reg.bounds = map._loaded ? map.getBounds().pad(CULL_PAD) : null; };
   reg.check = (m) => {
     if (!reg.bounds) reg.refresh();
     const ll = m.getLatLng();
-    const want = Boolean(ll) && reg.bounds.contains(ll);
+    const want = Boolean(ll) && (!reg.bounds || reg.bounds.contains(ll));
     const on = Boolean(m._map);
     if (want && !on) { Marker.prototype.addTo.call(m, map); stats.culledIn++; }
     else if (!want && on) { Marker.prototype.remove.call(m); stats.culledOut++; }
   };
   reg.checkAll = () => { reg.refresh(); for (const m of reg.set) reg.check(m); };
-  map.on("moveend zoomend resize viewreset", reg.checkAll);
+  map.on("load moveend zoomend resize viewreset", reg.checkAll);
   map.__ltmcCull = reg;
   return reg;
 }
