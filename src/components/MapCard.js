@@ -29,6 +29,7 @@ import '../presence/LtmcMapOverview.js';
 import {
   OVERVIEW_GAP, inPanelView, overviewShown, overviewPadding, selectedFromSearch, searchWith,
 } from '../presence/OverviewRules.js';
+import { proto } from '../proto/flags.js';
 
 export default class MapCard extends LitElement {
   static get properties() {
@@ -145,6 +146,17 @@ export default class MapCard extends LitElement {
       HaMapUtilities.renderWarningOnMap(this.map, "Error found in first run, check Console");
     }
     Logger.debug("[MapCard] Map card setup complete");
+  }
+
+  /**
+   * PROTOTYPE (map capacity, 2026-10-25): with `batch`, an update waits for the next
+   * animation frame, so every hass change that lands before it is one update, and the
+   * work leaves Home Assistant's websocket task (proto/flags.js).
+   * @returns {unknown}
+   */
+  scheduleUpdate() {
+    if (!proto("batch")) return super.scheduleUpdate();
+    return new Promise((resolve) => requestAnimationFrame(resolve)).then(() => super.scheduleUpdate());
   }
 
   firstUpdated() {

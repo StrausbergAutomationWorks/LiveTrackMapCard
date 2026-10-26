@@ -13,6 +13,9 @@ import { hasExtras, extrasHtml } from "../util/MarkerExtras.js";
 import { apiPath, appendPosition, trackColor, trackOf, trackPoints, TRACK_OPACITY, TRACK_WEIGHT } from "../util/TrackLine.js";
 import { lateness } from "../util/Lateness.js";
 import { metres, pathAt, trackRoute } from "../util/TrackPath.js";
+import { proto } from "../proto/flags.js";
+import { canvasMarkerFor } from "../proto/CanvasMarkerLayer.js";
+import { cullMarker } from "../proto/cull.js";
 
 /**
  * The custom element every marker is built from. index.js registers it under
@@ -1769,6 +1772,29 @@ export default class Entity {
    * @returns {Marker}
    */
   createMapMarker(at = this.latLng) {
+    // PROTOTYPE (map capacity, 2026-10-25): a plain look goes on the canvas; any other DOM
+    // marker culls itself off screen. Both behind page switches (proto/flags.js).
+    const dom = this._createDomMarker(at);
+    try {
+      const wrap = proto("cull") ? (m) => cullMarker(m, this.map) : null;
+      if (proto("canvas")) {
+        const c = canvasMarkerFor(dom, this, MARKER_TAG, wrap);
+        if (c) return c;
+      }
+      if (wrap) return wrap(dom);
+    } catch (e) {
+      Logger.error("[proto] marker fallback for " + this.id, e);
+    }
+    return dom;
+  }
+
+  /**
+   * The card's own DOM marker (createMapMarker before the prototype).
+   * @private
+   * @param {LatLng} [at]
+   * @returns {Marker}
+   */
+  _createDomMarker(at = this.latLng) {
     Logger.debug("[MarkerEntity] Creating marker for " + this.id + " with display mode " + this.display);
     let icon = this.icon;
     const picture = this.markerPicture;

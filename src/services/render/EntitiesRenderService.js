@@ -10,6 +10,21 @@ import HaHistoryService from "../HaHistoryService";
 import FocusFollowConfig from "../../configs/FocusFollowConfig";
 import { mergedAway } from "../ObjectMergeService";
 import { creditLine } from "../../util/EntityCredits";
+import { proto, stats } from "../../proto/flags.js";
+
+/**
+ * PROTOTYPE: may this entity skip an update when its own state is unchanged? Not when
+ * anything else feeds its marker: a distance entity, device trackers, a zone pill,
+ * history, a circle, GeoJSON, history playback or a fixed position.
+ * @param {Entity} e
+ * @returns {boolean}
+ */
+function selfContained(e) {
+  const c = e.config ?? {};
+  return !c.distanceEntity && !c.circleConfig?.enabled && !c.geoJsonConfig?.enabled &&
+    !e.historyManager?.hasHistory && e.display !== "pill" &&
+    !(e.attributes?.device_trackers?.length) && !e.currentTimelineEntry && !(c.fixedX && c.fixedY);
+}
 
 
 export default class EntitiesRenderService {
@@ -306,6 +321,11 @@ export default class EntitiesRenderService {
     this.refreshCredits();
   }
 
+  /** PROTOTYPE: markers drawn on the canvas now. */
+  __canvasCount() {
+    return this.map?.__ltmcCanvas?.count?.() ?? 0;
+  }
+
   cleanup() {
     if (this._followPauseTimer) {
       clearTimeout(this._followPauseTimer);
@@ -331,6 +351,10 @@ export default class EntitiesRenderService {
       if (this.hass) ent.hass = this.hass;
     }
     this.computeMerged();
+    // PROTOTYPE (map capacity, 2026-10-25): with `diff`, an entity whose state object
+    // Home Assistant has not replaced is not updated (proto/flags.js).
+    const diff = proto("diff");
+    const states = this.hass?.states;
     this.entities.forEach((ent) => {
       // Entity keeps the hass object from setup(); Lovelace replaces hass on
       // every state change, so without this the marker reads a stale snapshot
@@ -340,9 +364,19 @@ export default class EntitiesRenderService {
           ent.hass = this.hass;
         }
         if (this.isHidden(ent.id) || this.drawnElsewhere(ent.id)) {
+          ent.__ltmcSeen = undefined;
           ent.hide(this.markerClusterGroup);
           return;
         }
+        if (diff) {
+          const st = states?.[ent.id];
+          if (st !== undefined && st === ent.__ltmcSeen && ent.marker && selfContained(ent)) {
+            stats.skipped++;
+            return;
+          }
+          ent.__ltmcSeen = st;
+        }
+        stats.updated++;
         ent.update(this.markerClusterGroup);
       } catch (e) {
         Logger.error("Entity: " + ent.id + " failed to update", e);
