@@ -172,6 +172,16 @@ export default class EntitiesRenderService {
   }
 
   /**
+   * @param {object} map Leaflet map
+   * @param {object} hass
+   * @param {FocusFollowConfig} focusFollowConfig
+   * @param {EntityConfig[]} entityConfigs
+   * @param {HaLinkedEntityService} linkedEntityService
+   * @param {HaDateRangeService} dateRangeManager
+   * @param {HaHistoryService} historyService
+   * @param {boolean} isDarkMode
+   * @param {boolean} [clusterMarkers]
+   * @param {((id: string) => boolean)|null} [isStale]
    * @param {{canvas: boolean, cull: boolean}|null} [markerDrawing] canvas markers and
    *   culling for this map (MarkerPlacement). MapCard turns both off with clustering;
    *   null leaves every marker a plain DOM marker in Leaflet's markerPane.
@@ -329,7 +339,10 @@ export default class EntitiesRenderService {
     this.refreshCredits();
   }
 
-  /** Markers drawn on the canvases now, every class together. */
+  /**
+   * Markers drawn on the canvases now, every class together.
+   * @returns {number}
+   */
   canvasCount() {
     return (this.map?.__ltmcCanvasLayers ?? []).reduce((n, l) => n + (l?.count?.() ?? 0), 0);
   }

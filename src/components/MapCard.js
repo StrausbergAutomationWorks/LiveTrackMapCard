@@ -29,6 +29,7 @@ import '../presence/LtmcMapOverview.js';
 import {
   OVERVIEW_GAP, inPanelView, overviewShown, overviewPadding, selectedFromSearch, searchWith,
 } from '../presence/OverviewRules.js';
+import { afterFrame } from '../markers/FrameBatch.js';
 
 export default class MapCard extends LitElement {
   static get properties() {
@@ -148,14 +149,11 @@ export default class MapCard extends LitElement {
   }
 
   /**
-   * An update waits for the next animation frame (map capacity, card SSOT 2026-10-25):
-   * every hass change that lands before it is one update, and the work leaves Home
-   * Assistant's websocket task. Without requestAnimationFrame, Lit's own timing.
+   * An update waits for the next animation frame (markers/FrameBatch.js).
    * @returns {unknown}
    */
   scheduleUpdate() {
-    if (typeof requestAnimationFrame !== "function") return super.scheduleUpdate();
-    return new Promise((resolve) => requestAnimationFrame(resolve)).then(() => super.scheduleUpdate());
+    return afterFrame(() => super.scheduleUpdate());
   }
 
   firstUpdated() {

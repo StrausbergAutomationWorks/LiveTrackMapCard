@@ -35,9 +35,17 @@ export function bandOf(z) {
   return Math.min(BANDS.length - 1, Math.max(0, n));
 }
 
-/** @param {number} b @returns {string} */
+/**
+ * The pane a class's canvas sits in.
+ * @param {number} b class 0..4
+ * @returns {string}
+ */
 export const canvasPane = (b) => `ltmcCanvas_${BANDS[b]}`;
-/** @param {number} b @returns {string} */
+/**
+ * The pane a class's DOM markers sit in.
+ * @param {number} b class 0..4
+ * @returns {string}
+ */
 export const domPane = (b) => `ltmcMarkers_${BANDS[b]}`;
 
 /**

@@ -27,6 +27,8 @@ const JsMap = globalThis.Map;
 const SPRITE_MAX = 4000;
 /** The DOM shadow's `transition: filter 3s linear` (MapCardEntityMarker.groundShadowStyle). */
 export const SHADOW_EASE_MS = 3000;
+/** Steps in one shadow ease: one every 100 ms. */
+export const SHADOW_EASE_STEPS = 30;
 
 /**
  * The attributes written into a marker's DivIcon html (Entity.createMapMarker).
@@ -154,7 +156,12 @@ class Turn {
   moving(now) { return this.has && this.ms > 0 && now < this.t0 + this.ms; }
 }
 
-/** @param {object|null} p @param {object|null} q @returns {boolean} */
+/**
+ * Are two shadows the same, by their rounded key? Null is no shadow.
+ * @param {object|null} p
+ * @param {object|null} q
+ * @returns {boolean}
+ */
 const sameShadow = (p, q) => (p === null || q === null ? p === q : p.key === q.key);
 
 /**
@@ -162,8 +169,9 @@ const sameShadow = (p, q) => (p === null || q === null ? p === q : p.key === q.k
  * marker element (D4a-shadow). A change eases linearly from what is shown now. A shadow
  * that appears eases in from nothing (CSS interpolates `none` as zero offsets, zero blur,
  * transparent); one that goes away is gone at once, because the style that has no filter
- * has no transition either. Values are kept to shadowParams' precision, so an ease builds a
- * few dozen sprites at most, not one a frame.
+ * has no transition either. The ease moves in SHADOW_EASE_STEPS steps (100 ms each), so an
+ * ease builds at most 31 sprites per picture and angle, not one a frame; at the live 60 px
+ * marker the largest step, ground to 40,000 ft, is 0.24 px.
  */
 export class ShadowEase {
   /** @param {{off: number, blur: number, op: number, key: string}|null} p */
@@ -191,13 +199,17 @@ export class ShadowEase {
     const t = this.target, f = this.from;
     if (!t) return null;
     if (!f || f === t || now >= this.t0 + SHADOW_EASE_MS) return t;
-    const k = Math.max(0, (now - this.t0) / SHADOW_EASE_MS);
+    const k = Math.floor(Math.max(0, (now - this.t0) / SHADOW_EASE_MS) * SHADOW_EASE_STEPS) / SHADOW_EASE_STEPS;
     const off = +(f.off + (t.off - f.off) * k).toFixed(1);
     const blur = +(f.blur + (t.blur - f.blur) * k).toFixed(1);
     const op = +(f.op + (t.op - f.op) * k).toFixed(2);
     return { off, blur, op, key: `${off}/${blur}/${op}` };
   }
-  /** @param {number} now @returns {boolean} */
+  /**
+   * Is the shadow still easing?
+   * @param {number} now
+   * @returns {boolean}
+   */
   moving(now) {
     return Boolean(this.target && this.from && this.from !== this.target && now < this.t0 + SHADOW_EASE_MS);
   }
@@ -294,6 +306,13 @@ export class CanvasMarker {
   }
 }
 
+/**
+ * The layer's scratch canvas, at least w x h, cleared.
+ * @param {object} layer
+ * @param {number} w
+ * @param {number} h
+ * @returns {{c: HTMLCanvasElement, ctx: CanvasRenderingContext2D}}
+ */
 function scratch(layer, w, h) {
   const c = layer._scratch || (layer._scratch = document.createElement("canvas"));
   if (c.width < w || c.height < h) { c.width = Math.max(c.width, w); c.height = Math.max(c.height, h); }
@@ -307,6 +326,15 @@ function scratch(layer, w, h) {
  * A picture marker as the DOM draws it: border-box disc of `s`, 1px border, the picture
  * covering the content box, turned about its centre, clipped to the padding box's circle;
  * the ground shadow as a drop-shadow of the whole disc.
+ * @param {object} layer the CanvasMarkerLayer (its scratch canvas)
+ * @param {HTMLImageElement} img
+ * @param {number} s size, CSS px
+ * @param {string} bg fill
+ * @param {string} bd border
+ * @param {number|null} ang degrees, null for none
+ * @param {{off: number, blur: number, op: number}|null} sh shadow
+ * @param {number} m device pixel ratio
+ * @returns {{c: HTMLCanvasElement, w: number, half: number}}
  */
 function buildPictureSprite(layer, img, s, bg, bd, ang, sh, m) {
   const pad = sh ? Math.ceil(sh.off + 3 * sh.blur + 2) : 1;
@@ -339,7 +367,14 @@ function buildPictureSprite(layer, img, s, bg, bd, ang, sh, m) {
   return { c, w, half: w / 2 };
 }
 
-/** A disc with its label and arrow (MapCardEntityMarker labelTextStyle, _arrow). */
+/**
+ * A disc with its label and arrow (MapCardEntityMarker labelTextStyle, _arrow).
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {CanvasMarker} it
+ * @param {object} p layer point
+ * @param {number} now
+ * @param {object} layer the CanvasMarkerLayer (fonts, text colour)
+ */
 function drawDisc(ctx, it, p, now, layer) {
   const a = it.a, s = it.size, r = s / 2;
   const fill = String(a.color || "").trim();
@@ -725,13 +760,19 @@ export function topHit(map, pt) {
   return null;
 }
 
-/** @this {object} the map */
+/**
+ * The map's mousemove: promote the top canvas marker under the pointer. Bound to the map.
+ * @param {{layerPoint: object}} e
+ */
 function onMapMove(e) {
   const it = topHit(this, e.layerPoint);
   if (it) it.layer.promote(it);
 }
 
-/** @this {object} the map */
+/**
+ * The map's click: tap the top canvas marker under the pointer. Bound to the map.
+ * @param {{layerPoint: object}} e
+ */
 function onMapClick(e) {
   const it = topHit(this, e.layerPoint);
   if (it) it.layer._tap(it);
