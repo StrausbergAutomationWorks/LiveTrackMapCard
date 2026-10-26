@@ -24,7 +24,14 @@ import { bandOf, canvasPane, ensurePanes } from "./MarkerPlacement.js";
 const SHADOW_FULL_M = 12192;
 
 const JsMap = globalThis.Map;
-const SPRITE_MAX = 4000;
+/**
+ * What one canvas's sprite cache may hold, in bytes of sprite pixels (4 a pixel), oldest
+ * evicted first. Was a count of 4,000 in the prototype: a 60 px aircraft sprite with its
+ * shadow margin is ~104 x 104 px, so that count was ~170 MB at 1x and ~690 MB at 2x
+ * (soak 2026-10-26: 1,111 sprites after an hour and still rising). 24 MB is ~580 such
+ * sprites at 1x, ~145 at 2x.
+ */
+export const SPRITE_BUDGET_BYTES = 24 * 1024 * 1024;
 /** The DOM shadow's `transition: filter 3s linear` (MapCardEntityMarker.groundShadowStyle). */
 export const SHADOW_EASE_MS = 3000;
 /** Steps in one shadow ease: one every 100 ms. */
@@ -444,6 +451,7 @@ export const CanvasMarkerLayer = Renderer.extend({
     this._items = new Set();
     this._imgs = new JsMap();
     this._sprites = new JsMap();
+    this._spriteBytes = 0;
     this._drawnList = [];
     this._raf = null;
     this.band = 0;
@@ -530,7 +538,7 @@ export const CanvasMarkerLayer = Renderer.extend({
     Renderer.prototype._update.call(this);
     const b = this._bounds, c = this._container, size = b.getSize();
     const m = window.devicePixelRatio || 1;
-    if (m !== this._dpr) this._sprites.clear();
+    if (m !== this._dpr) { this._sprites.clear(); this._spriteBytes = 0; }
     this._dpr = m;
     DomUtil.setPosition(c, b.min);
     c.width = Math.round(m * size.x);
@@ -660,8 +668,16 @@ export const CanvasMarkerLayer = Renderer.extend({
     }
     spr = buildPictureSprite(this, img, it.size, bg, bd, ang, sh, this._dpr || 1);
     stats.spritesBuilt++;
+    spr.bytes = spr.c.width * spr.c.height * 4;
     this._sprites.set(key, spr);
-    if (this._sprites.size > SPRITE_MAX) this._sprites.delete(this._sprites.keys().next().value);
+    this._spriteBytes += spr.bytes;
+    // Oldest first, never the one just built.
+    while (this._spriteBytes > SPRITE_BUDGET_BYTES && this._sprites.size > 1) {
+      const oldest = this._sprites.keys().next().value;
+      this._spriteBytes -= this._sprites.get(oldest).bytes;
+      this._sprites.delete(oldest);
+      stats.spritesEvicted++;
+    }
     return spr;
   },
 

@@ -1,7 +1,7 @@
 import L from '../models/leafletGlobal.testhelper.js';
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import {
-  ShadowEase, SHADOW_EASE_MS, SHADOW_EASE_STEPS, shadowParams, isPlain, parseAttrs, canvasMarkerFor, layers, layerFor, topHit,
+  ShadowEase, SHADOW_EASE_MS, SHADOW_EASE_STEPS, SPRITE_BUDGET_BYTES, shadowParams, isPlain, parseAttrs, canvasMarkerFor, layers, layerFor, topHit,
 } from './CanvasMarkerLayer.js';
 import { bandMarker, canvasPane, domPane, ensurePanes } from './MarkerPlacement.js';
 import { stats } from './MarkerStats.js';
@@ -432,6 +432,47 @@ describe('the ground shadow on the canvas (D4a-shadow)', () => {
     m.getElement().querySelector().setAttribute('ground-shadow', '');
     expect(m.sh.at(clock)).toBeNull();
     expect(m.sh.moving(clock)).toBe(false);
+  });
+});
+
+describe('the sprite cache', () => {
+  it('stays within its byte budget, oldest out first, keeping the sprite just built', () => {
+    // 600 px sprites, ~1.8 MB each: the budget fills after a dozen or so.
+    const m = place({ z: 40000, attrs: { picture: '/big.svg', size: '600', color: 'transparent', 'ground-shadow': '0', rotation: '0' } });
+    m.layer._img = () => ({ complete: true, naturalWidth: 600, naturalHeight: 600 });
+    const evicted = stats.spritesEvicted;
+    let lastKey = null;
+    for (let deg = 0; deg < 40; deg++) {
+      m.getElement().querySelector().setAttribute('rotation', String(deg));
+      tick();
+      lastKey = [...m.layer._sprites.keys()].at(-1);
+      expect(lastKey).toContain(`|${deg}|`);
+    }
+    const sum = [...m.layer._sprites.values()].reduce((n, s) => n + s.bytes, 0);
+    expect(m.layer._spriteBytes).toBe(sum);
+    expect(sum).toBeLessThanOrEqual(SPRITE_BUDGET_BYTES);
+    expect(m.layer._sprites.size).toBeGreaterThan(5);
+    expect(m.layer._sprites.size).toBeLessThan(40);
+    expect(stats.spritesEvicted - evicted).toBe(40 - m.layer._sprites.size);
+    expect([...m.layer._sprites.keys()].some((k) => k.includes('|0|'))).toBe(false);
+  });
+
+  it('a sprite used again moves to the back of the queue, so the angle on screen is not evicted', () => {
+    const m = place({ z: 40000, attrs: { picture: '/big.svg', size: '600', color: 'transparent', rotation: '0' } });
+    m.layer._img = () => ({ complete: true, naturalWidth: 600, naturalHeight: 600 });
+    tick();
+    const first = [...m.layer._sprites.keys()][0];
+    const sprite = m.layer._sprites.get(first);
+    const built = stats.spritesBuilt;
+    for (let deg = 1; deg < 40; deg++) {
+      m.getElement().querySelector().setAttribute('rotation', String(deg));
+      tick();
+      m.getElement().querySelector().setAttribute('rotation', '0');
+      tick();
+    }
+    // The same sprite, never evicted and rebuilt: one new sprite per new angle, none for 0.
+    expect(m.layer._sprites.get(first)).toBe(sprite);
+    expect(stats.spritesBuilt - built).toBe(39);
   });
 });
 

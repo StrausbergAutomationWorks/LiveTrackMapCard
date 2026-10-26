@@ -5,5 +5,5 @@
 /** @type {{[name: string]: number}} */
 export const stats = (globalThis.__LTMC_MARKER_STATS = globalThis.__LTMC_MARKER_STATS || {
   skipped: 0, updated: 0, draws: 0, drawMs: 0, drawn: 0, spritesBuilt: 0,
-  promoted: 0, toDom: 0, culledOut: 0, culledIn: 0, animatedPictures: 0, bandMoves: 0,
+  promoted: 0, toDom: 0, culledOut: 0, culledIn: 0, animatedPictures: 0, bandMoves: 0, spritesEvicted: 0,
 });
