@@ -1,25 +1,32 @@
-// PROTOTYPE ONLY (map capacity, 2026-10-25; card SSOT "HOW MANY MARKERS"). Not for release.
+// Plain markers drawn on a canvas instead of one DOM element (and one compositing layer)
+// each (map capacity, card SSOT 2026-10-25). "Plain": a picture in its round disc (no label
+// overlay, no ring, no badge, not bare, not animated), or a disc with only its label and
+// arrow. Everything else - rings, stars, maple leaves, heading tags, delay badges, pulses,
+// alternates, pills, icons, animated pictures - stays DOM. A canvas marker under the pointer
+// is PROMOTED to its real DOM marker while hovered, so the hover box, its clock and the tap
+// action are the card's own; it goes back to the canvas on mouseout.
 //
-// Plain markers drawn on ONE canvas instead of one DOM element (and one compositing layer)
-// each. "Plain": a picture in its round disc (no label overlay, no ring, no badge, not bare),
-// or a disc with only its label and arrow. Everything else - rings, stars, maple leaves,
-// heading tags, delay badges, pulses, alternates, pills, icons - stays DOM. A canvas marker
-// under the pointer is PROMOTED to its real DOM marker while hovered, so the hover box, its
-// clock and the tap action are the card's own; it goes back to the canvas on mouseout.
+// One canvas per D10 class, each in its own pane under that class's DOM markers
+// (MarkerPlacement.js), so the contract's stacking holds across canvas and DOM. The pointer
+// is tested against the classes top first.
 //
 // CanvasMarker stands in for the Leaflet Marker that Entity holds: the methods Entity calls
 // (setLatLng, getLatLng, getElement, addTo, remove, setZIndexOffset, tooltips, events). It
 // wraps the real DOM marker Entity built, so Entity's attribute writes keep that marker's
 // stored html current, and a marker whose look stops being plain becomes that DOM marker.
+//
+// Nothing here may import MapCardEntityMarker.js: it pulls Lit into Entity's imports, which
+// the jest setup does not transform, and about 30 suites stop loading.
 import { Renderer, DomUtil, latLng as toLatLng } from "leaflet";
-import { stats } from "./flags.js";
-// MapCardEntityMarker.SHADOW_FULL_M, copied: importing that module pulls Lit into Entity's
-// imports, which the jest setup does not transform.
+import { stats } from "./MarkerStats.js";
+import { bandOf, canvasPane, ensurePanes } from "./MarkerPlacement.js";
+// MapCardEntityMarker.SHADOW_FULL_M, copied (see above).
 const SHADOW_FULL_M = 12192;
 
 const JsMap = globalThis.Map;
-export const PANE = "ltmcCanvasMarkers";
 const SPRITE_MAX = 4000;
+/** The DOM shadow's `transition: filter 3s linear` (MapCardEntityMarker.groundShadowStyle). */
+export const SHADOW_EASE_MS = 3000;
 
 /**
  * The attributes written into a marker's DivIcon html (Entity.createMapMarker).
@@ -147,6 +154,55 @@ class Turn {
   moving(now) { return this.has && this.ms > 0 && now < this.t0 + this.ms; }
 }
 
+/** @param {object|null} p @param {object|null} q @returns {boolean} */
+const sameShadow = (p, q) => (p === null || q === null ? p === q : p.key === q.key);
+
+/**
+ * The ground shadow as the DOM marker shows it: `transition: filter 3s linear` on the
+ * marker element (D4a-shadow). A change eases linearly from what is shown now. A shadow
+ * that appears eases in from nothing (CSS interpolates `none` as zero offsets, zero blur,
+ * transparent); one that goes away is gone at once, because the style that has no filter
+ * has no transition either. Values are kept to shadowParams' precision, so an ease builds a
+ * few dozen sprites at most, not one a frame.
+ */
+export class ShadowEase {
+  /** @param {{off: number, blur: number, op: number, key: string}|null} p */
+  constructor(p) {
+    this.from = p;
+    this.target = p;
+    this.t0 = 0;
+  }
+  /**
+   * @param {{off: number, blur: number, op: number, key: string}|null} p
+   * @param {number} [now]
+   */
+  to(p, now = performance.now()) {
+    if (sameShadow(p, this.target)) return;
+    if (!p) { this.from = this.target = null; return; }
+    this.from = this.at(now) ?? { off: 0, blur: 0, op: 0, key: "0/0/0" };
+    this.target = p;
+    this.t0 = now;
+  }
+  /**
+   * @param {number} now
+   * @returns {{off: number, blur: number, op: number, key: string}|null}
+   */
+  at(now) {
+    const t = this.target, f = this.from;
+    if (!t) return null;
+    if (!f || f === t || now >= this.t0 + SHADOW_EASE_MS) return t;
+    const k = Math.max(0, (now - this.t0) / SHADOW_EASE_MS);
+    const off = +(f.off + (t.off - f.off) * k).toFixed(1);
+    const blur = +(f.blur + (t.blur - f.blur) * k).toFixed(1);
+    const op = +(f.op + (t.op - f.op) * k).toFixed(2);
+    return { off, blur, op, key: `${off}/${blur}/${op}` };
+  }
+  /** @param {number} now @returns {boolean} */
+  moving(now) {
+    return Boolean(this.target && this.from && this.from !== this.target && now < this.t0 + SHADOW_EASE_MS);
+  }
+}
+
 export class CanvasMarker {
   /**
    * @param {object} dom the Leaflet Marker Entity built (not on the map)
@@ -167,6 +223,7 @@ export class CanvasMarker {
     this.mode = "canvas";
     this.rot = new Turn(this.a.rotation, this.a["rotation-transition"]);
     this.arr = new Turn(this.a.arrow, this.a["rotation-transition"]);
+    this.sh = new ShadowEase(shadowParams(this.a["ground-shadow"], this.size));
     const self = this;
     this._fake = {
       querySelector: () => ({
@@ -188,6 +245,7 @@ export class CanvasMarker {
     if (n === "rotation") this.rot.to(v);
     else if (n === "arrow") this.arr.to(v);
     else if (n === "size") this.size = Number(v) || this.size;
+    if (n === "ground-shadow" || n === "size") this.sh.to(shadowParams(this.a["ground-shadow"], this.size));
     if (this.mode === "canvas" && (!isPlain(this.a) || (n === "picture" && this.layer.pictureAnimated(v) === true))) this.layer.toDom(this);
     else this.layer.dirty();
   }
@@ -199,7 +257,29 @@ export class CanvasMarker {
     return this;
   }
   getElement() { return this._fake; }
-  setZIndexOffset(z) { this.z = z; this.dom.setZIndexOffset?.(z); this.layer.dirty(); return this; }
+  /**
+   * A new offset can put the marker in another D10 class: its DOM marker moves pane
+   * (MarkerPlacement.bandMarker) and the marker itself moves to that class's canvas.
+   * @param {number} z
+   * @returns {CanvasMarker}
+   */
+  setZIndexOffset(z) {
+    this.z = z;
+    this.dom.setZIndexOffset?.(z);
+    const map = this.layer._map;
+    const b = bandOf(z);
+    if (map && b !== this.layer.band) {
+      const was = this.layer;
+      if (this.mode === "hover") was.demote(this);
+      was._items.delete(this);
+      was.dirty();
+      this.layer = layerFor(map, b);
+      this.layer._items.add(this);
+      stats.bandMoves++;
+    }
+    this.layer.dirty();
+    return this;
+  }
   addTo() { this.layer.addMarker(this); return this; }
   remove() { this.layer.removeMarker(this); return this; }
   bindTooltip(...args) { this.dom.bindTooltip(...args); return this; }
@@ -302,7 +382,7 @@ function drawDisc(ctx, it, p, now, layer) {
 }
 
 export const CanvasMarkerLayer = Renderer.extend({
-  options: { padding: 0.1, pane: PANE },
+  options: { padding: 0.1, pane: canvasPane(0) },
 
   initialize(options) {
     Renderer.prototype.initialize.call(this, options);
@@ -311,7 +391,7 @@ export const CanvasMarkerLayer = Renderer.extend({
     this._sprites = new JsMap();
     this._drawnList = [];
     this._raf = null;
-    this._hover = null;
+    this.band = 0;
     this._anim = new JsMap();
   },
 
@@ -337,19 +417,18 @@ export const CanvasMarkerLayer = Renderer.extend({
         this._anim.set(key, animated);
         if (!animated) return;
         stats.animatedPictures++;
-        for (const it of this._items) {
-          if (it.mode === "canvas" && picturePath(it.a.picture) === key) this.toDom(it);
+        const all = this._map ? layers(this._map).filter(Boolean) : [this];
+        for (const layer of all) {
+          for (const it of layer._items) {
+            if (it.mode === "canvas" && picturePath(it.a.picture) === key) layer.toDom(it);
+          }
         }
       });
     return null;
   },
 
   onAdd(map) {
-    if (!map.getPane(PANE)) {
-      const pane = map.createPane(PANE);
-      pane.style.zIndex = 599;
-      pane.style.pointerEvents = "none";
-    }
+    ensurePanes(map);
     Renderer.prototype.onAdd.call(this, map);
     const box = map.getContainer();
     const cs = getComputedStyle(box);
@@ -357,14 +436,22 @@ export const CanvasMarkerLayer = Renderer.extend({
     this._baseFont = parseFloat(cs.fontSize) || 12;
     this._textColor = cs.color || "#000";
     this._fonts = new JsMap();
-    map.on("mousemove", this._onMove, this);
-    map.on("click", this._onClick, this);
+    if (!map.__ltmcCanvasEvents) {
+      map.on("mousemove", onMapMove, map);
+      map.on("click", onMapClick, map);
+      map.__ltmcCanvasEvents = true;
+    }
     this.dirty();
   },
 
   onRemove(map) {
-    map.off("mousemove", this._onMove, this);
-    map.off("click", this._onClick, this);
+    const ls = layers(map);
+    if (ls[this.band] === this) ls[this.band] = undefined;
+    if (!ls.some(Boolean) && map.__ltmcCanvasEvents) {
+      map.off("mousemove", onMapMove, map);
+      map.off("click", onMapClick, map);
+      map.__ltmcCanvasEvents = false;
+    }
     if (this._raf) cancelAnimationFrame(this._raf);
     this._raf = null;
     for (const it of this._items) { try { it.dom.remove(); } catch { /* */ } }
@@ -429,18 +516,23 @@ export const CanvasMarkerLayer = Renderer.extend({
     this.dirty();
   },
 
+  _unhover(it) {
+    if (this._map && this._map.__ltmcHover === it) this._map.__ltmcHover = null;
+  },
+
   removeMarker(it) {
     this._items.delete(it);
-    if (this._hover === it) this._hover = null;
+    this._unhover(it);
     try { it.dom.closeTooltip?.(); it.dom.remove(); } catch { /* */ }
     this.dirty();
   },
 
   promote(it) {
-    if (it.mode !== "canvas") return;
-    if (this._hover && this._hover !== it) this.demote(this._hover);
+    if (it.mode !== "canvas" || !this._map) return;
+    const was = this._map.__ltmcHover;
+    if (was && was !== it) was.layer.demote(was);
     it.mode = "hover";
-    this._hover = it;
+    this._map.__ltmcHover = it;
     stats.promoted++;
     it.dom.setLatLng(it._latlng);
     it.dom.addTo(this._map);
@@ -452,14 +544,14 @@ export const CanvasMarkerLayer = Renderer.extend({
     if (it.mode !== "hover") return;
     try { it.dom.closeTooltip?.(); it.dom.remove(); } catch { /* */ }
     it.mode = "canvas";
-    if (this._hover === it) this._hover = null;
+    this._unhover(it);
     this.dirty();
   },
 
   toDom(it) {
     if (it.mode === "dom") return;
     if (it.mode === "canvas") { it.dom.setLatLng(it._latlng); it.dom.addTo(this._map); }
-    if (this._hover === it) this._hover = null;
+    this._unhover(it);
     it.mode = "dom";
     stats.toDom++;
     this.dirty();
@@ -476,14 +568,7 @@ export const CanvasMarkerLayer = Renderer.extend({
     return null;
   },
 
-  _onMove(e) {
-    const it = this._hit(e.layerPoint);
-    if (it) this.promote(it);
-  },
-
-  _onClick(e) {
-    const it = this._hit(e.layerPoint);
-    if (!it) return;
+  _tap(it) {
     this.promote(it);
     const host = this._map.getContainer().getRootNode()?.host;
     const ev = new Event("hass-action", { bubbles: true, composed: true });
@@ -508,7 +593,7 @@ export const CanvasMarkerLayer = Renderer.extend({
     const img = this._img(a.picture);
     if (!img) return null;
     const ang = it.rot.has ? (((Math.round(it.rot.at(now)) % 360) + 360) % 360) : null;
-    const sh = shadowParams(a["ground-shadow"], it.size);
+    const sh = it.sh.at(now);
     const bg = a.color || "";
     const bd = has(a["ring-color"]) ? a["ring-color"] : bg;
     const key = `${a.picture}|${it.size}|${bg}|${bd}|${ang}|${sh ? sh.key : ""}`;
@@ -542,7 +627,7 @@ export const CanvasMarkerLayer = Renderer.extend({
       if (p.x < b.min.x - r || p.x > b.max.x + r || p.y < b.min.y - r || p.y > b.max.y + r) { it._pt = null; continue; }
       it._pt = p;
       list.push(it);
-      if (it.rot.moving(now) || it.arr.moving(now)) animating = true;
+      if (it.rot.moving(now) || it.arr.moving(now) || it.sh.moving(now)) animating = true;
     }
     list.sort((u, v) => (u.z - v.z) || (u._pt.y - v._pt.y));
     for (const it of list) {
@@ -576,9 +661,78 @@ export function canvasMarkerFor(dom, entity, tag, wrapDom) {
   const a = parseAttrs(dom.options?.icon?.options?.html);
   if (!isPlain(a)) return null;
   const map = entity.map;
-  if (!map.__ltmcCanvas) map.__ltmcCanvas = new CanvasMarkerLayer().addTo(map);
+  const layer = layerFor(map, bandOf(dom.options?.zIndexOffset));
   // An animated picture is never drawn on the canvas (isAnimatedImage).
-  if (has(a.picture) && map.__ltmcCanvas.pictureAnimated(a.picture) === true) return null;
+  if (has(a.picture) && pictureAnimated(map, a.picture) === true) return null;
   if (wrapDom) wrapDom(dom);
-  return new CanvasMarker(dom, map.__ltmcCanvas, entity, tag);
+  return new CanvasMarker(dom, layer, entity, tag);
+}
+
+/**
+ * This map's canvas layers, indexed by D10 class.
+ * @param {object} map
+ * @returns {Array<object|undefined>}
+ */
+export function layers(map) {
+  return map.__ltmcCanvasLayers || (map.__ltmcCanvasLayers = []);
+}
+
+/**
+ * The canvas for one D10 class, made on first use.
+ * @param {object} map
+ * @param {number} band 0..4
+ * @returns {object} a CanvasMarkerLayer on the map
+ */
+export function layerFor(map, band) {
+  const ls = layers(map);
+  if (!ls[band]) {
+    const layer = new CanvasMarkerLayer({ pane: canvasPane(band) });
+    layer.band = band;
+    // The animation checks are per picture, not per class: every layer shares one table.
+    layer._anim = map.__ltmcAnim || (map.__ltmcAnim = new JsMap());
+    ls[band] = layer;
+    layer.addTo(map);
+  }
+  return ls[band];
+}
+
+/**
+ * Is this picture animated, as any of the map's layers knows it (CanvasMarkerLayer
+ * pictureAnimated)? The check runs on the first layer asked; its answer moves the canvas
+ * markers drawing that picture to the DOM in every layer.
+ * @param {object} map
+ * @param {string} url
+ * @returns {boolean|null}
+ */
+function pictureAnimated(map, url) {
+  const ls = layers(map).filter(Boolean);
+  return ls.length ? ls[0].pictureAnimated(url) : null;
+}
+
+/**
+ * The canvas marker under a point, the top class first: a class drawn above another wins
+ * the pointer, as it wins the picture.
+ * @param {object} map
+ * @param {object} pt layer point
+ * @returns {CanvasMarker|null}
+ */
+export function topHit(map, pt) {
+  const ls = layers(map);
+  for (let b = ls.length - 1; b >= 0; b--) {
+    const it = ls[b]?._hit(pt);
+    if (it) return it;
+  }
+  return null;
+}
+
+/** @this {object} the map */
+function onMapMove(e) {
+  const it = topHit(this, e.layerPoint);
+  if (it) it.layer.promote(it);
+}
+
+/** @this {object} the map */
+function onMapClick(e) {
+  const it = topHit(this, e.layerPoint);
+  if (it) it.layer._tap(it);
 }

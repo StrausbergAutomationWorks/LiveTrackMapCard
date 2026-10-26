@@ -10,16 +10,17 @@ import HaHistoryService from "../HaHistoryService";
 import FocusFollowConfig from "../../configs/FocusFollowConfig";
 import { mergedAway } from "../ObjectMergeService";
 import { creditLine } from "../../util/EntityCredits";
-import { proto, stats } from "../../proto/flags.js";
+import { stats } from "../../markers/MarkerStats.js";
+import { setupPlacement } from "../../markers/MarkerPlacement.js";
 
 /**
- * PROTOTYPE: may this entity skip an update when its own state is unchanged? Not when
- * anything else feeds its marker: a distance entity, device trackers, a zone pill,
- * history, a circle, GeoJSON, history playback or a fixed position.
+ * May this entity skip an update when its own state is unchanged (map capacity, card SSOT
+ * 2026-10-25)? Not when anything else feeds its marker: a distance entity, device
+ * trackers, a zone pill, history, a circle, GeoJSON, history playback or a fixed position.
  * @param {Entity} e
  * @returns {boolean}
  */
-function selfContained(e) {
+export function selfContained(e) {
   const c = e.config ?? {};
   return !c.distanceEntity && !c.circleConfig?.enabled && !c.geoJsonConfig?.enabled &&
     !e.historyManager?.hasHistory && e.display !== "pill" &&
@@ -170,9 +171,16 @@ export default class EntitiesRenderService {
     return this.isStale(id) || this.isFiltered(id) || this.merged.has(id);
   }
 
-  constructor(map, hass, focusFollowConfig, entityConfigs, linkedEntityService, dateRangeManager, historyService, isDarkMode, clusterMarkers = true, isStale = null, isFiltered = null) {
+  /**
+   * @param {{canvas: boolean, cull: boolean}|null} [markerDrawing] canvas markers and
+   *   culling for this map (MarkerPlacement). MapCard turns both off with clustering;
+   *   null leaves every marker a plain DOM marker in Leaflet's markerPane.
+   *   (12th since the rebase onto main, 2026-11-19: main's isFiltered took the 11th.)
+   */
+  constructor(map, hass, focusFollowConfig, entityConfigs, linkedEntityService, dateRangeManager, historyService, isDarkMode, clusterMarkers = true, isStale = null, isFiltered = null, markerDrawing = null) {
     if (isStale) this.isStale = isStale;
     if (isFiltered) this.isFiltered = isFiltered;
+    if (markerDrawing) setupPlacement(map, clusterMarkers ? { canvas: false, cull: false } : markerDrawing);
     this.map = map;
     this.hass = hass;
     this.focusFollowConfig = focusFollowConfig;
@@ -321,9 +329,9 @@ export default class EntitiesRenderService {
     this.refreshCredits();
   }
 
-  /** PROTOTYPE: markers drawn on the canvas now. */
-  __canvasCount() {
-    return this.map?.__ltmcCanvas?.count?.() ?? 0;
+  /** Markers drawn on the canvases now, every class together. */
+  canvasCount() {
+    return (this.map?.__ltmcCanvasLayers ?? []).reduce((n, l) => n + (l?.count?.() ?? 0), 0);
   }
 
   cleanup() {
@@ -351,9 +359,9 @@ export default class EntitiesRenderService {
       if (this.hass) ent.hass = this.hass;
     }
     this.computeMerged();
-    // PROTOTYPE (map capacity, 2026-10-25): with `diff`, an entity whose state object
-    // Home Assistant has not replaced is not updated (proto/flags.js).
-    const diff = proto("diff");
+    // Map capacity (card SSOT 2026-10-25): an entity whose state object Home Assistant has
+    // not replaced since its last update is not updated again. Home Assistant replaces a
+    // state's object on every change, so the same object is the same state.
     const states = this.hass?.states;
     this.entities.forEach((ent) => {
       // Entity keeps the hass object from setup(); Lovelace replaces hass on
@@ -364,18 +372,16 @@ export default class EntitiesRenderService {
           ent.hass = this.hass;
         }
         if (this.isHidden(ent.id) || this.drawnElsewhere(ent.id)) {
-          ent.__ltmcSeen = undefined;
+          ent._seenState = undefined;
           ent.hide(this.markerClusterGroup);
           return;
         }
-        if (diff) {
-          const st = states?.[ent.id];
-          if (st !== undefined && st === ent.__ltmcSeen && ent.marker && selfContained(ent)) {
-            stats.skipped++;
-            return;
-          }
-          ent.__ltmcSeen = st;
+        const st = states?.[ent.id];
+        if (st !== undefined && st === ent._seenState && ent.marker && selfContained(ent)) {
+          stats.skipped++;
+          return;
         }
+        ent._seenState = st;
         stats.updated++;
         ent.update(this.markerClusterGroup);
       } catch (e) {

@@ -50,6 +50,8 @@ export default class MapConfig {
   focusFollow;
   /** @type {boolean} */
   clusterMarkers;
+  /** @type {boolean} plain markers on a canvas (canvas_markers, default true) */
+  canvasMarkers;
 
   /** @type {boolean} */
   debug = false;
@@ -69,6 +71,9 @@ export default class MapConfig {
 
     // Enable marker clustering (default: false)
     this.clusterMarkers = this._setConfigWithDefault(inputConfig.cluster_markers, false);
+    // Plain markers drawn on a canvas (map capacity, card SSOT 2026-10-25). On unless the
+    // dashboard says `canvas_markers: false`; never with clustering (MapCard).
+    this.canvasMarkers = inputConfig.canvas_markers !== false;
 
     // Path-following (item 270 part 2): water markers slide along the water
     // from zoom 14 up. ON by default (Lee, 2026-09-29); `path_following:

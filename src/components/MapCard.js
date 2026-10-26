@@ -29,7 +29,6 @@ import '../presence/LtmcMapOverview.js';
 import {
   OVERVIEW_GAP, inPanelView, overviewShown, overviewPadding, selectedFromSearch, searchWith,
 } from '../presence/OverviewRules.js';
-import { proto } from '../proto/flags.js';
 
 export default class MapCard extends LitElement {
   static get properties() {
@@ -103,7 +102,7 @@ export default class MapCard extends LitElement {
     // The groups this browser's viewer hid in the filter card (D4f, backlog
     // 345). A change redraws, which hides or restores the markers.
     this.groupFilter = new GroupFilter(() => this.requestUpdate());
-    this.entitiesRenderService = new EntitiesRenderService(this.map, this.hass, this._config.focusFollow, this._config.entities, this.linkedEntityService, this.dateRangeManager, this.historyService, this._isDarkMode(), this._config.clusterMarkers, (id) => this.staleStateService.isStale(id), (id) => this.groupFilter.hides(this.hass?.states?.[id]?.attributes));
+    this.entitiesRenderService = new EntitiesRenderService(this.map, this.hass, this._config.focusFollow, this._config.entities, this.linkedEntityService, this.dateRangeManager, this.historyService, this._isDarkMode(), this._config.clusterMarkers, (id) => this.staleStateService.isStale(id), (id) => this.groupFilter.hides(this.hass?.states?.[id]?.attributes), { canvas: this._config.canvasMarkers && !this._config.clusterMarkers, cull: !this._config.clusterMarkers });
     this._setupPresence();
     this.initialViewRenderService = new InitialViewRenderService(this.map, this._config, this.hass, this.entitiesRenderService);
 
@@ -149,13 +148,13 @@ export default class MapCard extends LitElement {
   }
 
   /**
-   * PROTOTYPE (map capacity, 2026-10-25): with `batch`, an update waits for the next
-   * animation frame, so every hass change that lands before it is one update, and the
-   * work leaves Home Assistant's websocket task (proto/flags.js).
+   * An update waits for the next animation frame (map capacity, card SSOT 2026-10-25):
+   * every hass change that lands before it is one update, and the work leaves Home
+   * Assistant's websocket task. Without requestAnimationFrame, Lit's own timing.
    * @returns {unknown}
    */
   scheduleUpdate() {
-    if (!proto("batch")) return super.scheduleUpdate();
+    if (typeof requestAnimationFrame !== "function") return super.scheduleUpdate();
     return new Promise((resolve) => requestAnimationFrame(resolve)).then(() => super.scheduleUpdate());
   }
 

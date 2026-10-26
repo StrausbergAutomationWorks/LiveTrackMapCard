@@ -1,10 +1,11 @@
-// PROTOTYPE ONLY (map capacity, 2026-10-25). Off-screen DOM markers are taken off the map.
+// Off-screen DOM markers are taken off the map (map capacity, card SSOT 2026-10-25).
 //
 // A culled marker keeps its object, position and stored DivIcon html; Leaflet rebuilds its
 // element from that html when it comes back, the same path a marker leaving a cluster takes,
 // so attribute writes made while it was off (Entity._setMarkerAttribute) are not lost.
+// Not used with clustering on: the cluster group decides what is on the map.
 import { Marker } from "leaflet";
-import { stats } from "./flags.js";
+import { stats } from "./MarkerStats.js";
 
 /** How far beyond the view a marker stays on the map, as a fraction of the view. */
 export const CULL_PAD = 0.3;

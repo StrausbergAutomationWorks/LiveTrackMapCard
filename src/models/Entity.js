@@ -13,9 +13,9 @@ import { hasExtras, extrasHtml } from "../util/MarkerExtras.js";
 import { apiPath, appendPosition, trackColor, trackOf, trackPoints, TRACK_OPACITY, TRACK_WEIGHT } from "../util/TrackLine.js";
 import { lateness } from "../util/Lateness.js";
 import { metres, pathAt, trackRoute } from "../util/TrackPath.js";
-import { proto } from "../proto/flags.js";
-import { canvasMarkerFor } from "../proto/CanvasMarkerLayer.js";
-import { cullMarker } from "../proto/cull.js";
+import { canvasMarkerFor } from "../markers/CanvasMarkerLayer.js";
+import { cullMarker } from "../markers/MarkerCull.js";
+import { bandMarker, placement } from "../markers/MarkerPlacement.js";
 
 /**
  * The custom element every marker is built from. index.js registers it under
@@ -1772,24 +1772,29 @@ export default class Entity {
    * @returns {Marker}
    */
   createMapMarker(at = this.latLng) {
-    // PROTOTYPE (map capacity, 2026-10-25): a plain look goes on the canvas; any other DOM
-    // marker culls itself off screen. Both behind page switches (proto/flags.js).
+    // Map capacity (card SSOT 2026-10-25): with the canvas on, a plain look is drawn on its
+    // D10 class's canvas and every other marker sits in its class's pane; with culling on, a
+    // DOM marker off screen leaves the map. EntitiesRenderService sets which apply
+    // (MarkerPlacement.setupPlacement): neither with clustering on.
     const dom = this._createDomMarker(at);
+    const how = placement(this.map);
+    if (!how.canvas && !how.cull) return dom;
     try {
-      const wrap = proto("cull") ? (m) => cullMarker(m, this.map) : null;
-      if (proto("canvas")) {
+      if (how.canvas) bandMarker(dom, this.map);
+      const wrap = how.cull ? (m) => cullMarker(m, this.map) : null;
+      if (how.canvas) {
         const c = canvasMarkerFor(dom, this, MARKER_TAG, wrap);
         if (c) return c;
       }
       if (wrap) return wrap(dom);
     } catch (e) {
-      Logger.error("[proto] marker fallback for " + this.id, e);
+      Logger.error("[Entity] canvas or culling failed for " + this.id + "; plain DOM marker used", e);
     }
     return dom;
   }
 
   /**
-   * The card's own DOM marker (createMapMarker before the prototype).
+   * The card's own DOM marker, which a canvas marker wraps and falls back to.
    * @private
    * @param {LatLng} [at]
    * @returns {Marker}
