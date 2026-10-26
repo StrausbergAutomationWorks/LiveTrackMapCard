@@ -19,5 +19,5 @@ export function proto(name) {
 /** Counters the page reads (window.__LTMC_PROTO_STATS). */
 export const stats = (globalThis.__LTMC_PROTO_STATS = globalThis.__LTMC_PROTO_STATS || {
   skipped: 0, updated: 0, draws: 0, drawMs: 0, drawn: 0, spritesBuilt: 0,
-  promoted: 0, toDom: 0, culledOut: 0, culledIn: 0,
+  promoted: 0, toDom: 0, culledOut: 0, culledIn: 0, animatedPictures: 0,
 });

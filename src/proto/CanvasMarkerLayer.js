@@ -55,6 +55,56 @@ export function isPlain(a) {
 }
 
 /**
+ * A picture's path with its query left out: one animation check per picture, whatever token
+ * or version its URL carries.
+ * @param {string} url
+ * @returns {string}
+ */
+export function picturePath(url) {
+  return String(url || "").split("?")[0];
+}
+
+/**
+ * Does this image move by itself? A canvas draw copies ONE still frame of an image, so an
+ * animated picture must stay a DOM marker, where the browser plays it as the card's CSS
+ * background (defect found by Lee 2026-10-25 21:33: helicopter rotors frozen). Animated:
+ * SVG with SMIL (<animate>, <animateTransform>, <animateMotion>, <animateColor>, <set>) or a
+ * CSS animation (@keyframes, animation:); a GIF with more than one frame or a loop block; an
+ * APNG (acTL before the first IDAT); an animated WebP (ANIM chunk).
+ * @param {Uint8Array} bytes the image file
+ * @param {string} [contentType]
+ * @returns {boolean}
+ */
+export function isAnimatedImage(bytes, contentType = "") {
+  const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+  const ascii = (from, to) => {
+    let s = "";
+    const end = Math.min(b.length, to);
+    for (let i = from; i < end; i++) s += String.fromCharCode(b[i]);
+    return s;
+  };
+  if (b.length >= 6 && ascii(0, 3) === "GIF") {
+    let gce = 0;
+    for (let i = 0; i + 2 < b.length; i++) if (b[i] === 0x21 && b[i + 1] === 0xf9 && b[i + 2] === 0x04) gce++;
+    return gce > 1 || ascii(0, b.length).includes("NETSCAPE2.0");
+  }
+  if (b.length >= 8 && b[0] === 0x89 && ascii(1, 4) === "PNG") {
+    const head = ascii(8, b.length);
+    const ac = head.indexOf("acTL"), idat = head.indexOf("IDAT");
+    return ac >= 0 && (idat < 0 || ac < idat);
+  }
+  if (b.length >= 16 && ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") {
+    return ascii(12, 64).includes("ANIM") || ascii(12, 64).includes("ANMF");
+  }
+  const text = ascii(0, Math.min(b.length, 512 * 1024));
+  if (/svg/i.test(contentType) || /<svg[\s>]/i.test(text)) {
+    return /<(animate|animateTransform|animateMotion|animateColor|set)[\s/>]/.test(text) ||
+      /@keyframes|animation(-name)?\s*:/.test(text);
+  }
+  return false;
+}
+
+/**
  * The ground shadow's numbers, MapCardEntityMarker.groundShadowStyle's formula.
  * @param {string} altitude
  * @param {number} size
@@ -138,7 +188,7 @@ export class CanvasMarker {
     if (n === "rotation") this.rot.to(v);
     else if (n === "arrow") this.arr.to(v);
     else if (n === "size") this.size = Number(v) || this.size;
-    if (this.mode === "canvas" && !isPlain(this.a)) this.layer.toDom(this);
+    if (this.mode === "canvas" && (!isPlain(this.a) || (n === "picture" && this.layer.pictureAnimated(v) === true))) this.layer.toDom(this);
     else this.layer.dirty();
   }
   getLatLng() { return this._latlng; }
@@ -262,6 +312,36 @@ export const CanvasMarkerLayer = Renderer.extend({
     this._drawnList = [];
     this._raf = null;
     this._hover = null;
+    this._anim = new JsMap();
+  },
+
+  /**
+   * Is this picture animated: true, false, or null while its one check is in flight. The
+   * first call starts the check (one fetch per picture path, as the browser fetches it for
+   * the DOM); when it finds an animation, every canvas marker drawing that picture becomes
+   * its DOM marker. Until it answers, the marker draws on the canvas, frozen, for one fetch.
+   * A failed fetch counts as still: the picture is drawn on the canvas, as before the fix.
+   * @param {string} url
+   * @returns {boolean|null}
+   */
+  pictureAnimated(url) {
+    const key = picturePath(url);
+    if (!key) return false;
+    if (this._anim.has(key)) return this._anim.get(key);
+    this._anim.set(key, null);
+    Promise.resolve()
+      .then(() => fetch(url, { credentials: "same-origin" }))
+      .then(async (r) => (r.ok ? isAnimatedImage(new Uint8Array(await r.arrayBuffer()), r.headers.get("content-type") || "") : false))
+      .catch(() => false)
+      .then((animated) => {
+        this._anim.set(key, animated);
+        if (!animated) return;
+        stats.animatedPictures++;
+        for (const it of this._items) {
+          if (it.mode === "canvas" && picturePath(it.a.picture) === key) this.toDom(it);
+        }
+      });
+    return null;
   },
 
   onAdd(map) {
@@ -497,6 +577,8 @@ export function canvasMarkerFor(dom, entity, tag, wrapDom) {
   if (!isPlain(a)) return null;
   const map = entity.map;
   if (!map.__ltmcCanvas) map.__ltmcCanvas = new CanvasMarkerLayer().addTo(map);
+  // An animated picture is never drawn on the canvas (isAnimatedImage).
+  if (has(a.picture) && map.__ltmcCanvas.pictureAnimated(a.picture) === true) return null;
   if (wrapDom) wrapDom(dom);
   return new CanvasMarker(dom, map.__ltmcCanvas, entity, tag);
 }
