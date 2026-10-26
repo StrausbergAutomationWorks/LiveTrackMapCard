@@ -40,6 +40,27 @@ describe("MapConfig", () => {
     });
 
   });
+
+  // Map capacity (card SSOT 2026-10-25, Lee 23:10): the canvas is on unless the dashboard
+  // turns it off; culling is fixed; with clustering, neither.
+  describe("markerDrawing", () => {
+    const at = (extra) => new MapConfig({ x: 0.1, y: 0.1, ...extra });
+    it("draws on the canvas and culls by default", () => {
+      expect(at({}).canvasMarkers).toBe(true);
+      expect(at({}).markerDrawing).toEqual({ canvas: true, cull: true });
+    });
+    it("canvas_markers: false turns the canvas off, not the culling", () => {
+      expect(at({ canvas_markers: false }).canvasMarkers).toBe(false);
+      expect(at({ canvas_markers: false }).markerDrawing).toEqual({ canvas: false, cull: true });
+    });
+    it("only false turns it off", () => {
+      for (const v of [true, null, undefined, 0, "", "false"]) expect(at({ canvas_markers: v }).canvasMarkers).toBe(true);
+    });
+    it("with cluster_markers, neither canvas nor culling", () => {
+      expect(at({ cluster_markers: true }).markerDrawing).toEqual({ canvas: false, cull: false });
+      expect(at({ cluster_markers: true, canvas_markers: false }).markerDrawing).toEqual({ canvas: false, cull: false });
+    });
+  });
 });
 
 // auto-entities sends one entry per matching include branch; a Brightline

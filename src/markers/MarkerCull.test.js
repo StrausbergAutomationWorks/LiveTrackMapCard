@@ -72,6 +72,16 @@ describe('cullMarker', () => {
     expect(map.hasLayer(m)).toBe(false);
   });
 
+  it('a drag pans with moveend and no viewreset; that brings it in too', () => {
+    const m = marker(east(1.2)).addTo(map);
+    expect(map.hasLayer(m)).toBe(false);
+    const resets = jest.fn();
+    map.on('viewreset', resets);
+    map.panBy([800, 0], { animate: false });
+    expect(resets).not.toHaveBeenCalled();
+    expect(map.hasLayer(m)).toBe(true);
+  });
+
   it('comes back with the html it was given while it was off', () => {
     const m = marker(east(2)).addTo(map);
     m.options.icon.options.html = '<i data-x="2"></i>';

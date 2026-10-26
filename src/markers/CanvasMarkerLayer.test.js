@@ -437,6 +437,22 @@ describe('an animated picture', () => {
 });
 
 describe('layerFor', () => {
+  it('makes its panes itself on a map nobody set up', () => {
+    const d2 = document.createElement('div');
+    Object.defineProperty(d2, 'clientWidth', { value: 400 });
+    Object.defineProperty(d2, 'clientHeight', { value: 300 });
+    document.body.appendChild(d2);
+    const m2 = L.map(d2, { animate: false, zoomAnimation: false, fadeAnimation: false }).setView([41.9, -67.9], 10);
+    try {
+      expect(m2.getPane(canvasPane(2))).toBeUndefined();
+      const l = layerFor(m2, 2);
+      expect(l._container.parentNode).toBe(m2.getPane(canvasPane(2)));
+    } finally {
+      m2.remove();
+      d2.remove();
+    }
+  });
+
   it('makes one layer per class and hands back the same one', () => {
     const a = layerFor(map, 3);
     expect(layerFor(map, 3)).toBe(a);

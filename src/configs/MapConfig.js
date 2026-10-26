@@ -200,6 +200,17 @@ export default class MapConfig {
     Logger.debug(`[MapConfig]: created with title: ${this.title}, focusEntity: ${this.focusEntity}, x: ${this.x}, y: ${this.y}, zoom: ${this.zoom}, cardSize: ${this.cardSize}, entities: ${this.entities.map(e => e.id)}, wms: ${this.wms.map(l => l.url)}, tileLayers: ${this.tileLayers.map(l => l.url)}, plugins: ${this.plugins.map(p => p.name)}, historyStart: ${this.historyStart}, historyEnd: ${this.historyEnd}, historyDateSelection: ${this.historyDateSelection}, themeMode: ${this.themeMode}, mapOptions: ${this.mapOptions}, focusFollow: ${this.focusFollow}`);
   }
 
+  /**
+   * How this map's markers are drawn (MarkerPlacement): the canvas unless
+   * `canvas_markers: false`, culling always; neither with clustering, where the
+   * cluster group decides what is on the map.
+   * @returns {{canvas: boolean, cull: boolean}}
+   */
+  get markerDrawing() {
+    const cluster = Boolean(this.clusterMarkers);
+    return { canvas: this.canvasMarkers && !cluster, cull: !cluster };
+  }
+
   _setConfigWithDefault(input, d = null) {
     if (input === undefined || input === null) {
       if (d == null) {

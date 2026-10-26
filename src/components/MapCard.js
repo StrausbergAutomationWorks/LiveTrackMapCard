@@ -103,7 +103,7 @@ export default class MapCard extends LitElement {
     // The groups this browser's viewer hid in the filter card (D4f, backlog
     // 345). A change redraws, which hides or restores the markers.
     this.groupFilter = new GroupFilter(() => this.requestUpdate());
-    this.entitiesRenderService = new EntitiesRenderService(this.map, this.hass, this._config.focusFollow, this._config.entities, this.linkedEntityService, this.dateRangeManager, this.historyService, this._isDarkMode(), this._config.clusterMarkers, (id) => this.staleStateService.isStale(id), (id) => this.groupFilter.hides(this.hass?.states?.[id]?.attributes), { canvas: this._config.canvasMarkers && !this._config.clusterMarkers, cull: !this._config.clusterMarkers });
+    this.entitiesRenderService = new EntitiesRenderService(this.map, this.hass, this._config.focusFollow, this._config.entities, this.linkedEntityService, this.dateRangeManager, this.historyService, this._isDarkMode(), this._config.clusterMarkers, (id) => this.staleStateService.isStale(id), (id) => this.groupFilter.hides(this.hass?.states?.[id]?.attributes), this._config.markerDrawing);
     this._setupPresence();
     this.initialViewRenderService = new InitialViewRenderService(this.map, this._config, this.hass, this.entitiesRenderService);
 
