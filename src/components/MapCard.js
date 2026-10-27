@@ -17,6 +17,7 @@ import PluginsRenderService from '../services/render/PluginsRenderService.js';
 import GeoJsonRenderService from '../services/render/GeoJsonRenderService.js';
 import ShapeLayersService from '../services/render/ShapeLayersRenderService.js';
 import RadarOverlayService from '../services/render/RadarOverlayService.js';
+import LightningOverlayService from '../services/render/LightningOverlayService.js';
 import HaStaleStateService from '../services/HaStaleStateService.js';
 import { PathFollower } from '../services/path/PathFollower.js';
 
@@ -92,12 +93,16 @@ export default class MapCard extends LitElement {
     this.shapeLayersService = new ShapeLayersService(this.map, this._config.shapeLayers, this._config.shapeStyle, this.tileLayersService);
     // The weather radar overlay (D13): one layer, its own pane under the fills.
     this.radarOverlayService = new RadarOverlayService(this.map, this._config.weatherRadar, this.tileLayersService);
+    // Lightning (D14): its own pane right above the radar's.
+    this.lightningOverlayService = new LightningOverlayService(this.map, this._config.lightning, this.tileLayersService);
 
     try {
       this.pluginsRenderService.setup();
       this.tileLayersService.setup();
       // After the named tile overlays, so its checkbox follows theirs.
       this.radarOverlayService.setup();
+      // After the radar: its pane goes right above the radar's, its checkbox below.
+      this.lightningOverlayService.setup();
       this.geoJsonRenderService.setup();
       this.entitiesRenderService.setup();
       this.initialViewRenderService.setup();
@@ -325,6 +330,7 @@ export default class MapCard extends LitElement {
     this.geoJsonRenderService?.cleanup();
     this.shapeLayersService?.cleanup();
     this.radarOverlayService?.cleanup();
+    this.lightningOverlayService?.cleanup();
     this.entitiesRenderService?.cleanup();
     this.map.remove();
     this.map = undefined;

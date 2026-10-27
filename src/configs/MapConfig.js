@@ -139,6 +139,11 @@ export default class MapConfig {
     // opacity, show, rainviewer_scheme, sources. Parsed by RadarOverlayService.
     this.weatherRadar = inputConfig.weather_radar;
 
+    // The lightning overlay (06_MAP_CONTRACT_OVERLAYS.md D14): absent offers
+    // it; `false` removes it; a mapping sets opacity, show, outline. Parsed by
+    // LightningOverlayService.
+    this.lightning = inputConfig.lightning;
+
     // Allow as none array
     let plugins = this._setConfigWithDefault(inputConfig.plugins, []);
     this.plugins = (this._setConfigWithDefault(Array.isArray(plugins) ? plugins : [plugins], [])).map((plugin) => {

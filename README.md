@@ -141,6 +141,7 @@ y: 3.652
 | `shape_layers`         | auto                                                                                                                         | Filled areas published by an integration, such as weather alerts. See [Shapes on the map](#shapes-on-the-map). `false` turns them off. |
 | `shape_style`          | fill 0.25, outline 2 px at 0.9                                                                                               | How those areas are drawn. See [Shapes on the map](#shapes-on-the-map). |
 | `weather_radar`        | on, ticked                                                                                                                   | The weather radar overlay. See [Weather radar](#weather-radar). `false` removes it. |
+| `lightning`            | on, ticked                                                                                                                   | The lightning overlay. See [Lightning](#lightning). `false` removes it. |
 | `debug` | false                                                                                                                        | Enable debug messages in console.
 | `plugins`            | []                                                                                                                           | An array of plugin definitions, see: [Plugin Options](#plugin-options), [Available plugins](#available-plugins) and [Developing plugins](#developing-plugins)     |
 
@@ -236,6 +237,23 @@ weather_radar: true         # the default
 #   show: false             # start unticked
 #   rainviewer_scheme: 2    # RainViewer colour scheme, 0-8
 #   sources: [rainviewer]   # only these, in this order (fmi, dwd, jma, geomet, nowcoast, rainviewer, or a relay's id)
+```
+
+### Lightning
+
+One layer with a checkbox, "Lightning", in the layer control, on by default: [NOAA nowCOAST](https://nowcoast.noaa.gov/)'s lightning strike density, 15-minute frames from the US National Lightning Detection Network and the Global Lightning Detection Network (GLD360), from 25°S to 80°N at every longitude. No key, no account. Only the newest frame is shown, also while the radar is in motion; a new frame is listed about 8 minutes after its time and is read every 5 minutes while the box is ticked. It sits right above the radar and under filled areas and every marker, with a thin dark ring round each strike cell so the palest densities show on a light map. Tiles are requested to zoom 8 and enlarged beyond (the data are an 8 km grid).
+
+* **Credit:** "Lightning: NOAA nowCOAST" in the attribution line while it is drawn and the map shows part of the covered band.
+* **When it is down** or its newest frame is over 45 minutes old, no lightning is drawn; the last frame stays while one read fails.
+* Requests go only to nowCOAST, and only for tiles inside the covered band.
+
+```yaml
+lightning: true             # the default
+# lightning: false          # no lightning, no checkbox, no requests
+# lightning:                # each key optional
+#   opacity: 0.85
+#   show: false             # start unticked
+#   outline: false          # no dark ring round the strike cells
 ```
 
 ### URL Entity lookup
