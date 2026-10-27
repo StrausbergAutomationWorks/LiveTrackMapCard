@@ -40,8 +40,8 @@ function makeEntity({ configured = null, layer } = {}) {
 }
 
 describe('layerOffset', () => {
-  it('maps the five names to the contract offsets', () => {
-    expect(MAP_LAYER_OFFSETS).toEqual({ fixed: 0, water: 10000, rail: 20000, air_low: 30000, air: 40000 });
+  it('maps the six names to the contract offsets', () => {
+    expect(MAP_LAYER_OFFSETS).toEqual({ fixed: 0, water: 10000, rail: 20000, air_low: 30000, air: 40000, weather: -10000 });
     for (const [name, v] of Object.entries(MAP_LAYER_OFFSETS)) expect(layerOffset(name)).toBe(v);
   });
   it('is 0 for absent, unknown or non-string names', () => {

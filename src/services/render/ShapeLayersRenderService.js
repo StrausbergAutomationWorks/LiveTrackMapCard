@@ -48,7 +48,16 @@ export function isPlainObject(v) {
 export function isPublisherState(state) {
   if (!state || state.state === "unavailable" || state.state === "unknown") return false;
   const a = state.attributes;
-  return isPlainObject(a) && typeof a.shapes_url === "string" && a.shapes_url !== "" && isPlainObject(a.zones);
+  // D12 rule 1 as amended for D15: a shape file, or `polygons` alone.
+  return isPlainObject(a) && isPlainObject(a.zones) && (hasShapesUrl(a) || Array.isArray(a.polygons));
+}
+
+/**
+ * @param {object} a attributes
+ * @returns {boolean} a non-empty `shapes_url`
+ */
+function hasShapesUrl(a) {
+  return typeof a.shapes_url === "string" && a.shapes_url !== "";
 }
 
 /**
@@ -131,6 +140,16 @@ function isArea(g) {
   return isPlainObject(g) && AREA_TYPES.has(g.type) && Array.isArray(g.coordinates);
 }
 
+const LINE_TYPES = new Set(["LineString", "MultiLineString"]);
+
+/**
+ * @param {*} g
+ * @returns {boolean} a GeoJSON LineString or MultiLineString (D12 as amended for D15)
+ */
+export function isLine(g) {
+  return isPlainObject(g) && LINE_TYPES.has(g.type) && Array.isArray(g.coordinates);
+}
+
 /**
  * The list to draw, in drawing order (D12 rules 3, 5, 7, 8): largest priority
  * first, 1 last; within a priority zones before polygons; zones by key,
@@ -154,10 +173,10 @@ export function buildDrawList(attributes, shapes) {
   }
   const polygons = Array.isArray(attributes?.polygons) ? attributes.polygons : [];
   polygons.forEach((p) => {
-    if (!isPlainObject(p) || typeof p.event !== "string" || !isArea(p)) return;
-    items.push({ kind: "polygon", key: null, event: p.event, geometry: { type: p.type, coordinates: p.coordinates }, ...styleFor(p.event, styles) });
+    if (!isPlainObject(p) || typeof p.event !== "string" || !(isArea(p) || isLine(p))) return;
+    items.push({ kind: isLine(p) ? "line" : "polygon", key: null, event: p.event, geometry: { type: p.type, coordinates: p.coordinates }, ...styleFor(p.event, styles) });
   });
-  const kindRank = { zone: 0, polygon: 1 };
+  const kindRank = { zone: 0, polygon: 1, line: 2 };
   const order = items.map((it, i) => [it, i]);
   order.sort(([a, ia], [b, ib]) => (b.priority - a.priority) || (kindRank[a.kind] - kindRank[b.kind]) || ia - ib);
   return { items: order.map(([it]) => it), missing };
@@ -294,10 +313,11 @@ export default class ShapeLayersService {
       p.url = null;
       return;
     }
-    const url = state.attributes.shapes_url;
+    const url = hasShapesUrl(state.attributes) ? state.attributes.shapes_url : null;
     if (p.url !== null && p.url !== url) files.delete(p.url);
     p.url = url;
-    const file = this._file(url, id);
+    // No shape file (D15's storms): nothing fetched, `polygons` drawn alone.
+    const file = url ? this._file(url, id) : { status: "none" };
     const fileStatus = file.status;
     if (p.state === state && p.fileStatus === fileStatus) return;
     p.state = state;
@@ -376,13 +396,15 @@ export default class ShapeLayersService {
       p.group.addLayer(L.geoJSON({ type: "Feature", properties: {}, geometry: it.geometry }, {
         interactive: false,
         renderer,
-        style: () => ({
-          color: it.color,
-          fillColor: it.color,
-          weight: this.style.weight,
-          opacity: this.style.opacity,
-          fillOpacity: opacities[i],
-        }),
+        style: () => (it.kind === "line"
+          ? { color: it.color, weight: this.style.weight, opacity: this.style.opacity, fill: false }
+          : {
+            color: it.color,
+            fillColor: it.color,
+            weight: this.style.weight,
+            opacity: this.style.opacity,
+            fillOpacity: opacities[i],
+          }),
       }));
     });
     p.drawn = items.length;

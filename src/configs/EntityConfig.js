@@ -176,6 +176,7 @@ export const MAP_LAYER_OFFSETS = Object.freeze({
   rail: 20000,
   air_low: 30000,
   air: 40000,
+  weather: -10000,
 });
 
 /**

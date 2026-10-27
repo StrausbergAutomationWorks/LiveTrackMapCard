@@ -189,6 +189,7 @@ export function sourceText(a) {
  * @returns {string}
  */
 export function hoverHtml(a, fallback, nowMs) {
+  if (isStorm(a)) return stormHtml(a, fallback);
   const first = escapeHtml(titleLine(a, fallback));
   const second = detailLine(a, nowMs);
   let html = second ? `${first}<br>${escapeHtml(second)}` : first;
@@ -196,5 +197,82 @@ export function hoverHtml(a, fallback, nowMs) {
   if (names.length) html += `<div class="hover-airports">${names.map(escapeHtml).join("<br>")}</div>`;
   const source = sourceText(a);
   if (source) html += `<div class="hover-source">${escapeHtml(source)}</div>`;
+  return html;
+}
+
+/**
+ * Tropical cyclones (06_MAP_CONTRACT_OVERLAYS.md D15): the entity's name
+ * ("Tropical Storm Vance"), the wind in kt with km/h and the pressure, the
+ * movement, then, smaller, the source and the advisory.
+ */
+
+/** What each published `storm_source` is called in the box. */
+export const STORM_SOURCE_TEXT = Object.freeze({
+  nhc: "NOAA NHC",
+  jtwc_eonet: "JTWC via NASA EONET",
+});
+
+const POINTS16 = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+  "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+
+/**
+ * @param {*} v
+ * @returns {number|null} a finite number, else null
+ */
+function num(v) {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * @param {object} a attributes
+ * @returns {boolean} a storm: it names its class
+ */
+export function isStorm(a) {
+  return text(a?.storm_class) !== null;
+}
+
+/**
+ * The storm's wind and pressure line and its movement line, plain text.
+ * @param {object} a attributes
+ * @returns {string[]}
+ */
+export function stormLines(a) {
+  const out = [];
+  const kmh = num(a?.max_wind_kmh);
+  const hpa = num(a?.pressure_hpa);
+  const parts = [];
+  if (kmh !== null) parts.push(`${Math.round(kmh / 1.852)} kt (${Math.round(kmh)} km/h)`);
+  if (hpa !== null) parts.push(`${Math.round(hpa)} hPa`);
+  if (parts.length) out.push(parts.join(", "));
+  const c = num(a?.course_deg);
+  const s = num(a?.speed_kmh);
+  if (c !== null && s !== null) {
+    const point = POINTS16[Math.round((((c % 360) + 360) % 360) / 22.5) % 16];
+    out.push(`Moving ${point} at ${Math.round(s)} km/h`);
+  }
+  return out;
+}
+
+/**
+ * The source line, plain text, or null for an unknown source.
+ * @param {object} a attributes
+ * @returns {string|null}
+ */
+export function stormSourceText(a) {
+  const s = text(a?.storm_source);
+  if (!s || !Object.prototype.hasOwnProperty.call(STORM_SOURCE_TEXT, s)) return null;
+  const n = num(a?.advisory_number);
+  return n !== null ? `${STORM_SOURCE_TEXT[s]}, advisory ${Math.round(n)}` : STORM_SOURCE_TEXT[s];
+}
+
+/**
+ * @param {object} a attributes
+ * @param {string} fallback the entity's name
+ * @returns {string} HTML, every line escaped
+ */
+export function stormHtml(a, fallback) {
+  let html = [fallback ?? "", ...stormLines(a)].map(escapeHtml).join("<br>");
+  const src = stormSourceText(a);
+  if (src) html += `<div class="hover-source">${escapeHtml(src)}</div>`;
   return html;
 }

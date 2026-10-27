@@ -81,8 +81,11 @@ describe("rule 1: finding publishers by attribute shape", () => {
   it("a string shapes_url and a mapping zones make a publisher; nothing else does", () => {
     expect(isPublisherState(pub())).toBe(true);
     expect(isPublisherState(pub({ zones: {} }))).toBe(true);
-    expect(isPublisherState(pub({ shapes_url: 7 }))).toBe(false);
-    expect(isPublisherState(pub({ shapes_url: "" }))).toBe(false);
+    expect(isPublisherState(pub({ shapes_url: 7, polygons: undefined }))).toBe(false);
+    expect(isPublisherState(pub({ shapes_url: "", polygons: undefined }))).toBe(false);
+    // D12 rule 1 as amended for D15: polygons alone make a publisher
+    expect(isPublisherState(pub({ shapes_url: "", polygons: [] }))).toBe(true);
+    expect(isPublisherState(pub({ shapes_url: 7, polygons: {} }))).toBe(false);
     expect(isPublisherState(pub({ zones: ["a"] }))).toBe(false);
     expect(isPublisherState(pub({ zones: null }))).toBe(false);
     expect(isPublisherState({ state: "1", attributes: { shapes_url: "/u" } })).toBe(false);
@@ -178,7 +181,7 @@ describe("rules 5 and 7: before the file, and keys it lacks", () => {
   it("junk polygons and non-string zone events are skipped", () => {
     const { items } = buildDrawList({
       zones: { "county/A": 5 },
-      polygons: [null, { event: 3, ...SQ(1) }, { event: "Warn", type: "LineString", coordinates: [[0, 0], [1, 1]] }, { event: "Warn", type: "Polygon" }, { event: "Warn", ...SQ(2) }],
+      polygons: [null, { event: 3, ...SQ(1) }, { event: "Warn", type: "Point", coordinates: [0, 0] }, { event: "Warn", type: "Polygon" }, { event: "Warn", ...SQ(2) }],
       styles: STYLES,
     }, FILE.shapes);
     expect(items.length).toBe(1);
