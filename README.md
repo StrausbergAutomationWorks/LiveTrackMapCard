@@ -251,7 +251,7 @@ One layer with a checkbox, "Lightning", in the layer control, on by default: [NO
 lightning: true             # the default
 # lightning: false          # no lightning, no checkbox, no requests
 # lightning:                # each key optional
-#   opacity: 0.85
+#   opacity: 0.6
 #   show: false             # start unticked
 #   outline: false          # no dark ring round the strike cells
 ```

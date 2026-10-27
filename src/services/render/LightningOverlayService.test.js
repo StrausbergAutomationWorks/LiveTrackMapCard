@@ -134,7 +134,7 @@ beforeEach(() => {
 describe("lightning option", () => {
   it("absent, true, auto: offered, ticked, D14 defaults", () => {
     for (const v of [undefined, null, true, "auto"]) expect(parseLightningOption(v)).toEqual({ ...DEFAULT_LIGHTNING });
-    expect(DEFAULT_LIGHTNING).toEqual({ enabled: true, opacity: 0.85, show: true, outline: true });
+    expect(DEFAULT_LIGHTNING).toEqual({ enabled: true, opacity: 0.6, show: true, outline: true }); // Lee, 2026-10-27, from pictures
   });
   it("false or off: disabled", () => {
     expect(parseLightningOption(false).enabled).toBe(false);
@@ -143,7 +143,7 @@ describe("lightning option", () => {
   it("a mapping overrides opacity, show, outline; bad values ignored", () => {
     expect(parseLightningOption({ opacity: 0.4, show: false, outline: false })).toEqual({ enabled: true, opacity: 0.4, show: false, outline: false });
     expect(parseLightningOption({ opacity: 1.5, show: "no", outline: 1 })).toEqual({ ...DEFAULT_LIGHTNING });
-    expect(parseLightningOption({ opacity: -0.1 }).opacity).toBe(0.85);
+    expect(parseLightningOption({ opacity: -0.1 }).opacity).toBe(0.6);
     expect(parseLightningOption("weird")).toEqual({ ...DEFAULT_LIGHTNING });
   });
 });
@@ -213,11 +213,11 @@ describe("the pane (D14 'Drawing')", () => {
 
 describe("the layer", () => {
   it("nowCOAST's WMS, its one layer, the frame in every request, at most z8, only inside the band", () => {
-    const l = lightningLayer("2026-10-27T06:30:00Z", 0.85);
+    const l = lightningLayer("2026-10-27T06:30:00Z", 0.6);
     expect(l.url).toBe(LIGHTNING_WMS);
     expect(l.options).toMatchObject({
       layers: LIGHTNING_LAYER, styles: "", format: "image/png", transparent: true, version: "1.3.0",
-      time: "2026-10-27T06:30:00Z", pane: LIGHTNING_PANE, opacity: 0.85, maxNativeZoom: 8,
+      time: "2026-10-27T06:30:00Z", pane: LIGHTNING_PANE, opacity: 0.6, maxNativeZoom: 8,
     });
     expect(LIGHTNING_MAX_NATIVE_ZOOM).toBe(8);
     expect(L.latLngBounds).toHaveBeenCalledWith([-25, -180], [80, 180]);
@@ -286,7 +286,7 @@ describe("frames", () => {
     expect(next.options.opacity).toBe(0);
     expect(svc.group.layers).toEqual([old, next]);
     next.fire("load");
-    expect(next.options.opacity).toBe(0.85);
+    expect(next.options.opacity).toBe(0.6);
     expect(svc.group.layers).toEqual([next]);
     expect(svc.layer).toBe(next);
   });
