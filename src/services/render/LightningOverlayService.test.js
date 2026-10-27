@@ -112,7 +112,8 @@ function make(option, answer, mapArgs = []) {
     if (b && typeof b === "object") return Promise.resolve({ ok: false, status: b.status });
     return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(b) });
   });
-  const svc = new LightningOverlayService(map, option, ov, {
+  // Ticked unless the test passes its own option: most tests are about a ticked layer.
+  const svc = new LightningOverlayService(map, option === undefined ? { show: true } : option, ov, {
     fetch,
     now: () => now,
     setInterval: (f, ms) => { timers.intervals.push({ f, ms }); return timers.intervals.length; },
@@ -132,9 +133,9 @@ beforeEach(() => {
 });
 
 describe("lightning option", () => {
-  it("absent, true, auto: offered, ticked, D14 defaults", () => {
+  it("absent, true, auto: offered, unticked (Lee, 2026-10-27), D14 defaults", () => {
     for (const v of [undefined, null, true, "auto"]) expect(parseLightningOption(v)).toEqual({ ...DEFAULT_LIGHTNING });
-    expect(DEFAULT_LIGHTNING).toEqual({ enabled: true, opacity: 0.6, show: true, outline: true }); // Lee, 2026-10-27, from pictures
+    expect(DEFAULT_LIGHTNING).toEqual({ enabled: true, opacity: 0.6, show: false, outline: true }); // Lee, 2026-10-27, from pictures
   });
   it("false or off: disabled", () => {
     expect(parseLightningOption(false).enabled).toBe(false);
@@ -225,12 +226,14 @@ describe("the layer", () => {
 });
 
 describe("the checkbox", () => {
-  it("one, Lightning, ticked by default", () => {
-    const { svc, ov } = make(undefined, () => caps("2026-10-27T06:30:00Z"));
+  it("one, Lightning, unticked by default: nothing fetched", async () => {
+    const { svc, ov, fetch } = make("auto", () => caps("2026-10-27T06:30:00Z"));
     svc.setup();
+    await flush();
     expect(ov.addOverlay).toHaveBeenCalledTimes(1);
     expect(ov.addOverlay.mock.calls[0][1]).toBe(LIGHTNING_NAME);
-    expect(ov.addOverlay.mock.calls[0][2]).toBe(true);
+    expect(ov.addOverlay.mock.calls[0][2]).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
   });
   it("lightning: false - no checkbox, no fetch, no pane", () => {
     const { svc, ov, fetch, map } = make(false, () => caps("2026-10-27T06:30:00Z"));
@@ -254,7 +257,7 @@ describe("the checkbox", () => {
 
 describe("frames", () => {
   it("reads the capabilities without the browser cache, then draws the newest frame at the configured opacity", async () => {
-    const { svc, fetch } = make({ opacity: 0.7 }, () => caps("2026-10-27T06:30:00Z"));
+    const { svc, fetch } = make({ opacity: 0.7, show: true }, () => caps("2026-10-27T06:30:00Z"));
     svc.setup();
     await flush();
     expect(fetch).toHaveBeenCalledWith(LIGHTNING_CAPS, expect.objectContaining({ cache: "no-cache", credentials: "omit" }));

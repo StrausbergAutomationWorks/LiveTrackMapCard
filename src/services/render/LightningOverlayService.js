@@ -66,9 +66,10 @@ export const LIGHTNING_OUTLINE = "drop-shadow(0 0 1px rgba(0, 0, 0, 0.85))";
 /**
  * Defaults; `lightning` in the card config overrides each. Opacity 0.6
  * (Lee, 2026-10-27 02:24: "a bit more transparent so you can read the map
- * underneath"), from pictures of 0.85, 0.7, 0.6 and 0.5 over a storm.
+ * underneath"), from pictures of 0.85, 0.7, 0.6 and 0.5 over a storm. The box
+ * starts UNTICKED (Lee, 2026-10-27 02:37): nothing is fetched until a viewer ticks it.
  */
-export const DEFAULT_LIGHTNING = Object.freeze({ enabled: true, opacity: 0.6, show: true, outline: true });
+export const DEFAULT_LIGHTNING = Object.freeze({ enabled: true, opacity: 0.6, show: false, outline: true });
 
 /**
  * @param {*} v
