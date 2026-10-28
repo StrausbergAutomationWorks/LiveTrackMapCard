@@ -60,7 +60,7 @@ describe("D12 amended for item 310: clickable shapes", () => {
       .toBe('<div class="ltmc-shape-info"><b>E3 &lt;script&gt;</b><br>line 1<br>line 2</div>');
     expect(infoHtml({ title: "", text: "a" })).toBe('<div class="ltmc-shape-info">a</div>');
     expect(infoHtml({ title: "T", text: "" })).toBe('<div class="ltmc-shape-info"><b>T</b></div>');
-    expect(INFO_POPUP).toEqual({ maxWidth: 320, maxHeight: 320, autoPanPadding: [16, 16] });
+    expect(INFO_POPUP).toEqual({ maxWidth: 360, maxHeight: 320, autoPanPadding: [16, 16] });
   });
 
   it("buildDrawList carries the info", () => {

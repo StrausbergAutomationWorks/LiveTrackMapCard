@@ -450,6 +450,7 @@ export default class MapCardEntityMarker extends LitElement {
       'pulse': {type: String, attribute: 'pulse'},
       'size': {type: Number},
       'tapAction': {type: Object, attribute: 'tap-action'},
+      'info': {type: String, attribute: 'info'},
       'extraCssClasses': {type: String, attribute: 'extra-css-classes'},
     };
   }
@@ -722,6 +723,8 @@ export default class MapCardEntityMarker extends LitElement {
   }
 
   _badgeTap(ev) {
+    // A marker with `marker_info` (D4e): the click goes on to Leaflet's marker, which opens the popup.
+    if (this.info === "true") return;
     ev.stopPropagation();
     if (this.entityId) {
       // https://developers.home-assistant.io/blog/2023/07/07/action-event-custom-cards/

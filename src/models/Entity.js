@@ -8,6 +8,7 @@ import EntityConfig, { layerOffset, parseAlternateSeconds, parseLabelPlacement, 
 import EntityHistoryManager from "./EntityHistoryManager.js";
 import TimelineEntry from "./TimelineEntry.js";
 import { hoverHtml, HOVER_REFRESH_MS } from "../util/HoverLabel.js";
+import { infoOf, infoHtml, INFO_POPUP } from "../util/InfoPopup.js";
 import { lateness } from "../util/Lateness.js";
 import { metres, pathAt, trackRoute } from "../util/TrackPath.js";
 
@@ -1772,6 +1773,8 @@ export default class Entity {
     const boxH = pillH + off;
     const callout = placeIcon != null && this.map.getZoom() >= this.config.pillCalloutMinZoom;
 
+    // `marker_info` (D4e): a click opens its text here instead of the entity dialog.
+    const hasInfo = infoOf(this.attributes?.marker_info) !== null;
     const marker = new Marker(at, {
       icon: new DivIcon({
         html: `
@@ -1811,6 +1814,7 @@ export default class Entity {
             size="${this.config.size}"
             extra-css-classes="${extraCssClasses}"
             tap-action='${JSON.stringify(this.config.tapAction)}'
+            info="${hasInfo ? "true" : ""}"
           ></${MARKER_TAG}>
         `,
         iconSize: placeIcon ? (callout ? [boxW, boxH] : [pillW, pillH]) : [s, s],
@@ -1824,6 +1828,12 @@ export default class Entity {
     // distance feature (setup) rebinds a permanent tooltip when configured.
     // Content is a FUNCTION: Leaflet calls it on every open and update(), so
     // the next-station minutes are worked out when shown, not when bound.
+    if (hasInfo) {
+      marker.bindPopup(() => {
+        const info = infoOf(this.attributes?.marker_info);
+        return info ? infoHtml(info) : "";
+      }, { ...INFO_POPUP, offset: [0, -this.config.size / 2] });
+    }
     if (!this.config.distanceEntity) {
       marker.bindTooltip(() => this.tooltipHtml(), {
         direction: "top",

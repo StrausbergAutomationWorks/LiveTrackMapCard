@@ -87,6 +87,10 @@ one squeezed out of the entity's name. `position_transition: auto` slides each
 marker to its new position over the time since its last update, at most 30
 seconds, and not at all when the browser asks for reduced motion.
 
+A marker whose entity carries `marker_info`, `{"title": ..., "text": ...}` in plain
+text (a forecast point from Live Track Weather, say), opens that text in a popup
+when clicked, instead of the entity's dialog. Nothing in it is read as HTML.
+
 ### Usage
 
 > #### TIP

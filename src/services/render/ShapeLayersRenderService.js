@@ -1,5 +1,8 @@
 import L from "leaflet";
 import Logger from "../../util/Logger.js";
+import { infoOf, infoHtml, INFO_POPUP } from "../../util/InfoPopup.js";
+
+export { infoOf, infoHtml, escapeHtml, INFO_POPUP, INFO_TITLE_MAX, INFO_TEXT_MAX } from "../../util/InfoPopup.js";
 
 /**
  * Shapes on the map (06_MAP_CONTRACT.md D12, backlog 277).
@@ -148,46 +151,6 @@ export function styleFor(event, styles) {
   const casing = typeof s.casing === "string" && /^#[0-9a-fA-F]{6}$/.test(s.casing) ? s.casing : null;
   return casing ? { color, priority, casing } : { color, priority };
 }
-
-/** The longest title and text an `info` may show; longer is cut. */
-export const INFO_TITLE_MAX = 200;
-export const INFO_TEXT_MAX = 4000;
-
-/**
- * A shape's `info` (D12 as amended for item 310): plain-text `title` and `text`, either may be absent but not
- * both. Anything else is no info, and the shape stays non-interactive.
- * @param {*} info
- * @returns {?{title: string, text: string}}
- */
-export function infoOf(info) {
-  if (!isPlainObject(info)) return null;
-  const s = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
-  const title = s(info.title, INFO_TITLE_MAX);
-  const text = s(info.text, INFO_TEXT_MAX);
-  return title || text ? { title, text } : null;
-}
-
-/**
- * @param {string} s
- * @returns {string} s with HTML's special characters escaped
- */
-export function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-}
-
-/**
- * The popup for a clicked shape: the title in bold, the text's lines as lines. Never HTML from the publisher.
- * @param {{title: string, text: string}} info
- * @returns {string}
- */
-export function infoHtml(info) {
-  const title = info.title ? `<b>${escapeHtml(info.title)}</b>` : "";
-  const text = info.text ? escapeHtml(info.text).replace(/\n/g, "<br>") : "";
-  return `<div class="ltmc-shape-info">${title}${title && text ? "<br>" : ""}${text}</div>`;
-}
-
-/** A clicked shape's popup: Leaflet options. */
-export const INFO_POPUP = Object.freeze({ maxWidth: 320, maxHeight: 320, autoPanPadding: [16, 16] });
 
 const AREA_TYPES = new Set(["Polygon", "MultiPolygon"]);
 
