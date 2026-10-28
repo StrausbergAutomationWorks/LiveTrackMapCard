@@ -197,6 +197,7 @@ Some integrations publish areas rather than points: weather alerts by forecast z
 * **If the publisher is unavailable**, nothing is drawn for it.
 * **Several publishers** are stacked by each one's `shape_order` (an integer, 0 when absent): a lower one is drawn beneath, ties by entity id, and the order holds through updates and when a box is ticked again.
 * **Lines** (a storm's track, for example) are drawn in their event's colour with no fill. An event's style may name a `casing` colour, drawn 1 px either side beneath the line so it reads on any map.
+* **Clickable shapes:** an item of `polygons` may carry `info`, `{"title": ..., "text": ...}` in plain text. That shape is clickable and opens a popup with the title in bold and the text's lines (at most 200 and 4,000 characters; nothing in it is read as HTML). Every other shape stays non-interactive, so clicks pass to the map.
 
 ```yaml
 shape_layers: auto          # the default: every publisher found

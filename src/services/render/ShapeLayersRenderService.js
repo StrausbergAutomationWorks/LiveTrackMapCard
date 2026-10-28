@@ -10,6 +10,9 @@ import Logger from "../../util/Logger.js";
  * priority per event) and `attribution`. The card fetches each file once,
  * keeps it in memory only, and fills translucent shapes over the tiles and
  * under every marker, lowest priority first. Nothing here names a publisher.
+ * A `polygons` item carrying `info` {title, text} is clickable and shows it
+ * (D12 as amended for Live Track Weather item 310); every other shape stays
+ * non-interactive.
  */
 
 /** Colour and priority for an event the publisher sent no style for (D12 rule 8). */
@@ -146,6 +149,46 @@ export function styleFor(event, styles) {
   return casing ? { color, priority, casing } : { color, priority };
 }
 
+/** The longest title and text an `info` may show; longer is cut. */
+export const INFO_TITLE_MAX = 200;
+export const INFO_TEXT_MAX = 4000;
+
+/**
+ * A shape's `info` (D12 as amended for item 310): plain-text `title` and `text`, either may be absent but not
+ * both. Anything else is no info, and the shape stays non-interactive.
+ * @param {*} info
+ * @returns {?{title: string, text: string}}
+ */
+export function infoOf(info) {
+  if (!isPlainObject(info)) return null;
+  const s = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  const title = s(info.title, INFO_TITLE_MAX);
+  const text = s(info.text, INFO_TEXT_MAX);
+  return title || text ? { title, text } : null;
+}
+
+/**
+ * @param {string} s
+ * @returns {string} s with HTML's special characters escaped
+ */
+export function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+/**
+ * The popup for a clicked shape: the title in bold, the text's lines as lines. Never HTML from the publisher.
+ * @param {{title: string, text: string}} info
+ * @returns {string}
+ */
+export function infoHtml(info) {
+  const title = info.title ? `<b>${escapeHtml(info.title)}</b>` : "";
+  const text = info.text ? escapeHtml(info.text).replace(/\n/g, "<br>") : "";
+  return `<div class="ltmc-shape-info">${title}${title && text ? "<br>" : ""}${text}</div>`;
+}
+
+/** A clicked shape's popup: Leaflet options. */
+export const INFO_POPUP = Object.freeze({ maxWidth: 320, maxHeight: 320, autoPanPadding: [16, 16] });
+
 const AREA_TYPES = new Set(["Polygon", "MultiPolygon"]);
 
 /**
@@ -190,7 +233,8 @@ export function buildDrawList(attributes, shapes) {
   const polygons = Array.isArray(attributes?.polygons) ? attributes.polygons : [];
   polygons.forEach((p) => {
     if (!isPlainObject(p) || typeof p.event !== "string" || !(isArea(p) || isLine(p))) return;
-    items.push({ kind: isLine(p) ? "line" : "polygon", key: null, event: p.event, geometry: { type: p.type, coordinates: p.coordinates }, ...styleFor(p.event, styles) });
+    const info = infoOf(p.info);
+    items.push({ kind: isLine(p) ? "line" : "polygon", key: null, event: p.event, geometry: { type: p.type, coordinates: p.coordinates }, ...styleFor(p.event, styles), ...(info ? { info } : {}) });
   });
   const kindRank = { zone: 0, polygon: 1, line: 2 };
   const order = items.map((it, i) => [it, i]);
@@ -435,8 +479,8 @@ export default class ShapeLayersService {
           style: () => ({ color: it.casing, weight: this.style.weight + 2 * CASING_PX, opacity: this.style.opacity, fill: false }),
         }));
       }
-      p.group.addLayer(L.geoJSON(feature, {
-        interactive: false,
+      const layer = L.geoJSON(feature, {
+        interactive: !!it.info,
         renderer,
         style: () => (it.kind === "line"
           ? { color: it.color, weight: this.style.weight, opacity: this.style.opacity, fill: false }
@@ -447,7 +491,9 @@ export default class ShapeLayersService {
             opacity: this.style.opacity,
             fillOpacity: opacities[i],
           }),
-      }));
+      });
+      if (it.info) layer.bindPopup(infoHtml(it.info), INFO_POPUP);
+      p.group.addLayer(layer);
     });
     p.drawn = items.length;
   }
