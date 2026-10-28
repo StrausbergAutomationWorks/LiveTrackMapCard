@@ -260,11 +260,11 @@ lightning: true             # the default
 
 ### Clouds
 
-One layer with a checkbox, "Clouds", in the layer control, unticked by default (nothing is fetched until it is ticked): infrared satellite pictures from [NOAA nowCOAST](https://nowcoast.noaa.gov/). Where GOES covers (the United States, Mexico, the Gulf of Mexico, the Caribbean north of 11°N and Hawaii) the picture is GOES's, a new one every 5 minutes; everywhere else between 72°S and 72°N it is NOAA's hourly global mosaic. No key, no account. Clear sky is left transparent and cloud is drawn by how cold its top is, at most 65% opaque: light grey on a light map, white on a dark one. The clouds sit right above the map tiles and under the radar, lightning, filled areas and every marker. Infrared shows very cold ground (the Arctic in winter, say) as cloud. Tiles are requested to zoom 6 and enlarged beyond.
+One layer with a checkbox, "Clouds", in the layer control, unticked by default (nothing is fetched until it is ticked): infrared satellite pictures. Where GOES covers (the United States, Mexico, the Gulf of Mexico, the Caribbean north of 11°N and Hawaii) the picture is GOES's from [NOAA nowCOAST](https://nowcoast.noaa.gov/), a new one every 5 minutes. Everywhere else it is [EUMETSAT](https://view.eumetsat.int/)'s: Meteosat Third Generation every 10 minutes from 51°W to 45°E (Europe, Africa, the Atlantic), Meteosat over the Indian Ocean every 15 minutes from 45°E to 100°E, and EUMETSAT's 3-hourly world cloud map elsewhere (East Asia, the Pacific) and under the other two. North they reach about 77°N, and the world map up to 81°N in places; south they stop at 72.74°S, where Antarctica's ice would read as cloud. Each picture's greys are matched to GOES's, so the same cloud looks the same on either side of a join. No key, no account. Clear sky is left transparent and cloud is drawn by how cold its top is, at most 65% opaque: light grey on a light map, white on a dark one. The clouds sit right above the map tiles and under the radar, lightning, filled areas and every marker. Infrared shows very cold ground (the Arctic in winter, say) as cloud. Tiles are requested to zoom 6 and enlarged beyond.
 
-* **Credit:** "Clouds: NOAA nowCOAST, GOES and global satellite mosaic" in the attribution line while they are drawn.
-* **When GOES is down** or its newest picture is over 30 minutes old, the global mosaic draws its area too; when the global mosaic is over 3 hours old as well, no clouds are drawn.
-* Requests go only to nowCOAST.
+* **Credit:** "Clouds: NOAA nowCOAST, GOES" while GOES's clouds can be on screen, and "Clouds: © EUMETSAT" while EUMETSAT's can.
+* **When a picture is down** or too old (GOES over 30 minutes, MTG over 40, the Indian Ocean picture over 45, the world map over 7 hours), the next one down draws its area; when all are too old, no clouds are drawn.
+* Requests go only to nowCOAST and EUMETSAT, and only for tiles a picture covers.
 
 ```yaml
 clouds: true                # the default: offered, unticked
