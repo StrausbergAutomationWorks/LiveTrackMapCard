@@ -144,6 +144,11 @@ export default class MapConfig {
     // LightningOverlayService.
     this.lightning = inputConfig.lightning;
 
+    // The cloud overlay (06_MAP_CONTRACT_OVERLAYS.md D17): absent offers it,
+    // unticked; `false` removes it; a mapping sets opacity, show. Parsed by
+    // CloudOverlayService.
+    this.clouds = inputConfig.clouds;
+
     // Allow as none array
     let plugins = this._setConfigWithDefault(inputConfig.plugins, []);
     this.plugins = (this._setConfigWithDefault(Array.isArray(plugins) ? plugins : [plugins], [])).map((plugin) => {

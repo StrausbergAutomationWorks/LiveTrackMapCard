@@ -18,6 +18,7 @@ import GeoJsonRenderService from '../services/render/GeoJsonRenderService.js';
 import ShapeLayersService from '../services/render/ShapeLayersRenderService.js';
 import RadarOverlayService from '../services/render/RadarOverlayService.js';
 import LightningOverlayService from '../services/render/LightningOverlayService.js';
+import CloudOverlayService from '../services/render/CloudOverlayService.js';
 import HaStaleStateService from '../services/HaStaleStateService.js';
 import { PathFollower } from '../services/path/PathFollower.js';
 
@@ -95,6 +96,8 @@ export default class MapCard extends LitElement {
     this.radarOverlayService = new RadarOverlayService(this.map, this._config.weatherRadar, this.tileLayersService);
     // Lightning (D14): its own pane right above the radar's.
     this.lightningOverlayService = new LightningOverlayService(this.map, this._config.lightning, this.tileLayersService);
+    // Clouds (D17): its own pane right above the tiles, under the radar's.
+    this.cloudOverlayService = new CloudOverlayService(this.map, this._config.clouds, this.tileLayersService, () => this._isDarkMode());
 
     try {
       this.pluginsRenderService.setup();
@@ -103,6 +106,8 @@ export default class MapCard extends LitElement {
       this.radarOverlayService.setup();
       // After the radar: its pane goes right above the radar's, its checkbox below.
       this.lightningOverlayService.setup();
+      // After the radar's pane exists: the clouds' goes in right after the tiles, under it.
+      this.cloudOverlayService.setup();
       this.geoJsonRenderService.setup();
       this.entitiesRenderService.setup();
       this.initialViewRenderService.setup();
@@ -331,6 +336,7 @@ export default class MapCard extends LitElement {
     this.shapeLayersService?.cleanup();
     this.radarOverlayService?.cleanup();
     this.lightningOverlayService?.cleanup();
+    this.cloudOverlayService?.cleanup();
     this.entitiesRenderService?.cleanup();
     this.map.remove();
     this.map = undefined;

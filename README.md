@@ -258,6 +258,22 @@ lightning: true             # the default
 #   outline: false          # no dark ring round the strike cells
 ```
 
+### Clouds
+
+One layer with a checkbox, "Clouds", in the layer control, unticked by default (nothing is fetched until it is ticked): infrared satellite pictures from [NOAA nowCOAST](https://nowcoast.noaa.gov/). Where GOES covers (the United States, Mexico, the Gulf of Mexico, the Caribbean north of 11°N and Hawaii) the picture is GOES's, a new one every 5 minutes; everywhere else between 72°S and 72°N it is NOAA's hourly global mosaic. No key, no account. Clear sky is left transparent and cloud is drawn by how cold its top is: grey on a light map, white on a dark one. The clouds sit right above the map tiles and under the radar, lightning, filled areas and every marker. Infrared shows very cold ground (the Arctic in winter, say) as cloud. Tiles are requested to zoom 6 and enlarged beyond.
+
+* **Credit:** "Clouds: NOAA nowCOAST, GOES and global satellite mosaic" in the attribution line while they are drawn.
+* **When GOES is down** or its newest picture is over 30 minutes old, the global mosaic draws its area too; when the global mosaic is over 3 hours old as well, no clouds are drawn.
+* Requests go only to nowCOAST.
+
+```yaml
+clouds: true                # the default: offered, unticked
+# clouds: false             # no clouds, no checkbox, no requests
+# clouds:                   # each key optional
+#   opacity: 0.8
+#   show: true               # start ticked
+```
+
 ### URL Entity lookup
 
 You can add dynamic url's, for example to use a sensor value in the url. When the parameter changes, the map will redraw with the new tile layer.
