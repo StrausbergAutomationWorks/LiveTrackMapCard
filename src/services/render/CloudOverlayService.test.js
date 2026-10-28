@@ -144,8 +144,9 @@ describe("tiles", () => {
   });
 
   it("recolour: clear sky transparent, cloud by brightness, in the theme's colour", () => {
-    expect([CLEAR, CLOUDY, MAX_ALPHA]).toEqual([0.36, 0.72, 0.85]);
-    expect(CLOUD_COLOURS).toEqual({ light: [0x5f, 0x6b, 0x7a], dark: [255, 255, 255] });
+    // Lee 2026-10-28: lighter and more transparent (it read #5F6B7A and 0.85).
+    expect([CLEAR, CLOUDY, MAX_ALPHA]).toEqual([0.36, 0.72, 0.65]);
+    expect(CLOUD_COLOURS).toEqual({ light: [0x8a, 0x94, 0xa1], dark: [255, 255, 255] });
     const v = (x) => Math.round(x * 255);
     const d = [
       v(0.3), v(0.3), v(0.3), 255, // clear
@@ -158,9 +159,9 @@ describe("tiles", () => {
     const a = [3, 7, 11, 15, 19].map((i) => d[i]);
     expect(a[0]).toBe(0);
     expect(a[1]).toBe(0);
-    expect(a[2]).toBeGreaterThanOrEqual(107);
-    expect(a[2]).toBeLessThanOrEqual(110);
-    expect(a[3]).toBe(Math.round(255 * 0.85));
+    expect(a[2]).toBeGreaterThanOrEqual(82);
+    expect(a[2]).toBeLessThanOrEqual(85);
+    expect(a[3]).toBe(Math.round(255 * 0.65));
     expect(a[4]).toBe(0);
     expect([d[0], d[1], d[2], d[12], d[13], d[14]]).toEqual([1, 2, 3, 1, 2, 3]);
   });

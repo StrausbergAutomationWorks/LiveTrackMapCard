@@ -8,7 +8,7 @@ import { isoTime } from "../radar/RadarFrames.js";
  * every 5 minutes, for a tile that lies wholly inside GOES's box; the hourly
  * global mosaic for every other tile. Both arrive as solid grey (warm ground
  * dark, cold cloud tops bright), so each tile is redrawn in a canvas: clear
- * sky transparent, cloud from its brightness, grey on the light map and white
+ * sky transparent, cloud from its brightness (at most 65% opaque), light grey on the light map and white
  * on the dark one (Lee, 2026-10-28). One checkbox, "Clouds", unticked by
  * default; its own pane right above the tiles and under the radar.
  */
@@ -66,14 +66,18 @@ export const CLOUD_CREDIT = "Clouds: NOAA nowCOAST, GOES and global satellite mo
 /**
  * Brightness (0 to 1, the mean of red, green and blue) at which a pixel starts
  * to be cloud, and at which it is cloud at full strength; and that strength.
- * Chosen from pictures over the real map, 2026-10-28 (`bin\ltw307\sheet_*.png`).
+ * Chosen from pictures over the real map, 2026-10-28 (`bin\ltw307\sheet_*.png`); the top
+ * lowered from 0.85 by Lee the same day ("more transparent", `sheet_lighter_crop.png` B).
  */
 export const CLEAR = 0.36;
 export const CLOUDY = 0.72;
-export const MAX_ALPHA = 0.85;
+export const MAX_ALPHA = 0.65;
 
-/** Cloud colour by theme (Lee, 2026-10-28: grey on the light map, white on the dark). */
-export const CLOUD_COLOURS = Object.freeze({ light: Object.freeze([0x5f, 0x6b, 0x7a]), dark: Object.freeze([255, 255, 255]) });
+/**
+ * Cloud colour by theme (Lee, 2026-10-28: grey on the light map, white on the dark). The grey
+ * lightened from #5F6B7A to #8A94A1 by Lee the same day ("lighten the clouds").
+ */
+export const CLOUD_COLOURS = Object.freeze({ light: Object.freeze([0x8a, 0x94, 0xa1]), dark: Object.freeze([255, 255, 255]) });
 
 /** Defaults; `clouds` in the card config overrides each. The box starts UNTICKED (Lee, 2026-10-28). */
 export const DEFAULT_CLOUDS = Object.freeze({ enabled: true, opacity: 1, show: false });
