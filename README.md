@@ -195,6 +195,7 @@ Some integrations publish areas rather than points: weather alerts by forecast z
 * **The file** is fetched from your Home Assistant and kept in memory for the page, never in browser storage. A new file has a new address, so an update is fetched once and the old one dropped.
 * **If the file cannot be loaded**, only the areas the publisher sends with their own outline are drawn, and the card tries again after 10 minutes.
 * **If the publisher is unavailable**, nothing is drawn for it.
+* **Several publishers** are stacked by each one's `shape_order` (an integer, 0 when absent): a lower one is drawn beneath, ties by entity id, and the order holds through updates and when a box is ticked again.
 * **Lines** (a storm's track, for example) are drawn in their event's colour with no fill. An event's style may name a `casing` colour, drawn 1 px either side beneath the line so it reads on any map.
 
 ```yaml

@@ -64,6 +64,17 @@ function hasShapesUrl(a) {
 }
 
 /**
+ * A publisher's place among the others (D12 as amended for D16): `shape_order`, an
+ * integer; a lower one is drawn beneath. Anything else is 0. Ties go by entity id.
+ * @param {object} attributes
+ * @returns {number}
+ */
+export function shapeOrderOf(attributes) {
+  const o = attributes?.shape_order;
+  return Number.isInteger(o) ? o : 0;
+}
+
+/**
  * Every publisher in the states, by attribute shape alone (D12 rule 1).
  * @param {object} states hass.states
  * @returns {string[]} entity ids, sorted
@@ -309,8 +320,11 @@ export default class ShapeLayersService {
       const group = L.layerGroup([], attribution ? { attribution } : {});
       const name = item.name ?? (typeof state?.attributes?.friendly_name === "string" && state.attributes.friendly_name) ?? id;
       this.overlays.addOverlay(group, name || id, item.show);
-      p = { group, url: null, state: null, fileStatus: null, drawn: 0 };
+      p = { group, url: null, state: null, fileStatus: null, drawn: 0, order: 0 };
       this.publishers.set(id, p);
+      // A re-ticked box puts its shapes back on top: restore the order (D16).
+      const added = p;
+      group.on("add", () => this._restack(added));
     }
     if (!isPublisherState(state)) {
       if (p.drawn || p.state) this._clear(p);
@@ -327,7 +341,22 @@ export default class ShapeLayersService {
     if (p.state === state && p.fileStatus === fileStatus) return;
     p.state = state;
     p.fileStatus = fileStatus;
+    p.order = shapeOrderOf(state.attributes);
     this._draw(p, state.attributes, fileStatus === "ok" ? file.shapes : null);
+    this._restack(p);
+  }
+
+  /**
+   * A publisher just drawn (or re-added) lands on top of every other. Bring each one
+   * ranked above it back to the front, lowest first, so the stack is in `shape_order`
+   * again (D12 as amended for D16). Nothing moves when it is the top one.
+   * @param {object} p the publisher record
+   */
+  _restack(p) {
+    const ranked = [...this.publishers.entries()]
+      .sort(([ia, a], [ib, b]) => (a.order - b.order) || (ia < ib ? -1 : ia > ib ? 1 : 0))
+      .map(([, q]) => q);
+    for (const q of ranked.slice(ranked.indexOf(p) + 1)) q.group.eachLayer((l) => l.bringToFront());
   }
 
   /**

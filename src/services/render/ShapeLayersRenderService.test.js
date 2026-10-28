@@ -16,10 +16,12 @@ jest.mock("leaflet", () => {
           clearLayers: jest.fn(() => { g.layers = []; g.cleared += 1; return g; }),
           addLayer: jest.fn((l) => { g.layers.push(l); return g; }),
           remove: jest.fn(() => { g.removed += 1; return g; }),
+          eachLayer: jest.fn((fn) => { g.layers.forEach(fn); return g; }),
+          on: jest.fn(() => g),
         };
         return g;
       }),
-      geoJSON: jest.fn((data, opts) => ({ data, opts })),
+      geoJSON: jest.fn((data, opts) => ({ data, opts, bringToFront: jest.fn() })),
     },
   };
 });
