@@ -28,7 +28,7 @@ jest.mock("leaflet", () => {
 // file, and lines.
 
 import L from "leaflet";
-import ShapeLayersService, { isPublisherState, buildDrawList, isLine, _resetShapeCache } from "./ShapeLayersRenderService.js";
+import ShapeLayersService, { isPublisherState, buildDrawList, isLine, styleFor, CASING_PX, _resetShapeCache } from "./ShapeLayersRenderService.js";
 
 const storms = (extra = {}) => ({
   state: "2",
@@ -79,6 +79,43 @@ describe("D12 amended for D15", () => {
     const area = calls.find(([d]) => d.geometry.type === "Polygon")[1].style();
     expect(area.fillOpacity).toBe(0.25);
     expect(area.fillColor).toBe("#FFFFFF");
+  });
+
+  it("a casing is a colour, kept only when valid", () => {
+    expect(CASING_PX).toBe(1);
+    expect(styleFor("e", { e: { color: "#D7263D", priority: 1, casing: "#FFFFFF" } }))
+      .toEqual({ color: "#D7263D", priority: 1, casing: "#FFFFFF" });
+    expect(styleFor("e", { e: { color: "#D7263D", priority: 1, casing: "white" } })).toEqual({ color: "#D7263D", priority: 1 });
+    expect(styleFor("e", { e: { color: "#D7263D", priority: 1, casing: 7 } })).toEqual({ color: "#D7263D", priority: 1 });
+    expect(styleFor("e", { e: { color: "bad", priority: 1, casing: "#FFFFFF" } })).toEqual({ color: "#808080", priority: 999 });
+  });
+
+  it("a cased line is drawn on its casing, 1 px either side; an area ignores casing", () => {
+    const overlays = { addOverlay: jest.fn(), removeOverlay: jest.fn() };
+    const svc = new ShapeLayersService({}, undefined, undefined, overlays, { fetch: jest.fn() });
+    const s = storms({ styles: {
+      "Forecast track": { color: "#D7263D", priority: 1, casing: "#FFFFFF" },
+      "Forecast cone": { color: "#4A6FA5", priority: 6, casing: "#FFFFFF" },
+    } });
+    svc.render({ states: { "sensor.storms": s } });
+    const calls = L.geoJSON.mock.calls;
+    expect(calls).toHaveLength(3);
+    expect(calls.map(([d, o]) => [d.geometry.type, o.style().color])).toEqual([
+      ["Polygon", "#4A6FA5"], ["LineString", "#FFFFFF"], ["LineString", "#D7263D"]]);
+    expect(calls[1][1].style()).toEqual({ color: "#FFFFFF", weight: 4, opacity: 0.9, fill: false });
+    expect(calls[2][1].style()).toEqual({ color: "#D7263D", weight: 2, opacity: 0.9, fill: false });
+    expect(calls[1][1].interactive).toBe(false);
+    expect(calls[1][0]).toBe(calls[2][0]);
+    const g = svc.publishers.get("sensor.storms").group;
+    expect(g.layers).toHaveLength(3);
+  });
+
+  it("the casing follows the outline weight", () => {
+    const overlays = { addOverlay: jest.fn(), removeOverlay: jest.fn() };
+    const svc = new ShapeLayersService({}, undefined, { weight: 3 }, overlays, { fetch: jest.fn() });
+    svc.render({ states: { "sensor.storms": storms({ styles: { "Forecast track": { color: "#000000", priority: 1, casing: "#FFFFFF" } } }) } });
+    const cas = L.geoJSON.mock.calls.find(([, o]) => o.style().color === "#FFFFFF" && o.style().fill === false);
+    expect(cas[1].style().weight).toBe(5);
   });
 
   it("a shape file publisher still fetches", () => {

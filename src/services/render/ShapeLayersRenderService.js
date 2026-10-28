@@ -15,6 +15,9 @@ import Logger from "../../util/Logger.js";
 /** Colour and priority for an event the publisher sent no style for (D12 rule 8). */
 export const UNKNOWN_STYLE = Object.freeze({ color: "#808080", priority: 999 });
 
+/** A line's casing shows this many px either side of it (D12 as amended for D15). */
+export const CASING_PX = 1;
+
 /** After a failed fetch, the same URL is tried again no sooner than this (D12 rule 6). */
 export const RETRY_MS = 10 * 60 * 1000;
 
@@ -117,17 +120,19 @@ export function parseShapeStyle(input) {
 }
 
 /**
- * Colour and priority for one event (D12 rule 8).
+ * Colour and priority for one event (D12 rule 8), and its optional `casing`:
+ * a colour drawn beneath a line, CASING_PX either side (D12 as amended for D15).
  * @param {string} event
  * @param {object} styles the publisher's `styles`
- * @returns {{color: string, priority: number}}
+ * @returns {{color: string, priority: number, casing?: string}}
  */
 export function styleFor(event, styles) {
   const s = isPlainObject(styles) ? styles[event] : undefined;
   const color = isPlainObject(s) && typeof s.color === "string" && /^#[0-9a-fA-F]{6}$/.test(s.color) ? s.color : null;
   const priority = isPlainObject(s) && Number.isInteger(s.priority) ? s.priority : null;
   if (color === null || priority === null) return { ...UNKNOWN_STYLE };
-  return { color, priority };
+  const casing = typeof s.casing === "string" && /^#[0-9a-fA-F]{6}$/.test(s.casing) ? s.casing : null;
+  return casing ? { color, priority, casing } : { color, priority };
 }
 
 const AREA_TYPES = new Set(["Polygon", "MultiPolygon"]);
@@ -393,7 +398,15 @@ export default class ShapeLayersService {
     const opacities = fillOpacities(items, this.style);
     const renderer = this._renderer();
     items.forEach((it, i) => {
-      p.group.addLayer(L.geoJSON({ type: "Feature", properties: {}, geometry: it.geometry }, {
+      const feature = { type: "Feature", properties: {}, geometry: it.geometry };
+      if (it.kind === "line" && it.casing) {
+        p.group.addLayer(L.geoJSON(feature, {
+          interactive: false,
+          renderer,
+          style: () => ({ color: it.casing, weight: this.style.weight + 2 * CASING_PX, opacity: this.style.opacity, fill: false }),
+        }));
+      }
+      p.group.addLayer(L.geoJSON(feature, {
         interactive: false,
         renderer,
         style: () => (it.kind === "line"
