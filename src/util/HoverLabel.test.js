@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { escapeHtml, routeText, detailLine, titleLine, hoverHtml,
+import { escapeHtml, routeText, detailLine, titleLine, hoverHtml, flightText,
   airportLines, sourceText, ROUTE_SOURCE_TEXT, NEW_ROUTE_TEXT, isNewRoute } from './HoverLabel.js';
 
 const NOW = Date.parse('2026-10-03T01:00:00+00:00');
@@ -114,6 +114,46 @@ describe('first line', () => {
     expect(titleLine({ call_sign: 'LAXJ' }, 'ODYSSEY')).toBe('ODYSSEY');
     expect(titleLine(undefined, 'Mom is at Work')).toBe('Mom is at Work');
     expect(titleLine({}, undefined)).toBe('');
+  });
+});
+
+describe('first line: the airline by name (Lee 2026-10-29 14:14, 14:24)', () => {
+  const F = 'Aircraft A68336';
+  it('"United 1678", not "UAL1678"', () => {
+    expect(titleLine({ callsign: 'UAL1678', airline_short: 'United' }, F)).toBe('United 1678');
+    expect(flightText({ callsign: ' ual1678 ', airline_short: ' United ' })).toBe('United 1678');
+    expect(flightText({ callsign: 'baw2pd', airline_short: 'British Airways' })).toBe('British Airways 2PD');
+  });
+  it('a single-brand regional by its brand, a multi-brand one by its operator (as published)', () => {
+    expect(titleLine({ callsign: 'ENY3548', airline_short: 'American Eagle' }, F)).toBe('American Eagle 3548');
+    expect(titleLine({ callsign: 'SKW476L', airline_short: 'SkyWest' }, F)).toBe('SkyWest 476L');
+    expect(titleLine({ callsign: 'BAW2PD', airline_short: 'British Airways' }, F)).toBe('British Airways 2PD');
+  });
+  it('the callsign as broadcast without airline_short, or when it is not a designator and a number', () => {
+    expect(titleLine({ callsign: 'UAL1678' }, F)).toBe('UAL1678');
+    expect(titleLine({ callsign: 'VELUX55', airline_short: 'X' }, F)).toBe('VELUX55');
+    expect(titleLine({ callsign: 'N959BP', airline_short: 'X' }, F)).toBe('N959BP');
+    expect(titleLine({ callsign: 'UAL12345', airline_short: 'United' }, F)).toBe('UAL12345');
+    expect(titleLine({ callsign: 'UALX', airline_short: 'United' }, F)).toBe('UALX');
+    expect(titleLine({ airline_short: 'United' }, F)).toBe(F);
+  });
+});
+
+describe('first line: the agency or the list status (D4b rule 12; Lee 2026-10-25, 2026-10-29)', () => {
+  const F = 'Aircraft ACB0AC';
+  it('after the flight, a space, a middle dot, a space', () => {
+    expect(titleLine({ callsign: 'TROY329', operator_short: 'DHS' }, F)).toBe('TROY329 · DHS');
+    expect(titleLine({ callsign: 'VELUX55', operator_short: 'ICE Air Charter?' }, F)).toBe('VELUX55 · ICE Air Charter?');
+    expect(titleLine({ callsign: 'GXA6181', airline_short: 'GlobalX', operator_short: 'ICE Air Charter?' }, F))
+      .toBe('GlobalX 6181 · ICE Air Charter?');
+  });
+  it('alone with no callsign; once when the two are the same', () => {
+    expect(titleLine({ operator_short: 'DHS' }, F)).toBe('DHS');
+    expect(titleLine({ callsign: 'TX DPS', operator_short: 'TX DPS' }, F)).toBe('TX DPS');
+  });
+  it('nothing added without it; escaped in the box', () => {
+    expect(titleLine({ callsign: 'AAL435' }, F)).toBe('AAL435');
+    expect(hoverHtml({ callsign: 'N1', operator_short: '<b>' }, F, NOW)).toBe('N1 · &lt;b&gt;');
   });
 });
 

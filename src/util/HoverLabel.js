@@ -133,14 +133,45 @@ export function detailLine(a, nowMs) {
   return n < 1 ? `Arriving ${station}` : `${station} in ${minutesText(n)}`;
 }
 
+/** Between the flight and its agency or list status: a space, U+00B7 MIDDLE DOT, a space (Lee 2026-10-25). */
+export const OPERATOR_SEPARATOR = " · ";
+
+/** A designator, then a flight number that starts with a digit; 7 characters at most (the FAA's limit). */
+const AIRLINE_FLIGHT = /^[A-Za-z]{3}([0-9][0-9A-Za-z]{0,3})$/;
+
 /**
- * The first line, plain text: callsign, else line name, else the fallback.
+ * The flight as a person reads it, or null: "United 1678" for UAL1678 when the
+ * integration publishes the airline's short name (`airline_short`, Lee
+ * 2026-10-29 14:14), else the callsign as broadcast. A special callsign
+ * (TROY329, VELUX55) or a registration has no airline_short and stays as it is.
+ * @param {object} a attributes
+ * @returns {string|null}
+ */
+export function flightText(a) {
+  const callsign = text(a?.callsign);
+  const short = text(a?.airline_short);
+  if (callsign && short) {
+    const m = AIRLINE_FLIGHT.exec(callsign);
+    if (m) return `${short} ${m[1].toUpperCase()}`;
+  }
+  return callsign;
+}
+
+/**
+ * The first line, plain text: the flight (flightText), else the line name,
+ * else the fallback; then the agency or the list status, `operator_short`,
+ * after OPERATOR_SEPARATOR: "TROY329 · DHS", "VELUX55 · ICE Air Charter?"
+ * (06_MAP_CONTRACT.md D4b rule 12; Lee 2026-10-25, 2026-10-29). Alone when
+ * there is nothing before it; once when the two are the same text.
  * @param {object} a attributes
  * @param {string} fallback what the box said before (Entity.tooltip)
  * @returns {string}
  */
 export function titleLine(a, fallback) {
-  return text(a?.callsign) ?? text(a?.line_name) ?? (fallback ?? "");
+  const first = flightText(a) ?? text(a?.line_name);
+  const op = text(a?.operator_short);
+  if (first && op) return first === op ? first : `${first}${OPERATOR_SEPARATOR}${op}`;
+  return first ?? op ?? (fallback ?? "");
 }
 
 /**
