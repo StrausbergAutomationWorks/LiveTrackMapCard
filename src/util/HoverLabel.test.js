@@ -157,6 +157,34 @@ describe('first line: the agency or the list status (D4b rule 12; Lee 2026-10-25
   });
 });
 
+describe('first line: a vessel by its published name (D4b rule 14; Lee 2026-10-30)', () => {
+  const F = 'SALT vessel 338926432';
+  it('the name, then the agency', () => {
+    expect(titleLine({ name: 'USCGC Benjamin Bottoms', operator_short: 'USCG' }, F))
+      .toBe('USCGC Benjamin Bottoms · USCG');
+    expect(titleLine({ name: '  USCGC Benjamin Bottoms ', operator_short: 'USCG' }, F))
+      .toBe('USCGC Benjamin Bottoms · USCG');
+  });
+  it('the name alone with no agency: a ship of Live Track Ships reads as it did', () => {
+    expect(titleLine({ name: 'WILFRED SYKES' }, 'WILFRED SYKES')).toBe('WILFRED SYKES');
+    expect(titleLine({ name: 'USCGC Benjamin Bottoms' }, F)).toBe('USCGC Benjamin Bottoms');
+  });
+  it('after the flight and the line name, never before', () => {
+    expect(titleLine({ callsign: 'TROY329', name: 'X', operator_short: 'DHS' }, F)).toBe('TROY329 · DHS');
+    expect(titleLine({ line_name: 'Union Pacific Northwest', name: 'X' }, F)).toBe('Union Pacific Northwest');
+  });
+  it('a blank or non-string name is no name', () => {
+    expect(titleLine({ name: '  ', operator_short: 'USCG' }, F)).toBe('USCG');
+    expect(titleLine({ name: 42 }, F)).toBe(F);
+    expect(titleLine({ name: '' }, F)).toBe(F);
+  });
+  it('once when the name and the agency are the same; escaped in the box', () => {
+    expect(titleLine({ name: 'USCG', operator_short: 'USCG' }, F)).toBe('USCG');
+    expect(hoverHtml({ name: '<i>Cutter</i>', operator_short: 'USCG' }, F, NOW))
+      .toBe('&lt;i&gt;Cutter&lt;/i&gt; · USCG');
+  });
+});
+
 describe('hoverHtml', () => {
   it('two lines, escaped', () => {
     expect(hoverHtml({ line_name: 'A & B', next_stop: '<img src=x onerror=alert(1)>',

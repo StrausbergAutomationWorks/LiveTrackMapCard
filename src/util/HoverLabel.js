@@ -17,6 +17,8 @@
  * ETA, no names and no source (backlog 281, Lee 2026-10-06; built 2026-10-22).
  * It keys on route_check alone, so it holds if the integration later stops
  * publishing the codes of a leg it rejected.
+ * A vessel: its published `name` (Lee 2026-10-30, contract D4b rule 14), then
+ * the agency, "USCGC Benjamin Bottoms · USCG".
  * Anything else keeps the text it had (friendly name, "<person> is at ...").
  *
  * Under an aircraft's route (backlog 293, 2026-10-22), the airport names as
@@ -159,7 +161,8 @@ export function flightText(a) {
 
 /**
  * The first line, plain text: the flight (flightText), else the line name,
- * else the fallback; then the agency or the list status, `operator_short`,
+ * else the published `name` (a vessel's, D4b rule 14: "USCGC Benjamin Bottoms";
+ * Lee 2026-10-30), else the fallback; then the agency or the list status, `operator_short`,
  * after OPERATOR_SEPARATOR: "TROY329 · DHS", "VELUX55 · ICE Air Charter?"
  * (06_MAP_CONTRACT.md D4b rule 12; Lee 2026-10-25, 2026-10-29). Alone when
  * there is nothing before it; once when the two are the same text.
@@ -168,7 +171,7 @@ export function flightText(a) {
  * @returns {string}
  */
 export function titleLine(a, fallback) {
-  const first = flightText(a) ?? text(a?.line_name);
+  const first = flightText(a) ?? text(a?.line_name) ?? text(a?.name);
   const op = text(a?.operator_short);
   if (first && op) return first === op ? first : `${first}${OPERATOR_SEPARATOR}${op}`;
   return first ?? op ?? (fallback ?? "");
