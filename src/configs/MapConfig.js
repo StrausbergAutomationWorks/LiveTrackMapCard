@@ -1,3 +1,4 @@
+import { parseWeatherArea } from "../util/WeatherArea.js";
 import L from 'leaflet';
 import EntityConfig from "./EntityConfig.js";
 import PluginConfig from "./PluginConfig.js";
@@ -148,6 +149,13 @@ export default class MapConfig {
     // unticked; `false` removes it; a mapping sets opacity, show. Parsed by
     // CloudOverlayService.
     this.clouds = inputConfig.clouds;
+
+    // `layer_control: false` (Lee, 2026-11-02): no checkboxes. Every overlay stays as configured here and a viewer's
+    // stored choice is ignored, since nobody could change it back. TileLayersService.
+    this.layerControl = inputConfig.layer_control !== false;
+    // `weather_area` (Lee, 2026-11-02): {latitude, longitude, radius_km}. Shapes are drawn only where they touch it,
+    // radar tiles only inside its box. util/WeatherArea.js.
+    this.weatherArea = parseWeatherArea(inputConfig.weather_area);
 
     // Allow as none array
     let plugins = this._setConfigWithDefault(inputConfig.plugins, []);

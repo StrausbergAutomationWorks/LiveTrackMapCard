@@ -237,6 +237,21 @@ describe("the checkbox", () => {
     expect(ov.addOverlay.mock.calls[0][1]).toBe(RADAR_NAME);
     expect(ov.addOverlay.mock.calls[0][2]).toBe(true);
   });
+  it("weather_area: tiles only inside its box; without it, no bounds (Lee, 2026-11-02)", async () => {
+    L._Grid.made.length = 0;
+    const a = make(undefined, ALL, { area: { lat: 41.89, lon: -87.98, km: 150 } });
+    a.svc.setup();
+    a.svc.render({ states: {} });
+    await flush();
+    const bounds = L._Grid.made.at(-1).options.bounds;
+    expect(bounds[0][0]).toBeCloseTo(41.89 - 150 / 111.2, 6);
+    L._Grid.made.length = 0;
+    const b = make(undefined, ALL);
+    b.svc.setup();
+    b.svc.render({ states: {} });
+    await flush();
+    expect(L._Grid.made.at(-1).options.bounds).toBeUndefined();
+  });
   it("weather_radar: false - no checkbox, no fetch, no pane", () => {
     const { svc, ov, map } = make(false, ALL);
     svc.setup();

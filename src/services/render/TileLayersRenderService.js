@@ -57,7 +57,8 @@ export default class TileLayersService {
   /** The layer control, when any overlay is named; else null. */
   control = null;
 
-  constructor(map, tileLayersConfig, wmsLayersConfig, urlResolver, linkedEntityService, dateRangeManager, storage = globalThis.localStorage) {
+  constructor(map, tileLayersConfig, wmsLayersConfig, urlResolver, linkedEntityService, dateRangeManager, storage = globalThis.localStorage, controlled = true) {
+    this.controlled = controlled;
     this.map = map;
     this.tileLayersConfig = tileLayersConfig;
     this.wmsLayersConfig = wmsLayersConfig;
@@ -94,7 +95,7 @@ export default class TileLayersService {
         return;
       }
       // The viewer's own choice wins over the dashboard's `show`.
-      const stored = storedOverlayChoice(l.name, this.storage);
+      const stored = this.controlled ? storedOverlayChoice(l.name, this.storage) : null;
       named[l.name] = layer.render(stored ?? l.show !== false);
     });
     return named;
@@ -107,7 +108,7 @@ export default class TileLayersService {
    * @param {{[name: string]: object}} named
    */
   _addControl(named) {
-    if (!named || Object.keys(named).length === 0) return;
+    if (!this.controlled || !named || Object.keys(named).length === 0) return;
     this._ensureControl(named);
   }
 
@@ -140,6 +141,11 @@ export default class TileLayersService {
    * @returns {boolean} whether the layer is on the map
    */
   addOverlay(layer, name, show = true) {
+    if (!this.controlled) {
+      const shown = show !== false;
+      if (shown) layer.addTo(this.map);
+      return shown;
+    }
     const stored = storedOverlayChoice(name, this.storage);
     const on = stored ?? show !== false;
     if (on) layer.addTo(this.map);

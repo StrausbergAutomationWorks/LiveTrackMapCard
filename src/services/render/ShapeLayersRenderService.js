@@ -1,6 +1,7 @@
 import L from "leaflet";
 import Logger from "../../util/Logger.js";
 import { infoOf, infoHtml, INFO_POPUP } from "../../util/InfoPopup.js";
+import { geometryTouchesArea } from "../../util/WeatherArea.js";
 
 export { infoOf, infoHtml, escapeHtml, INFO_POPUP, INFO_TITLE_MAX, INFO_TEXT_MAX } from "../../util/InfoPopup.js";
 
@@ -253,7 +254,7 @@ export default class ShapeLayersService {
    * @param {*} option the card's `shape_layers`
    * @param {*} styleOption the card's `shape_style`
    * @param {{addOverlay: Function, removeOverlay: Function}} overlays the layer control (TileLayersService)
-   * @param {{fetch?: Function, now?: Function}} [deps] for tests
+   * @param {{fetch?: Function, now?: Function, area?: ?object}} [deps] for tests; `area` is the card's `weather_area`
    */
   constructor(map, option, styleOption, overlays, deps = {}) {
     this.map = map;
@@ -262,6 +263,7 @@ export default class ShapeLayersService {
     this.overlays = overlays;
     this.fetch = deps.fetch ?? ((...a) => globalThis.fetch(...a));
     this.now = deps.now ?? (() => Date.now());
+    this.area = deps.area ?? null;
     this.hass = null;
     this.renderer = null;
     /** @type {Map<string, {group: object, url: ?string, state: ?object, fileStatus: ?string, drawn: number}>} */
@@ -425,7 +427,8 @@ export default class ShapeLayersService {
    */
   _draw(p, attributes, shapes) {
     p.group.clearLayers();
-    const { items, missing } = buildDrawList(attributes, shapes);
+    const { items: all, missing } = buildDrawList(attributes, shapes);
+    const items = this.area ? all.filter((it) => geometryTouchesArea(it.geometry, this.area)) : all;
     for (const key of missing) {
       if (warnedKeys.has(key)) continue;
       warnedKeys.add(key);

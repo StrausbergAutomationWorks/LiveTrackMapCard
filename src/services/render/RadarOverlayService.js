@@ -1,3 +1,4 @@
+import { areaBounds } from "../../util/WeatherArea.js";
 import L from "leaflet";
 import Logger from "../../util/Logger.js";
 import { SOURCES, tilePlan, tilesInView, sourcesForView } from "../radar/RadarSources.js";
@@ -357,6 +358,8 @@ export default class RadarOverlayService {
     this.overlays = overlays;
     this.fetch = deps.fetch ?? ((...a) => globalThis.fetch(...a));
     this.now = deps.now ?? (() => Date.now());
+    // The card's `weather_area`: tiles only inside its box (Lee, 2026-11-02).
+    this.bounds = deps.area ? areaBounds(deps.area) : null;
     this.setInterval = deps.setInterval ?? ((f, ms) => globalThis.setInterval(f, ms));
     this.clearInterval = deps.clearInterval ?? ((h) => globalThis.clearInterval(h));
     this.setTimeout = deps.setTimeout ?? ((f, ms) => globalThis.setTimeout(f, ms));
@@ -692,6 +695,7 @@ export default class RadarOverlayService {
       keepBuffer: 1,
       sign: (path) => this._sign(path),
     };
+    if (this.bounds) options.bounds = this.bounds;
     if (moving && snap.stepFrames.length) {
       // A frame that errors holds the previous step's picture (D13): a loop
       // tile never tries a plan's backups (_motionTile reads only its url).

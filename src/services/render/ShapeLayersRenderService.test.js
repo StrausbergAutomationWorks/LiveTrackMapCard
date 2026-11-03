@@ -254,6 +254,17 @@ describe("the service", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it("weather_area: only what touches it is drawn (Lee, 2026-11-02)", async () => {
+    const ov = overlays();
+    const svc = new ShapeLayersService({}, undefined, undefined, ov, { fetch: okFetch(), area: { lat: 0.1, lon: 0.9, km: 30 } });
+    svc.render(hassOf({ "sensor.w": pub() }));
+    await flush();
+    const group = ov.addOverlay.mock.calls[0][0];
+    expect(group.layers.length).toBe(1);
+    expect(group.layers[0].data.geometry).toEqual(SQ(0));
+    expect(ov.addOverlay.mock.calls[0][2]).toBe(true);
+  });
+
   it("rule 2: a second card on the page reuses the parsed file", async () => {
     const fetch = okFetch();
     new ShapeLayersService({}, undefined, undefined, overlays(), { fetch }).render(hassOf({ "sensor.w": pub() }));

@@ -80,7 +80,7 @@ export default class MapCard extends LitElement {
     if (this._config.historyDateSelection) {
       this.dateRangeManager = new HaDateRangeService(this.hass);
     }
-    this.tileLayersService = new TileLayersService(this.map, this._config.tileLayers, this._config.wms, this.urlResolver, this.linkedEntityService, this.dateRangeManager);
+    this.tileLayersService = new TileLayersService(this.map, this._config.tileLayers, this._config.wms, this.urlResolver, this.linkedEntityService, this.dateRangeManager, undefined, this._config.layerControl);
     // Entities the page still holds after Home Assistant removed them - a
     // reconnect merges instead of replacing (HaStaleStateService). A change
     // to the record redraws, which hides or restores the markers.
@@ -91,9 +91,9 @@ export default class MapCard extends LitElement {
     this.pluginsRenderService = new PluginsRenderService(this.map, this._config.plugins);
     this.geoJsonRenderService = new GeoJsonRenderService(this.map, this.hass, this._config.geojson);
     // Shapes on the map (D12): filled by key from a publisher's file.
-    this.shapeLayersService = new ShapeLayersService(this.map, this._config.shapeLayers, this._config.shapeStyle, this.tileLayersService);
+    this.shapeLayersService = new ShapeLayersService(this.map, this._config.shapeLayers, this._config.shapeStyle, this.tileLayersService, { area: this._config.weatherArea });
     // The weather radar overlay (D13): one layer, its own pane under the fills.
-    this.radarOverlayService = new RadarOverlayService(this.map, this._config.weatherRadar, this.tileLayersService);
+    this.radarOverlayService = new RadarOverlayService(this.map, this._config.weatherRadar, this.tileLayersService, { area: this._config.weatherArea });
     // Lightning (D14): its own pane right above the radar's.
     this.lightningOverlayService = new LightningOverlayService(this.map, this._config.lightning, this.tileLayersService);
     // Clouds (D17): its own pane right above the tiles, under the radar's.

@@ -39,6 +39,40 @@ const mockLayers = L.Control.Layers;
 
 beforeEach(() => { mockRendered.length = 0; mockLayers.mockClear(); });
 
+describe("layer_control: false (Lee, 2026-11-02)", () => {
+  const off = (storage) => new TileLayersService(makeMap(), [{ url: "orm", name: "Rail lines", show: true }, { url: "x", name: "X", show: false }], [], {}, {}, {}, storage, false);
+
+  it("no control, each overlay as configured", async () => {
+    const svc = off(memStorage());
+    await svc.setup();
+    expect(mockLayers).not.toHaveBeenCalled();
+    expect(svc.control).toBeNull();
+    expect(mockRendered.map((l) => l.shown)).toEqual([true, false]);
+  });
+
+  it("a stored choice is ignored: nobody could change it back", async () => {
+    const s = memStorage();
+    storeOverlayChoice("Rail lines", false, s);
+    storeOverlayChoice("X", true, s);
+    await off(s).setup();
+    expect(mockRendered.map((l) => l.shown)).toEqual([true, false]);
+  });
+
+  it("a later overlay goes on by its `show`, with no control and no stored choice", () => {
+    const s = memStorage();
+    storeOverlayChoice("Radar", false, s);
+    const svc = off(s);
+    const on = { addTo: jest.fn() };
+    const unticked = { addTo: jest.fn() };
+    expect(svc.addOverlay(on, "Radar", true)).toBe(true);
+    expect(on.addTo).toHaveBeenCalledWith(svc.map);
+    expect(svc.addOverlay(unticked, "Clouds", false)).toBe(false);
+    expect(unticked.addTo).not.toHaveBeenCalled();
+    expect(mockLayers).not.toHaveBeenCalled();
+    expect(() => svc.removeOverlay(on)).not.toThrow();
+  });
+});
+
 describe("named overlays", () => {
   it("no named overlay: no control, every layer shown as before", async () => {
     const map = makeMap();
