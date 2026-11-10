@@ -1,4 +1,4 @@
-import { LitElement, html, css, unsafeCSS } from "lit";
+import { LitElement, html, css, unsafeCSS, svg } from "lit";
 import { latenessColor, LATENESS_CSS } from "../util/Lateness.js";
 
 /**
@@ -324,6 +324,62 @@ export function starLabelStyle(labelColor, outlineColor) {
 }
 
 /**
+ * The shamrock (06_MAP_CONTRACT.md D4a `marker_shape: "shamrock"`; Lee 2026-11-09 00:53, Irish Rail's InterCity
+ * trains: "a shamrock filled with #009444 and outlined and labeled with #fbaf41"): three heart-shaped leaves round the
+ * centre, one straight up, and a stem between the lower two, in a 200-unit box (-100..100). Each leaf is two lobes
+ * (circles) and a wedge from the centre; its outer notch is the lobes' gap.
+ */
+export const SHAMROCK_LEAF_ANGLES = Object.freeze([-90, 150, 30]);
+export const SHAMROCK_LOBE = Object.freeze({ along: 50, across: 22, r: 28 });
+export const SHAMROCK_STEM = "M 0 10 Q 6 55 22 88";
+export const SHAMROCK_STEM_WIDTH = 12;
+
+/**
+ * The shamrock's parts in its 200-unit box: [{circle: [cx, cy, r]} | {polygon: "x,y ..."}], leaf by leaf.
+ * @returns {Array<{circle?: number[], polygon?: string}>}
+ */
+export function shamrockParts() {
+  const out = [];
+  const { along, across, r } = SHAMROCK_LOBE;
+  for (const deg of SHAMROCK_LEAF_ANGLES) {
+    const a = (deg * Math.PI) / 180;
+    const u = [Math.cos(a), Math.sin(a)];
+    const v = [-Math.sin(a), Math.cos(a)];
+    const at = (p, q) => [+(p * u[0] + q * v[0]).toFixed(2), +(p * u[1] + q * v[1]).toFixed(2)];
+    for (const s of [1, -1]) out.push({ circle: [...at(along, s * across), r] });
+    out.push({ polygon: [at(-4, 0), at(along - 10, 48), at(along - 10, -48)].map((p) => p.join(",")).join(" ") });
+  }
+  return out;
+}
+
+/**
+ * The shamrock's outline in CSS px: the emitter's `marker_ring_width` when sent, else a sixteenth of the size, at
+ * least 1.5 px (about 2.9 px on the live 46 px Intercity marker).
+ * @param {number} size
+ * @param {string} [ringWidth]
+ * @returns {number}
+ */
+export function shamrockEdgePx(size, ringWidth) {
+  const w = Number(ringWidth);
+  if (ringWidth != null && String(ringWidth).trim() !== "" && Number.isFinite(w) && w > 0) return w;
+  return Math.max(1.5, (size || 24) / 16);
+}
+
+/**
+ * The disc's inner ring (06_MAP_CONTRACT.md D4a `marker_inner_ring_color`, `marker_inner_ring_width`; Lee 2026-11-09,
+ * the Enterprise's "thin red inner ring"): an inset ring just inside the ring, taken from the fill. "" with no colour.
+ * @param {string} [color]
+ * @param {string} [width] absent: 1 px
+ * @returns {string} an inline style fragment
+ */
+export function innerRingStyle(color, width) {
+  const c = typeof color === "string" ? color.trim() : "";
+  if (c === "") return "";
+  const w = ringWidthPx(width);
+  return ` box-shadow: inset 0 0 0 ${w}px ${c};`;
+}
+
+/**
  * The maple leaf (06_MAP_CONTRACT.md D4a `marker_shape: "maple"`; Lee
  * 2026-10-11 00:02, VIA Rail): the eleven-point leaf of the Flag of Canada,
  * in its own units. MAPLE_LEAF_VIEWBOX is its bounding box, measured with
@@ -439,6 +495,8 @@ export default class MapCardEntityMarker extends LitElement {
       'arrowOutline': {type: String, attribute: 'arrow-outline'},
       'ringColor': {type: String, attribute: 'ring-color'},
       'ringWidth': {type: String, attribute: 'ring-width'},
+      'innerRingColor': {type: String, attribute: 'inner-ring-color'},
+      'innerRingWidth': {type: String, attribute: 'inner-ring-width'},
       'shape': {type: String, attribute: 'shape'},
       'symbol': {type: String, attribute: 'symbol'},
       'alternate': {type: String, attribute: 'alternate'},
@@ -583,6 +641,21 @@ export default class MapCardEntityMarker extends LitElement {
         </div>
       `;
     }
+    if (this.shape === "shamrock" && !this.picture && !this.icon) {
+      // The shamrock: no disc, no CSS ring. Arrow, pulse and delay badge as on the disc, around the same box.
+      return html`
+        <div
+          class="marker shamrock ${this.extraCssClasses ? this.extraCssClasses : ""}"
+          style="${starLabelStyle(this.labelColor, this.labelOutline)} height: ${this.size}px; width: ${this.size}px;"
+          @click=${this._badgeTap}
+          >
+          ${this._pulse()}
+          ${this._shamrock()}
+          ${tag ? this._tag() : this._arrow()}
+          ${tag ? this._delayOpposite() : this._inner()}
+        </div>
+      `;
+    }
     if (this.shape === "maple" && !this.picture && !this.icon) {
       // The maple leaf: a disc in the fill with a wide band round it, both
       // drawn in SVG, no CSS ring.
@@ -606,7 +679,7 @@ export default class MapCardEntityMarker extends LitElement {
     // clipped, and its delay beside it - opposite its tag, else east.
     const bare = this._bare();
     const disc = bare ? "background-color: transparent; border-color: transparent;"
-      : `background-color: ${this.color}; ${ringStyle(this.color, this.ringColor, this.ringWidth)}`;
+      : `background-color: ${this.color}; ${ringStyle(this.color, this.ringColor, this.ringWidth)}${this.picture ? "" : innerRingStyle(this.innerRingColor, this.innerRingWidth)}`;
     return html`
         <div
           class="marker ${this.picture ? "picture" : ""}${bare ? " bare" : ""}  ${this.extraCssClasses ? this.extraCssClasses : ""}"
@@ -719,6 +792,29 @@ export default class MapCardEntityMarker extends LitElement {
         <svg class="maple-leaf" x="${+(-leafW / 2).toFixed(2)}" y="${+(-leafH / 2).toFixed(2)}" width="${+leafW.toFixed(2)}" height="${+leafH.toFixed(2)}" viewBox="${MAPLE_LEAF_VIEWBOX}" overflow="visible">
           <path d="${MAPLE_LEAF_PATH}" fill="${sym}" stroke="${line}" stroke-width="1" vector-effect="non-scaling-stroke" stroke-linejoin="round"></path>
         </svg>
+      </svg>`;
+  }
+
+  /**
+   * The shamrock under its label (D4a-shamrock): every part drawn twice, first in the outline colour
+   * (`marker_ring_color`, else the fill) with a stroke of twice the edge, then in the fill on top, so only the
+   * union's outside edge shows. The stem likewise.
+   * @returns {unknown}
+   */
+  _shamrock() {
+    const ring = typeof this.ringColor === "string" ? this.ringColor.trim() : "";
+    const edge = ring !== "" ? ring : this.color;
+    const w = +((shamrockEdgePx(this.size, this.ringWidth) * 200) / (this.size || 24)).toFixed(2);
+    const parts = shamrockParts();
+    const draw = (fill, stroke, sw) => parts.map((p) => p.circle
+      ? svg`<circle cx="${p.circle[0]}" cy="${p.circle[1]}" r="${p.circle[2]}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"></circle>`
+      : svg`<polygon points="${p.polygon}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"></polygon>`);
+    return html`
+      <svg class="shamrock-shape" width="${this.size}" height="${this.size}" viewBox="-100 -100 200 200">
+        <path d="${SHAMROCK_STEM}" fill="none" stroke="${edge}" stroke-width="${SHAMROCK_STEM_WIDTH + 2 * w}" stroke-linecap="round"></path>
+        ${draw(edge, edge, 2 * w)}
+        <path d="${SHAMROCK_STEM}" fill="none" stroke="${this.color}" stroke-width="${SHAMROCK_STEM_WIDTH}" stroke-linecap="round"></path>
+        ${draw(this.color, "none", 0)}
       </svg>`;
   }
 
@@ -929,6 +1025,20 @@ export default class MapCardEntityMarker extends LitElement {
         pointer-events: none;
         z-index: -1;
       }
+      .marker.shamrock {
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        font-weight: 700;
+        isolation: isolate;
+      }
+      .shamrock-shape {
+        position: absolute;
+        inset: 0;
+        overflow: visible;
+        pointer-events: none;
+        z-index: -1;
+      }
       .marker.maple {
         background: transparent;
         border: none;
@@ -1036,6 +1146,7 @@ export default class MapCardEntityMarker extends LitElement {
          Amtrak star stood on a #1c1c1c square in dark mode, since the star
          (64d611a), because this rule comes after .marker.star. */
       .marker.star.dark,
+      .marker.shamrock.dark,
       .marker.maple.dark {
         background: transparent;
       }

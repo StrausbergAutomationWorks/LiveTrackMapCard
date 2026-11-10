@@ -51,9 +51,10 @@ export function parseRingWidth(value) {
  * Marker shapes an emitter may ask for with `marker_shape` (06_MAP_CONTRACT.md
  * D4a). Absent or anything else: the disc, as every marker was before.
  * "star": Live Track Intercity Rail's Amtrak (2026-10-09). "maple": a disc
- * with a maple leaf and a wide outer band, VIA Rail's (Lee 2026-10-11 00:02).
+ * with a maple leaf and a wide outer band, VIA Rail's (Lee 2026-10-11 00:02). "shamrock": three heart-shaped
+ * leaves and a stem, Irish Rail's InterCity trains (Lee 2026-11-09 00:53).
  */
-export const MARKER_SHAPES = Object.freeze(["star", "maple"]);
+export const MARKER_SHAPES = Object.freeze(["star", "maple", "shamrock"]);
 
 /**
  * Where an emitter may ask for its label with `marker_label_placement`

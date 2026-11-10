@@ -183,7 +183,8 @@ describe('the marker element', () => {
 describe('emitter styling: label outline, arrow colour, arrow outline', () => {
   const STYLE = { marker_label_outline_color: '#EF8322', marker_arrow_color: '#123456', marker_arrow_outline_color: '#FFFFFF' };
   const NONE = { 'label-outline': '', 'arrow-color': '', 'arrow-outline': '', 'ring-color': '', 'ring-width': '', 'shape': '',
-  'label-placement': '', 'symbol-color': '', 'symbol-outline': '', symbol: '', alternate: '' };
+  'label-placement': '', 'symbol-color': '', 'symbol-outline': '', symbol: '', alternate: '',
+  'inner-ring-color': '', 'inner-ring-width': '' };
 
   it('reads all three', () => {
     expect(makeEntity({ attrs: STYLE }).entity.markerStyling)
@@ -249,9 +250,35 @@ describe('emitter styling: label outline, arrow colour, arrow outline', () => {
   });
 });
 
+describe('emitter styling: the inner ring (marker_inner_ring_color, marker_inner_ring_width; D4a-inner-ring)', () => {
+  // The Enterprise (Lee 2026-11-09, Intercity SSOT 8.10): a thin red ring just inside the magenta ring.
+  it('reads colour and width, the width by the ring\'s own rule', () => {
+    const s = makeEntity({ attrs: { marker_inner_ring_color: '#F9031D', marker_inner_ring_width: 1 } }).entity.markerStyling;
+    expect([s['inner-ring-color'], s['inner-ring-width']]).toEqual(['#F9031D', '1']);
+    for (const bad of [0, 5, '1', true, null]) {
+      expect(makeEntity({ attrs: { marker_inner_ring_width: bad } }).entity.markerStyling['inner-ring-width']).toBe('');
+    }
+    expect(makeEntity({ attrs: { marker_inner_ring_color: 'red' } }).entity.markerStyling['inner-ring-color']).toBe('');
+  });
+
+  it('both are ignored under a dashboard fill, like the ring', () => {
+    const s = makeEntity({ attrs: { marker_inner_ring_color: '#F9031D', marker_inner_ring_width: 1 }, config: { configuredColor: '#8B0000' } })
+      .entity.markerStyling;
+    expect([s['inner-ring-color'], s['inner-ring-width']]).toEqual(['', '']);
+  });
+
+  it('are built into the marker element', () => {
+    const html = makeEntity({ attrs: { marker_inner_ring_color: '#F9031D', marker_inner_ring_width: 1 } })
+      .entity.createMapMarker().options.icon.options.html;
+    expect(attrIn(html, 'inner-ring-color')).toBe('#F9031D');
+    expect(attrIn(html, 'inner-ring-width')).toBe('1');
+  });
+});
+
 describe('emitter styling: the ring around the disc (marker_ring_color, marker_ring_width)', () => {
   const NONE = { 'label-outline': '', 'arrow-color': '', 'arrow-outline': '', 'ring-color': '', 'ring-width': '', 'shape': '',
-  'label-placement': '', 'symbol-color': '', 'symbol-outline': '', symbol: '', alternate: '' };
+  'label-placement': '', 'symbol-color': '', 'symbol-outline': '', symbol: '', alternate: '',
+  'inner-ring-color': '', 'inner-ring-width': '' };
   const RING = { marker_ring_color: '#000000', marker_ring_width: 2 };
 
   it('reads colour and width', () => {

@@ -494,6 +494,7 @@ export default class Entity {
    */
   get markerStyling() {
     const width = this.config.configuredColor ? null : parseRingWidth(this.attributes.marker_ring_width);
+    const innerWidth = this.config.configuredColor ? null : parseRingWidth(this.attributes.marker_inner_ring_width);
     const shape = this.config.configuredColor ? null : parseMarkerShape(this.attributes.marker_shape);
     const placement = this.config.configuredColor ? null : parseLabelPlacement(this.attributes.marker_label_placement);
     const symbol = this.config.configuredColor ? null : parseMarkerSymbol(this.attributes.marker_symbol);
@@ -512,6 +513,9 @@ export default class Entity {
       "arrow-outline": this._emitterColor("marker_arrow_outline_color") ?? "",
       "ring-color": this._emitterColor("marker_ring_color") ?? "",
       "ring-width": width == null ? "" : String(width),
+      // D4a-inner-ring (the Enterprise, Lee 2026-11-09): a thin ring just inside the ring, the same width rule.
+      "inner-ring-color": this._emitterColor("marker_inner_ring_color") ?? "",
+      "inner-ring-width": innerWidth == null ? "" : String(innerWidth),
     };
   }
 
@@ -1801,6 +1805,8 @@ export default class Entity {
             arrow-outline="${styling["arrow-outline"]}"
             ring-color="${styling["ring-color"]}"
             ring-width="${styling["ring-width"]}"
+            inner-ring-color="${styling["inner-ring-color"]}"
+            inner-ring-width="${styling["inner-ring-width"]}"
             shape="${styling["shape"]}"
             symbol="${styling["symbol"]}"
             alternate="${styling["alternate"]}"
