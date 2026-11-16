@@ -51,6 +51,14 @@ export default class EntitiesRenderService {
   isStale = () => false;
 
   /**
+   * Has the viewer hidden this entity's group? (D4f, backlog 345; the map
+   * card passes its GroupFilter.) Such an entity is not drawn, not merged
+   * with another source's marker and not credited.
+   * @type {(id: string) => boolean}
+   */
+  isFiltered = () => false;
+
+  /**
    * Entities not drawn because another source already draws the same
    * object (06_MAP_CONTRACT.md D11). Recomputed on every render: a
    * proximity pair can form or part as positions move.
@@ -66,7 +74,7 @@ export default class EntitiesRenderService {
     const candidates = [];
     for (const ent of this.entities) {
       try {
-        if (this.isStale(ent.id)) continue;
+        if (this.isStale(ent.id) || this.isFiltered(ent.id)) continue;
         const ll = ent.latLng;
         if (!ll) continue;
         candidates.push({ id: ent.id, attributes: ent.attributes, lat: ll.lat, lng: ll.lng });
@@ -83,10 +91,10 @@ export default class EntitiesRenderService {
     }
   }
 
-  /** Hide every entity D11 has merged away. */
+  /** Hide every entity D11 has merged away, and every one whose group the viewer hid (D4f). */
   hideMerged() {
     for (const ent of this.entities) {
-      if (this.merged.has(ent.id)) {
+      if (this.merged.has(ent.id) || this.isFiltered(ent.id)) {
         try { ent.hide(this.markerClusterGroup); } catch (e) { Logger.error("hide failed " + ent.id, e); }
       }
     }
@@ -131,16 +139,17 @@ export default class EntitiesRenderService {
   }
 
   /**
-   * Is this entity kept off the map: stale, or merged away?
+   * Is this entity kept off the map: stale, hidden by the viewer, or merged away?
    * @param {string} id entity id
    * @returns {boolean}
    */
   isHidden(id) {
-    return this.isStale(id) || this.merged.has(id);
+    return this.isStale(id) || this.isFiltered(id) || this.merged.has(id);
   }
 
-  constructor(map, hass, focusFollowConfig, entityConfigs, linkedEntityService, dateRangeManager, historyService, isDarkMode, clusterMarkers = true, isStale = null) {
+  constructor(map, hass, focusFollowConfig, entityConfigs, linkedEntityService, dateRangeManager, historyService, isDarkMode, clusterMarkers = true, isStale = null, isFiltered = null) {
     if (isStale) this.isStale = isStale;
+    if (isFiltered) this.isFiltered = isFiltered;
     this.map = map;
     this.hass = hass;
     this.focusFollowConfig = focusFollowConfig;

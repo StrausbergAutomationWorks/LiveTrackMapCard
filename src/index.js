@@ -1,5 +1,6 @@
 import MapCard from "./components/MapCard.js"
 import MapCardEntityMarker from "./components/MapCardEntityMarker.js"
+import GroupFilterCard from "./components/GroupFilterCard.js"
 import { MARKER_TAG } from "./models/Entity.js"
 import { VERSION } from "./version.js"
 
@@ -18,6 +19,11 @@ if (!customElements.get("live-track-map-card")) {
     'color: #EBF213; font-weight: bold; background: #000000'
   )
 }
+// The filter card (D4f, backlog 345): its own guard, so a page that already
+// has the map card from an older bundle still gets it.
+if (!customElements.get("live-track-map-filter-card")) {
+  customElements.define("live-track-map-filter-card", GroupFilterCard);
+}
 
 // Register card so that it appears in the "Card Picker". Create the list
 // when no card loaded before us has: pushing to an undefined list threw
@@ -31,4 +37,12 @@ window.customCards.push({
     version: VERSION,
     preview: true,
     documentationURL: `https://github.com/StrausbergAutomationWorks/LiveTrackMapCard`,
+});
+window.customCards.push({
+    name: 'Live Track Map Filter',
+    description: 'Checkboxes that hide groups of markers (vessel types, for example) on the Live Track map, remembered per browser.',
+    type: 'live-track-map-filter-card',
+    version: VERSION,
+    preview: false,
+    documentationURL: `https://github.com/StrausbergAutomationWorks/LiveTrackMapCard#the-filter-card`,
 });

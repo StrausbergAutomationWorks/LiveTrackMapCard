@@ -20,6 +20,7 @@ import RadarOverlayService from '../services/render/RadarOverlayService.js';
 import LightningOverlayService from '../services/render/LightningOverlayService.js';
 import CloudOverlayService from '../services/render/CloudOverlayService.js';
 import HaStaleStateService from '../services/HaStaleStateService.js';
+import { GroupFilter } from '../util/GroupFilter.js';
 import { PathFollower } from '../services/path/PathFollower.js';
 
 export default class MapCard extends LitElement {
@@ -85,7 +86,10 @@ export default class MapCard extends LitElement {
     // reconnect merges instead of replacing (HaStaleStateService). A change
     // to the record redraws, which hides or restores the markers.
     this.staleStateService = new HaStaleStateService(() => this.hass, () => this.requestUpdate());
-    this.entitiesRenderService = new EntitiesRenderService(this.map, this.hass, this._config.focusFollow, this._config.entities, this.linkedEntityService, this.dateRangeManager, this.historyService, this._isDarkMode(), this._config.clusterMarkers, (id) => this.staleStateService.isStale(id));
+    // The groups this browser's viewer hid in the filter card (D4f, backlog
+    // 345). A change redraws, which hides or restores the markers.
+    this.groupFilter = new GroupFilter(() => this.requestUpdate());
+    this.entitiesRenderService = new EntitiesRenderService(this.map, this.hass, this._config.focusFollow, this._config.entities, this.linkedEntityService, this.dateRangeManager, this.historyService, this._isDarkMode(), this._config.clusterMarkers, (id) => this.staleStateService.isStale(id), (id) => this.groupFilter.hides(this.hass?.states?.[id]?.attributes));
     this.initialViewRenderService = new InitialViewRenderService(this.map, this._config, this.hass, this.entitiesRenderService);
 
     this.pluginsRenderService = new PluginsRenderService(this.map, this._config.plugins);
@@ -328,6 +332,8 @@ export default class MapCard extends LitElement {
     this.resizeObserver?.disconnect();
     this.resizeObserver = undefined;
     this.staleStateService?.stop();
+    this.groupFilter?.dispose();
+    this.groupFilter = undefined;
     this.historyService?.unsubscribe();
     this.dateRangeManager?.disconnect();
     this.linkedEntityService?.disconnect();

@@ -281,6 +281,22 @@ clouds: true                # the default: offered, unticked
 #   show: true               # start ticked
 ```
 
+### The filter card
+
+A second card in the same file, `custom:live-track-map-filter-card`, hides groups of markers on the map: vessel types, for example. Put it anywhere on the dashboard, on another view if you like; it does not need to be beside the map. It lists every group the integrations publish (an integration names a marker's group in `marker_group`; Live Track Ships does, in thirteen groups), with how many of each are on the map now, under the integration's name, with **Show all** and **Hide all** for each.
+
+* **Your choice is kept in this browser only.** Each person and device keeps their own; nothing is saved in Home Assistant. Every map card in the same browser follows it, at once, even on another view.
+* A hidden group stays listed, with 0, while nothing of it is on the map, so it can be shown again.
+* Hiding is drawing only: the integration still publishes everything, its sensors still count everything, and its events still fire. A marker with no `marker_group` is never hidden. Live Track Ships gives a distress beacon no group, so no class can hide one.
+
+```yaml
+type: custom:live-track-map-filter-card
+title: Show on the map           # the default
+# sources: [live_track_ships]    # only these integrations
+# start_hidden:                  # hidden in a browser that has never made a choice
+#   - live_track_ships:pleasure
+```
+
 ### URL Entity lookup
 
 You can add dynamic url's, for example to use a sensor value in the url. When the parameter changes, the map will redraw with the new tile layer.

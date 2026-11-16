@@ -10,6 +10,10 @@ import { describe, expect, it, jest, beforeEach } from "@jest/globals";
 
 jest.mock("./components/MapCard.js", () => ({ __esModule: true, default: class extends globalThis.HTMLElement {} }));
 jest.mock("./components/MapCardEntityMarker.js", () => ({ __esModule: true, default: class extends globalThis.HTMLElement {} }));
+// ⚠ Rendering a LitElement under babel-jest fails inside lit-html ("_k is not
+// defined", measured 2026-11-15, backlog 345): the filter card's logic is
+// tested in util/GroupFilter.test.js and its rendering on the look page.
+jest.mock("./components/GroupFilterCard.js", () => ({ __esModule: true, default: class extends globalThis.HTMLElement {} }));
 jest.mock("./models/Entity.js", () => ({ __esModule: true, MARKER_TAG: "ltmc-test-marker" }));
 
 const load = () => jest.isolateModules(() => { require("./index.js"); });
@@ -21,12 +25,17 @@ describe("card picker registration", () => {
     expect(window.customCards).toBeUndefined();
     expect(load).not.toThrow();
     expect(Array.isArray(window.customCards)).toBe(true);
-    expect(window.customCards.map((c) => c.type)).toEqual(["live-track-map-card"]);
+    expect(window.customCards.map((c) => c.type)).toEqual(["live-track-map-card", "live-track-map-filter-card"]);
+  });
+
+  it("defines the filter card's element (backlog 345)", () => {
+    load();
+    expect(customElements.get("live-track-map-filter-card")).toBeDefined();
   });
 
   it("keeps the cards another card registered first", () => {
     window.customCards = [{ type: "someone-elses-card" }];
     load();
-    expect(window.customCards.map((c) => c.type)).toEqual(["someone-elses-card", "live-track-map-card"]);
+    expect(window.customCards.map((c) => c.type)).toEqual(["someone-elses-card", "live-track-map-card", "live-track-map-filter-card"]);
   });
 });
