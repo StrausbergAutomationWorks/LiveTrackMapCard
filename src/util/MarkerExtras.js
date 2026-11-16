@@ -7,6 +7,7 @@
  * if that comes, requires it).
  */
 import { escapeHtml } from "./InfoPopup.js";
+import { trackOf } from "./TrackLine.js";
 
 export const PHOTO_WIDTH_HOVER = 160;
 export const PHOTO_WIDTH_POPUP = 280;
@@ -85,21 +86,23 @@ export function hoverPhotoHtml(attrs) {
 }
 
 /**
- * Does this marker carry a photo or a link? (Entity also opens the popup for D4e's `marker_info`.)
+ * Does this marker carry a photo, a link or a track (D4h)? (Entity also opens the popup for D4e's `marker_info`.)
  * @param {object} attrs
  * @returns {boolean}
  */
 export function hasExtras(attrs) {
-  return photoOf(attrs?.marker_photo) !== null || linksOf(attrs?.marker_links).length > 0;
+  return photoOf(attrs?.marker_photo) !== null || linksOf(attrs?.marker_links).length > 0
+    || trackOf(attrs?.marker_track) !== null;
 }
 
 /**
  * The click popup's photo, credit and links, escaped; "Details" is a button the card wires to the entity dialog.
  * @param {object} attrs
  * @param {string} [title] the marker's name, plain text, as the hover box's first line; none when D4e's text heads it
+ * @param {boolean} [trackShown] whether this marker's track (D4h) is on the map: the button then hides it
  * @returns {string}
  */
-export function extrasHtml(attrs, title) {
+export function extrasHtml(attrs, title, trackShown = false) {
   const p = photoOf(attrs?.marker_photo);
   const links = linksOf(attrs?.marker_links);
   let html = typeof title === "string" && title.trim() ? `<div class="ltmc-title">${escapeHtml(title.trim())}</div>` : "";
@@ -116,6 +119,8 @@ export function extrasHtml(attrs, title) {
     html += `<div class="ltmc-links">` + links.map((l) =>
       `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(l.label)}</a>`).join(" · ") + `</div>`;
   }
-  html += `<div class="ltmc-details"><button type="button" class="ltmc-details-button">Details</button></div>`;
+  const track = trackOf(attrs?.marker_track)
+    ? `<button type="button" class="ltmc-track-button">${trackShown ? "Hide track" : "Track"}</button> ` : "";
+  html += `<div class="ltmc-details">${track}<button type="button" class="ltmc-details-button">Details</button></div>`;
   return `<div class="ltmc-extras">${html}</div>`;
 }

@@ -1,5 +1,5 @@
 
-import { DivIcon, LatLng, Map, Marker } from "leaflet";
+import { DivIcon, LatLng, Map, Marker, Polyline } from "leaflet";
 import { PLACE } from "../services/path/place.js";
 import Circle from "./Circle.js";
 import GeoJson from "./GeoJson.js";
@@ -10,6 +10,7 @@ import TimelineEntry from "./TimelineEntry.js";
 import { hoverHtml, titleLine, HOVER_REFRESH_MS } from "../util/HoverLabel.js";
 import { infoOf, infoHtml, INFO_POPUP } from "../util/InfoPopup.js";
 import { hasExtras, extrasHtml } from "../util/MarkerExtras.js";
+import { apiPath, appendPosition, trackColor, trackOf, trackPoints, TRACK_OPACITY, TRACK_WEIGHT } from "../util/TrackLine.js";
 import { lateness } from "../util/Lateness.js";
 import { metres, pathAt, trackRoute } from "../util/TrackPath.js";
 
@@ -1020,6 +1021,7 @@ export default class Entity {
     this.circle.remove();
     this.geoJson.remove();
     this.historyManager.remove({ unsubscribe: unsubscribeHistory });
+    this._removeTrack();
   }
 
   /**
@@ -1034,6 +1036,7 @@ export default class Entity {
    * @param {object|null} clusterGroup the cluster group markers currently live in
    */
   hide(clusterGroup = null) {
+    this._removeTrack();
     if (!this.marker) return;
     this._settleSlide();
     this._stopTooltipClock();
@@ -1115,6 +1118,61 @@ export default class Entity {
     this.historyManager.update();
     this.circle.update();
     this.geoJson.update();
+    this._growTrack();
+  }
+
+  /**
+   * D4h (backlog 348): show or hide this marker's track. Fetched once, on the viewer's click, with their own
+   * sign-in; drawn as one line from the oldest real fix to the marker's position.
+   * @returns {Promise<boolean>} whether a track is now shown
+   */
+  async toggleTrack() {
+    if (this._track) {
+      this._removeTrack();
+      return false;
+    }
+    const path = trackOf(this.attributes?.marker_track);
+    if (!path || this._trackLoading || typeof this.hass?.callApi !== "function") return false;
+    this._trackLoading = true;
+    try {
+      const answer = await this.hass.callApi("GET", apiPath(path));
+      if (this.removed || this._track) return Boolean(this._track);
+      const latlngs = trackPoints(answer);
+      appendPosition(latlngs, this.attributes?.latitude, this.attributes?.longitude);
+      const line = new Polyline(latlngs, {
+        color: trackColor(this.attributes), weight: TRACK_WEIGHT, opacity: TRACK_OPACITY,
+        interactive: false, lineJoin: "round", lineCap: "round",
+      }).addTo(this.map);
+      this._track = { path, latlngs, line };
+      return true;
+    } catch (err) {
+      Logger.warn(`[LiveTrackMapCard] track for ${this.id} not fetched: ${err?.message ?? err}`);
+      return false;
+    } finally {
+      this._trackLoading = false;
+    }
+  }
+
+  /** Take the track off the map. */
+  _removeTrack() {
+    if (!this._track) return;
+    this.map.removeLayer(this._track.line);
+    this._track = null;
+  }
+
+  /**
+   * A shown track follows the marker: each new published position (a real fix) is added to its end. A marker
+   * that stops publishing a track, or publishes another, loses the one drawn.
+   */
+  _growTrack() {
+    if (!this._track) return;
+    if (trackOf(this.attributes?.marker_track) !== this._track.path) {
+      this._removeTrack();
+      return;
+    }
+    if (appendPosition(this._track.latlngs, this.attributes?.latitude, this.attributes?.longitude)) {
+      this._track.line.setLatLngs(this._track.latlngs);
+    }
   }
 
   /**
@@ -1262,8 +1320,9 @@ export default class Entity {
       const info = infoOf(this.attributes?.marker_info);
       if (!hasExtras(this.attributes)) return info ? infoHtml(info) : "";
       // D4e's text carries its own title; otherwise the popup is named as the hover box is (it closes now)
-      return info ? infoHtml(info) + extrasHtml(this.attributes)
-        : extrasHtml(this.attributes, titleLine(this.attributes ?? {}, this.tooltip));
+      const shown = Boolean(this._track);
+      return info ? infoHtml(info) + extrasHtml(this.attributes, undefined, shown)
+        : extrasHtml(this.attributes, titleLine(this.attributes ?? {}, this.tooltip), shown);
     }, { ...INFO_POPUP, offset: [0, -this.config.size / 2] });
     if (marker._ltmcPopupWired) return;   // refreshMarkerPopup may bind again; the handlers stay
     marker._ltmcPopupWired = true;
@@ -1274,7 +1333,16 @@ export default class Entity {
     });
     marker.on("popupopen", (e) => {
       marker.closeTooltip?.();
-      const button = e.popup?.getElement?.()?.querySelector(".ltmc-details-button");
+      const box = e.popup?.getElement?.();
+      // D4h: "Track" fetches and draws the track, "Hide track" takes it off; the popup closes so the line shows.
+      const track = box?.querySelector(".ltmc-track-button");
+      if (track) {
+        track.onclick = () => {
+          marker.closePopup();
+          this.toggleTrack();
+        };
+      }
+      const button = box?.querySelector(".ltmc-details-button");
       if (!button) return;
       button.onclick = () => {
         marker.closePopup();
