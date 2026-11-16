@@ -71,6 +71,80 @@ describe('marker_info (D4e)', () => {
     }
   });
 
+  it('a photo or link (D4g, backlog 346) opens the popup too, and Details opens the entity dialog', () => {
+    const photo = {
+      url: 'https://upload.wikimedia.org/x/320px-a.jpg', page: 'https://commons.wikimedia.org/wiki/File:A.jpg',
+      credit: 'Someone', licence: 'CC BY 4.0', source: 'Wikimedia Commons',
+    };
+    const { entity, hass } = makeEntity(undefined);
+    const attrs = hass.states['geo_location.p'].attributes;
+    attrs.marker_photo = photo;
+    attrs.marker_links = [{ label: 'VesselFinder', url: 'https://www.vesselfinder.com/vessels/details/9606900' }];
+    const m = entity.createMapMarker();
+    expect(m.options.icon.options.html).toContain('info="true"');
+    const content = m.getPopup()._content;
+    expect(content()).toContain('<div class="ltmc-extras"><div class="ltmc-title">');
+    expect(content()).not.toContain('ltmc-shape-info');
+    attrs.name = 'VIKING GRACE';
+    expect(content()).toContain('<div class="ltmc-title">VIKING GRACE</div>');
+
+    // the button, wired when the popup opens, closes it and asks Home Assistant for the entity's dialog
+    const box = document.createElement('div');
+    box.innerHTML = content();
+    const target = { dispatchEvent: jest.fn() };
+    m.getElement = () => target;
+    m.closePopup = jest.fn();
+    m.closeTooltip = jest.fn();
+    m.fire('popupopen', { popup: { getElement: () => box } });
+    expect(m.closeTooltip).toHaveBeenCalled(); // the hover box does not sit behind the popup
+    box.querySelector('.ltmc-details-button').click();
+    expect(m.closePopup).toHaveBeenCalled();
+    const ev = target.dispatchEvent.mock.calls[0][0];
+    expect(ev.type).toBe('hass-action');
+    expect(ev.detail).toEqual({ config: { entity: 'geo_location.p', tap_action: { action: 'more-info' } }, action: 'tap' });
+
+    // info and a photo: the text first, then the photo
+    attrs.marker_info = { title: 'T', text: 'x' };
+    expect(content().indexOf('ltmc-shape-info')).toBeLessThan(content().indexOf('ltmc-extras'));
+    expect(content()).not.toContain('ltmc-title'); // D4e's title heads it
+  });
+
+  it('a hover box Leaflet opens on the same click is closed a tick later, while the popup is open', () => {
+    jest.useFakeTimers();
+    try {
+      const { entity, hass } = makeEntity(undefined);
+      hass.states['geo_location.p'].attributes.marker_links = [{ label: 'V', url: 'https://v.example/1' }];
+      const m = entity.createMapMarker();
+      m.closeTooltip = jest.fn();
+      m.isPopupOpen = () => true;
+      m.fire('tooltipopen');
+      expect(m.closeTooltip).not.toHaveBeenCalled();
+      jest.runOnlyPendingTimers();
+      expect(m.closeTooltip).toHaveBeenCalledTimes(1);
+      m.isPopupOpen = () => false;
+      m.fire('tooltipopen');
+      jest.runOnlyPendingTimers();
+      expect(m.closeTooltip).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('a photo arriving after the marker was made binds the popup in place; it going drops it', () => {
+    const { entity, hass } = makeEntity(undefined);
+    const attrs = hass.states['geo_location.p'].attributes;
+    entity.marker = entity.createMapMarker();
+    expect(entity.marker.getPopup()).toBeUndefined();
+    attrs.marker_links = [{ label: 'VesselFinder', url: 'https://www.vesselfinder.com/vessels/details/1' }];
+    entity.refreshMarkerPopup();
+    expect(entity.marker.getPopup()).toBeTruthy();
+    expect(entity.marker.options.icon.options.html).toContain('info="true"');
+    delete attrs.marker_links;
+    entity.refreshMarkerPopup();
+    expect(entity.marker.getPopup()).toBeFalsy();
+    expect(entity.marker.options.icon.options.html).toContain('info=""');
+  });
+
   it('the element lets a click with info through to Leaflet, and otherwise opens the entity dialog', () => {
     const tap = MapCardEntityMarker.prototype._badgeTap;
     const withInfo = { info: 'true', entityId: 'geo_location.p', tapAction: {}, dispatchEvent: jest.fn() };

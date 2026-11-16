@@ -91,6 +91,29 @@ A marker whose entity carries `marker_info`, `{"title": ..., "text": ...}` in pl
 text (a forecast point from Live Track Weather, say), opens that text in a popup
 when clicked, instead of the entity's dialog. Nothing in it is read as HTML.
 
+A marker can also carry a photo, `marker_photo`, and links out, `marker_links`
+(Live Track Ships sends a vessel's photo from Wikimedia Commons and a link to
+the vessel on VesselFinder). The photo appears in the hover box with its credit.
+A click opens a popup with the vessel's name, the photo, the photographer and
+licence (each linked to its page), the links, and a **Details** button that
+opens the entity's dialog. A photo is drawn only with its credit, only https
+addresses are used, and the browser sends no referrer when loading it.
+
+```yaml
+marker_photo:
+  url: https://upload.wikimedia.org/.../330px-Example.jpg   # the thumbnail
+  page: https://commons.wikimedia.org/wiki/File:Example.jpg # the photo's own page
+  credit: Photographer
+  licence: CC BY-SA 4.0          # optional
+  licence_url: https://creativecommons.org/licenses/by-sa/4.0   # optional
+  source: Wikimedia Commons      # optional
+  width: 320                     # optional, keeps the proportions while loading
+  height: 240
+marker_links:                    # up to four
+  - label: VesselFinder
+    url: https://www.vesselfinder.com/vessels/details/9606900
+```
+
 ### Usage
 
 > #### TIP

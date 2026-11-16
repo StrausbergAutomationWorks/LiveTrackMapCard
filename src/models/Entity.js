@@ -7,8 +7,9 @@ import Logger from "../util/Logger.js"
 import EntityConfig, { layerOffset, parseAlternateSeconds, parseLabelPlacement, parseMarkerAlternate, parseMarkerColor, parseMarkerShape, parseMarkerSymbol, parseRingWidth } from "../configs/EntityConfig.js";
 import EntityHistoryManager from "./EntityHistoryManager.js";
 import TimelineEntry from "./TimelineEntry.js";
-import { hoverHtml, HOVER_REFRESH_MS } from "../util/HoverLabel.js";
+import { hoverHtml, titleLine, HOVER_REFRESH_MS } from "../util/HoverLabel.js";
 import { infoOf, infoHtml, INFO_POPUP } from "../util/InfoPopup.js";
+import { hasExtras, extrasHtml } from "../util/MarkerExtras.js";
 import { lateness } from "../util/Lateness.js";
 import { metres, pathAt, trackRoute } from "../util/TrackPath.js";
 
@@ -1097,6 +1098,7 @@ export default class Entity {
         this._currentPlaceIcon = this.placeIcon;
       }
 
+      this.refreshMarkerPopup();
       this.refreshMarkerPicture();
       this.refreshMarkerRotation();
       this.refreshMarkerColor();
@@ -1242,6 +1244,61 @@ export default class Entity {
     this._setMarkerAttribute("arrow", wanted ?? "");
     this._currentArrow = wanted;
   }
+  /**
+   * Does a click open the popup: D4e's `marker_info`, or D4g's photo or links?
+   * @returns {boolean}
+   */
+  _wantsPopup() {
+    return infoOf(this.attributes?.marker_info) !== null || hasExtras(this.attributes);
+  }
+
+  /**
+   * The click popup: D4e's text, then D4g's photo, credit and links, and "Details", which opens Home
+   * Assistant's own dialog for the entity (the click no longer does). Content is a function: read on open.
+   * @param {object} marker
+   */
+  _bindPopup(marker) {
+    marker.bindPopup(() => {
+      const info = infoOf(this.attributes?.marker_info);
+      if (!hasExtras(this.attributes)) return info ? infoHtml(info) : "";
+      // D4e's text carries its own title; otherwise the popup is named as the hover box is (it closes now)
+      return info ? infoHtml(info) + extrasHtml(this.attributes)
+        : extrasHtml(this.attributes, titleLine(this.attributes ?? {}, this.tooltip));
+    }, { ...INFO_POPUP, offset: [0, -this.config.size / 2] });
+    if (marker._ltmcPopupWired) return;   // refreshMarkerPopup may bind again; the handlers stay
+    marker._ltmcPopupWired = true;
+    // The hover box must not sit behind the popup. Leaflet 1.9 opens a hover tooltip on `click` as well as on
+    // mouseover (leaflet-src.js _initTooltipInteractions), after the popup's own click handler: close it a tick later.
+    marker.on("tooltipopen", () => {
+      if (marker.isPopupOpen?.()) setTimeout(() => { if (marker.isPopupOpen?.()) marker.closeTooltip(); }, 0);
+    });
+    marker.on("popupopen", (e) => {
+      marker.closeTooltip?.();
+      const button = e.popup?.getElement?.()?.querySelector(".ltmc-details-button");
+      if (!button) return;
+      button.onclick = () => {
+        marker.closePopup();
+        const ev = new Event("hass-action", { bubbles: true, composed: true });
+        ev.detail = { config: { entity: this.id, tap_action: { action: "more-info" } }, action: "tap" };
+        (marker.getElement?.() ?? this.map.getContainer()).dispatchEvent(ev);
+      };
+    });
+  }
+
+  /**
+   * A photo or link can arrive after the marker was made (Ships looks the photo up): bind or drop the popup in
+   * place, and tell the marker element whether a click is the popup's (MapCardEntityMarker._badgeTap).
+   */
+  refreshMarkerPopup() {
+    if (!this.marker) return;
+    const wanted = this._wantsPopup();
+    if (wanted === this._hasPopup) return;
+    if (wanted) this._bindPopup(this.marker);
+    else this.marker.unbindPopup?.();
+    this._setMarkerAttribute("info", wanted ? "true" : "");
+    this._hasPopup = wanted;
+  }
+
   /**
    * Set an attribute on the live marker element AND in the DivIcon's stored
    * html. Leaflet re-parses that html whenever it rebuilds the icon - leaving
@@ -1777,8 +1834,9 @@ export default class Entity {
     const boxH = pillH + off;
     const callout = placeIcon != null && this.map.getZoom() >= this.config.pillCalloutMinZoom;
 
-    // `marker_info` (D4e): a click opens its text here instead of the entity dialog.
-    const hasInfo = infoOf(this.attributes?.marker_info) !== null;
+    // `marker_info` (D4e), or a photo or links (D4g, backlog 346): a click opens a popup here instead of the
+    // entity dialog; the popup's "Details" opens the dialog.
+    const hasInfo = this._wantsPopup();
     const marker = new Marker(at, {
       icon: new DivIcon({
         html: `
@@ -1834,12 +1892,8 @@ export default class Entity {
     // distance feature (setup) rebinds a permanent tooltip when configured.
     // Content is a FUNCTION: Leaflet calls it on every open and update(), so
     // the next-station minutes are worked out when shown, not when bound.
-    if (hasInfo) {
-      marker.bindPopup(() => {
-        const info = infoOf(this.attributes?.marker_info);
-        return info ? infoHtml(info) : "";
-      }, { ...INFO_POPUP, offset: [0, -this.config.size / 2] });
-    }
+    if (hasInfo) this._bindPopup(marker);
+    this._hasPopup = hasInfo;
     if (!this.config.distanceEntity) {
       marker.bindTooltip(() => this.tooltipHtml(), {
         direction: "top",

@@ -32,7 +32,12 @@
  *
  * One name alone reads "From <name>" or "To <name>". An unknown route_source
  * says nothing rather than guess.
+ *
+ * Last, a photo with its credit when the entity publishes `marker_photo`
+ * (06_MAP_CONTRACT.md D4g, backlog 346; Lee 2026-11-16): MarkerExtras.js.
  */
+
+import { hoverPhotoHtml } from "./MarkerExtras.js";
 
 /** How often an OPEN hover box is redrawn, ms. */
 export const HOVER_REFRESH_MS = 5000;
@@ -231,7 +236,7 @@ export function hoverHtml(a, fallback, nowMs) {
   if (names.length) html += `<div class="hover-airports">${names.map(escapeHtml).join("<br>")}</div>`;
   const source = sourceText(a);
   if (source) html += `<div class="hover-source">${escapeHtml(source)}</div>`;
-  return html;
+  return html + hoverPhotoHtml(a);
 }
 
 /**

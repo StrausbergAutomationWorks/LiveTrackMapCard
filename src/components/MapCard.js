@@ -464,6 +464,57 @@ export default class MapCard extends LitElement {
         opacity: 0.75;
         margin-top: 2px;
       }
+      /* D4g (backlog 346): a photo under the hover box's lines, with its credit; the popup's photo and links. */
+      .leaflet-tooltip .hover-photo {
+        margin-top: 6px;
+        width: 160px;
+      }
+      .leaflet-tooltip .hover-photo img,
+      .ltmc-extras .ltmc-photo img {
+        display: block;
+        max-width: 100%;
+        height: auto;
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .leaflet-tooltip .hover-credit {
+        font-size: 75%;
+        opacity: 0.75;
+        margin-top: 2px;
+        white-space: normal;
+      }
+      .ltmc-extras {
+        width: 280px;
+        max-width: 100%;
+      }
+      .ltmc-shape-info + .ltmc-extras {
+        margin-top: 8px;
+      }
+      .ltmc-extras .ltmc-title {
+        font-weight: bold;
+        margin-bottom: 6px;
+      }
+      .ltmc-extras .ltmc-credit {
+        font-size: 80%;
+        opacity: 0.8;
+        margin-top: 3px;
+      }
+      .ltmc-extras .ltmc-links {
+        margin-top: 6px;
+      }
+      .ltmc-extras .ltmc-details {
+        margin-top: 8px;
+        text-align: right;
+      }
+      .ltmc-extras .ltmc-details-button {
+        font: inherit;
+        cursor: pointer;
+        padding: 2px 10px;
+        border: 1px solid currentColor;
+        border-radius: 4px;
+        background: transparent;
+        color: inherit;
+      }
       .distance-tooltip {
         padding: 4px 8px;
         font-size: 12px;
