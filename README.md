@@ -167,6 +167,7 @@ y: 3.652
 | `path_tile_sources`    | OpenStreetMap, then OpenFreeMap                                                                                              | The vector tile sources the water comes from, tried in order. See [Path-following](#path-following). |
 | `shape_layers`         | auto                                                                                                                         | Filled areas published by an integration, such as weather alerts. See [Shapes on the map](#shapes-on-the-map). `false` turns them off. |
 | `shape_style`          | fill 0.25, outline 2 px at 0.9                                                                                               | How those areas are drawn. See [Shapes on the map](#shapes-on-the-map). |
+| `point_layers`         | auto | Points published by an integration as one file, such as fire detections. See [Points on the map](#points-on-the-map). `false` turns them off. |
 | `weather_radar`        | on, ticked                                                                                                                   | The weather radar overlay. See [Weather radar](#weather-radar). `false` removes it. |
 | `layer_control`        | true | `false` removes the checkboxes. Every overlay stays as configured, and a choice a viewer stored earlier is ignored. |
 | `weather_area`         | none | `{latitude, longitude, radius_km}`. Shapes are drawn only where they touch this circle, and weather radar tiles only inside the box around it. |
@@ -241,6 +242,25 @@ shape_style:                # optional; each key optional
   opacity: 0.9              # outline
   renderer: svg             # or canvas
   by_priority: false        # true: stronger fill for more important events
+```
+
+### Points on the map
+
+Some integrations publish thousands of points that are not worth an entity each: satellite fire detections, or air-quality monitors, for example. The card finds any entity that publishes them (a `points_url` under `/api/` naming a file of points, and `point_styles` saying how each kind looks), fetches the file once with your sign-in, and draws the points as small dots on one canvas per publisher, above the shapes and below every marker. Each publisher gets a checkbox in the layer control, on by default.
+
+* **Only what is on screen is drawn**, and where several dots would land within one dot of each other only the first is drawn, so a whole continent of points costs about as much as a handful. The dots are redrawn when the map stops moving.
+* **Click a dot** for a popup: the kind of point in bold, then each value the file gives for it. The pointer becomes a hand over a dot. Dots never take clicks from markers.
+* **A new file has a new address**, so an update is fetched once. If it cannot be loaded, nothing is drawn for that publisher and the card tries again after 10 minutes.
+* **Several publishers** are stacked by each one's `point_order` (an integer, 0 when absent): a higher one is drawn on top and answers a click first.
+* **`weather_area`** limits the dots to its circle, as it does shapes.
+
+```yaml
+point_layers: auto          # the default: every publisher found
+# point_layers: false       # none
+# point_layers:             # exactly these, with your own label
+#   - entity: sensor.live_track_weather_fire_detections
+#     name: Fires
+#     show: false           # start unticked
 ```
 
 ### Weather radar

@@ -134,6 +134,9 @@ export default class MapConfig {
     // list names them. Parsed by ShapeLayersRenderService.
     this.shapeLayers = inputConfig.shape_layers;
     this.shapeStyle = inputConfig.shape_style;
+    // Points on the map (06_MAP_CONTRACT_OVERLAYS.md D19): absent or `auto` finds publishers by attribute
+    // shape, `false` turns it off, a list names them. Parsed by PointLayersRenderService.
+    this.pointLayers = inputConfig.point_layers;
 
     // The weather radar overlay (06_MAP_CONTRACT_OVERLAYS.md D13, backlog
     // 280): absent offers it, ticked; `false` removes it; a mapping sets

@@ -16,6 +16,7 @@ import TileLayer from '../leaflet/TileLayer.js';
 import PluginsRenderService from '../services/render/PluginsRenderService.js';
 import GeoJsonRenderService from '../services/render/GeoJsonRenderService.js';
 import ShapeLayersService from '../services/render/ShapeLayersRenderService.js';
+import PointLayersService from '../services/render/PointLayersRenderService.js';
 import RadarOverlayService from '../services/render/RadarOverlayService.js';
 import LightningOverlayService from '../services/render/LightningOverlayService.js';
 import CloudOverlayService from '../services/render/CloudOverlayService.js';
@@ -96,6 +97,8 @@ export default class MapCard extends LitElement {
     this.geoJsonRenderService = new GeoJsonRenderService(this.map, this.hass, this._config.geojson);
     // Shapes on the map (D12): filled by key from a publisher's file.
     this.shapeLayersService = new ShapeLayersService(this.map, this._config.shapeLayers, this._config.shapeStyle, this.tileLayersService, { area: this._config.weatherArea });
+    // Points on the map (D19): dots from a publisher's file, above the fills, below the markers.
+    this.pointLayersService = new PointLayersService(this.map, this._config.pointLayers, this.tileLayersService, { area: this._config.weatherArea });
     // The weather radar overlay (D13): one layer, its own pane under the fills.
     this.radarOverlayService = new RadarOverlayService(this.map, this._config.weatherRadar, this.tileLayersService, { area: this._config.weatherArea });
     // Lightning (D14): its own pane right above the radar's.
@@ -154,6 +157,7 @@ export default class MapCard extends LitElement {
       this.tileLayersService.render();
       this.geoJsonRenderService.render(this.hass);
       this.shapeLayersService?.render(this.hass);
+      this.pointLayersService?.render(this.hass);
       this.radarOverlayService?.render(this.hass);
       this.entitiesRenderService.render(this.hass);
       this.initialViewRenderService.render();
@@ -340,6 +344,7 @@ export default class MapCard extends LitElement {
     this.pluginsRenderService?.cleanup();
     this.geoJsonRenderService?.cleanup();
     this.shapeLayersService?.cleanup();
+    this.pointLayersService?.cleanup();
     this.radarOverlayService?.cleanup();
     this.lightningOverlayService?.cleanup();
     this.cloudOverlayService?.cleanup();
