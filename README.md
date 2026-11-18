@@ -679,6 +679,43 @@ You can find more plugins using the [ha-map-card-plugin](https://github.com/topi
 
 ## Extra Tile Layers
 
+### USGS Topo and Hydrography (optional, US only)
+
+The US Geological Survey's The National Map serves two cached layers that work
+well with this card: **USGS Topo** (contours, trails, glaciers, land and water
+names; an opaque map, so it replaces what is under it) and **USGS
+Hydrography** (rivers, streams and lakes on a transparent background, to lay
+over any map). Both are public domain with no key and no usage limits
+([USGS's terms](https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map));
+USGS asks for the credit in the snippet. They cover the United States and its
+territories: elsewhere the tiles stop after zoom 8 to 13. USGS caches them to
+zoom 16, so `maxNativeZoom: 16` lets the map zoom further by enlarging them.
+
+```yaml
+tile_layers:
+  - url: https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}
+    name: USGS Topo
+    show: false              # a viewer ticks it in the layer control
+    options:
+      maxNativeZoom: 16
+      maxZoom: 19
+      attribution: 'Map services and data available from <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map">U.S. Geological Survey, National Geospatial Program</a>'
+  - url: https://basemap.nationalmap.gov/arcgis/rest/services/USGSHydroCached/MapServer/tile/{z}/{y}/{x}
+    name: USGS Hydrography
+    show: false
+    options:
+      maxNativeZoom: 16
+      maxZoom: 19
+      opacity: 0.8
+      attribution: 'Hydrography: <a href="https://www.usgs.gov/national-hydrography">USGS National Hydrography Dataset</a>'
+```
+
+Note the order in the URL: `{z}/{y}/{x}`, row before column, as ArcGIS serves
+them. Each tile is cached by your browser for a day.
+
+### Other providers
+
+
 The [leaflet-extras](https://github.com/leaflet-extras/leaflet-providers) has a nice list of available [tile layer providers](https://leaflet-extras.github.io/leaflet-providers/preview/).
 
 ## Development
