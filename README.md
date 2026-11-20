@@ -170,6 +170,7 @@ y: 3.652
 | `point_layers`         | auto | Points published by an integration as one file, such as fire detections. See [Points on the map](#points-on-the-map). `false` turns them off. |
 | `weather_radar`        | on, ticked                                                                                                                   | The weather radar overlay. See [Weather radar](#weather-radar). `false` removes it. |
 | `layer_control`        | true | `false` removes the checkboxes. Every overlay stays as configured, and a choice a viewer stored earlier is ignored. |
+| `attribution_collapse` | true | The credits box opens in full with the map, then collapses behind an **i** button after 5 seconds or at the viewer's first press, scroll or key on the map (OpenStreetMap's attribution guideline allows both). The button reopens it, at most 40% of the map's height and scrollable. `false` keeps the box always open. |
 | `weather_area`         | none | `{latitude, longitude, radius_km}`. Shapes are drawn only where they touch this circle, and weather radar tiles only inside the box around it. |
 | `lightning`            | on, unticked                                                                                                                 | The lightning overlay. See [Lightning](#lightning). `false` removes it. |
 | `debug` | false                                                                                                                        | Enable debug messages in console.

@@ -1,4 +1,5 @@
 import { parseWeatherArea } from "../util/WeatherArea.js";
+import { parseCreditsCollapse } from "../util/CreditsToggle.js";
 import L from 'leaflet';
 import EntityConfig from "./EntityConfig.js";
 import PluginConfig from "./PluginConfig.js";
@@ -156,6 +157,9 @@ export default class MapConfig {
     // `layer_control: false` (Lee, 2026-11-02): no checkboxes. Every overlay stays as configured here and a viewer's
     // stored choice is ignored, since nobody could change it back. TileLayersService.
     this.layerControl = inputConfig.layer_control !== false;
+    // `attribution_collapse` (Lee, 2026-11-19): the credits box opens in full, then collapses behind an "i" button
+    // after 5 s or the viewer's first touch; `false` keeps it always open. util/CreditsToggle.js.
+    this.creditsCollapse = parseCreditsCollapse(inputConfig.attribution_collapse);
     // `weather_area` (Lee, 2026-11-02): {latitude, longitude, radius_km}. Shapes are drawn only where they touch it,
     // radar tiles only inside its box. util/WeatherArea.js.
     this.weatherArea = parseWeatherArea(inputConfig.weather_area);

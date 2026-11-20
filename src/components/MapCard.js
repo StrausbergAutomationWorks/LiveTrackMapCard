@@ -23,6 +23,7 @@ import CloudOverlayService from '../services/render/CloudOverlayService.js';
 import HaStaleStateService from '../services/HaStaleStateService.js';
 import { GroupFilter } from '../util/GroupFilter.js';
 import { PathFollower } from '../services/path/PathFollower.js';
+import { CreditsToggle } from '../util/CreditsToggle.js';
 
 export default class MapCard extends LitElement {
   static get properties() {
@@ -72,6 +73,7 @@ export default class MapCard extends LitElement {
 
     this.themeMode = this._config.themeMode;
     this.map = this._setupMap();
+    this._setupCreditsToggle();
     this._setupPathFollower();
     // redraw the map every time it resizes
     this.resizeObserver = this._setupResizeObserver();
@@ -331,6 +333,8 @@ export default class MapCard extends LitElement {
   }
 
   _teardown() {
+    this.creditsToggle?.dispose();
+    this.creditsToggle = undefined;
     this.pathFollower?.dispose();
     this.pathFollower = undefined;
     this.resizeObserver?.disconnect();
@@ -359,6 +363,22 @@ export default class MapCard extends LitElement {
     if (this.map) {
       this._teardown();
       this.setupNeeded = true;
+    }
+  }
+
+  /**
+   * The credits box collapses behind an "i" button (Lee, 2026-11-19;
+   * util/CreditsToggle.js); `attribution_collapse: false` keeps it open.
+   * Nothing here may stop the map: any failure leaves the box as Leaflet made it.
+   */
+  _setupCreditsToggle() {
+    try {
+      if (!this._config.creditsCollapse || !this.map) return;
+      const toggle = new CreditsToggle(this.map);
+      if (toggle.setup()) this.creditsToggle = toggle;
+    } catch (e) {
+      Logger.error("[MapCard] collapsible credits disabled", e);
+      this.creditsToggle = undefined;
     }
   }
 
@@ -545,6 +565,38 @@ export default class MapCard extends LitElement {
       }
       #map.dark .leaflet-control-attribution a {
         color: #ffffff;
+      }
+      .leaflet-control-attribution.ltmc-credits-collapsed {
+        display: none;
+      }
+      .leaflet-control-attribution.ltmc-credits-open {
+        overflow-y: auto;
+        box-sizing: border-box;
+        overflow-wrap: anywhere;
+      }
+      .ltmc-credits-control {
+        clear: both;
+      }
+      .ltmc-credits-button {
+        display: block;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: 1px solid rgba(0, 0, 0, 0.3);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.85);
+        color: #333333;
+        font: italic bold 15px/22px Georgia, "Times New Roman", serif;
+        text-align: center;
+        cursor: pointer;
+      }
+      .ltmc-credits-button[aria-expanded="true"] {
+        font: bold 16px/22px Arial, sans-serif;
+      }
+      #map.dark .ltmc-credits-button {
+        background: #000000cc;
+        color: #ffffff;
+        border-color: rgba(255, 255, 255, 0.4);
       }
       #map.light {
         background: #ffffff;
