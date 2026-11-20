@@ -87,6 +87,59 @@ one squeezed out of the entity's name. `position_transition: auto` slides each
 marker to its new position over the time since its last update, at most 30
 seconds, and not at all when the browser asks for reduced motion.
 
+#### Without auto-entities: `entity_filter`
+
+The card can pick its own entities. `entity_filter` takes auto-entities'
+`include` and `exclude` lists as they are, so moving a dashboard over is a
+matter of putting its `filter:` block under the card as `entity_filter:` and
+dropping the auto-entities wrapper:
+
+```yaml
+type: custom:live-track-map-card
+x: 41.88
+y: -87.63
+zoom: 10
+entity_filter:
+  include:
+    - attributes:
+        source: live_track_aircraft
+      options:
+        size: 60
+        color: transparent
+        rotation_attribute: icon_rotation_deg
+    - domain: geo_location
+      options:
+        display: attribute
+        attribute: marker_label
+        position_transition: auto
+    - domain: person
+    - domain: device_tracker
+      has_position: true
+      away_from_person_m: 100
+  exclude:
+    - state: unavailable
+```
+
+* Each entity takes the **first** `include` rule it matches, with that rule's
+  `options`. Every key in a rule must match. An entity any `exclude` rule
+  matches is left out.
+* Rule keys: `domain`, `entity_id`, `state`, `attributes` (each value), `not`
+  (a rule that must NOT match) and `options`. Values match as text: exactly,
+  with `*` as a wildcard, or as a `/regex/`. A missing attribute matches nothing.
+* Two keys of the card's own: `has_position: true` needs numeric `latitude` and
+  `longitude`; `away_from_person_m: 100` leaves out a device tracker while it is
+  within 100 m of a person who lists it in `device_trackers` (that person's own
+  marker already covers it).
+* Any other key (auto-entities' `area`, `label`, `sort` and so on) is refused
+  with an error naming it, so a filter never silently does less than written.
+* No sort. The map stacks markers by layer and position, never by list order.
+* `entities:` still works beside it; an entity listed there keeps its own
+  options.
+
+The card looks at an entity again only when its state changed, and updates its
+markers only when an entity arrives, leaves or moves to another rule, so a map
+of a few thousand moving objects costs a few milliseconds per update.
+
 A marker whose entity carries `marker_info`, `{"title": ..., "text": ...}` in plain
 text (a forecast point from Live Track Weather, say), opens that text in a popup
 when clicked, instead of the entity's dialog. Nothing in it is read as HTML.

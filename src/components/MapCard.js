@@ -30,6 +30,7 @@ import {
   OVERVIEW_GAP, inPanelView, overviewShown, overviewPadding, selectedFromSearch, searchWith,
 } from '../presence/OverviewRules.js';
 import { afterFrame } from '../markers/FrameBatch.js';
+import EntityFilter from '../util/EntityFilter.js';
 
 export default class MapCard extends LitElement {
   static get properties() {
@@ -163,6 +164,9 @@ export default class MapCard extends LitElement {
   };
 
   render() {
+
+    // `entity_filter`: bring the card's own entity list up to date before anything draws.
+    this._applyEntityFilter();
 
     // Never build a map on a card that is not in the page. Home Assistant can
     // still call setConfig on a card it has just replaced (a websocket
@@ -330,8 +334,20 @@ export default class MapCard extends LitElement {
       !this.setupNeeded && !this.hasError &&
       MapCard._withoutEntities(this.config) === MapCard._withoutEntities(config);
 
+    // `entity_filter` (Lee, 2026-11-20): the card picks its own entities. The filter is the same
+    // when only `entities:` changed, so its work so far is kept; any other change starts it again.
+    if (!onlyEntitiesChanged) {
+      this._entityFilter = mapConfig.entityFilter ? new EntityFilter(mapConfig.entityFilter) : undefined;
+    }
+
     this.config = config;
     this._config = mapConfig;
+    // The filter's entries join the list now, so an in-place update below never drops them.
+    try {
+      this._mergeFiltered();
+    } catch (e) {
+      Logger.error("[MapCard] entity_filter failed; the dashboard's own entities only", e);
+    }
 
     if (onlyEntitiesChanged) {
       try {
@@ -354,6 +370,40 @@ export default class MapCard extends LitElement {
     // eslint-disable-next-line no-unused-vars
     const { entities, ...rest } = config ?? {};
     return JSON.stringify(rest);
+  }
+
+  /**
+   * `entity_filter`: run the filter over the current states and put its entries in the card's
+   * list (after the dashboard's own `entities:`). Does nothing without a filter or a hass.
+   * @returns {boolean} whether the list was rebuilt
+   */
+  _mergeFiltered() {
+    const f = this._entityFilter;
+    if (!f || !this._config || !this.hass?.states) return false;
+    f.update(this.hass.states);
+    if (this._filterApplied?.config === this._config && this._filterApplied.version === f.version) return false;
+    this._config.setFilteredEntries(f.entries());
+    this._filterApplied = { config: this._config, version: f.version };
+    return true;
+  }
+
+  /**
+   * Called on every render, which Home Assistant's state updates drive. The filter looks only at
+   * state objects that changed; the map's entity list is updated in place only when an entity
+   * arrived, left or moved to another rule. A failure here never stops the map: the last list stays.
+   */
+  _applyEntityFilter() {
+    if (!this._entityFilter) return;
+    try {
+      if (!this._mergeFiltered()) return;
+      if (this.map && this.entitiesRenderService && !this.setupNeeded) {
+        this.presenceRenderService?.setEntities(this._config.entities);
+        this.entitiesRenderService.updateEntityConfigs(this._config.entities);
+      }
+    } catch (e) {
+      if (!this._filterFailed) Logger.error("[MapCard] entity_filter failed; keeping the last entity list", e);
+      this._filterFailed = true;
+    }
   }
 
   // The height of your card. Home Assistant uses this to automatically
@@ -539,15 +589,38 @@ export default class MapCard extends LitElement {
 
   /** @returns {Map<string, string>} a dashboard `name:` per entity, which the overview shows as HA does */
   _overviewNames() {
+    // With `entity_filter`, a rule's `options: {name: ...}` names its entities too. Rebuilt only when
+    // the filter's list changed: serialising ~2,000 entries on every render would cost a frame.
+    const f = this._entityFilter;
+    if (f) {
+      if (this._namesFrom !== this._config || this._namesVersion !== f.version) {
+        this._namesFrom = this._config;
+        this._namesVersion = f.version;
+        this._namesKey = undefined;
+        this._names = MapCard._namesOf([...(this._config?.staticEntries ?? []), ...f.entries()]);
+      }
+      return this._names;
+    }
     const raw = this.config?.entities;
     const key = JSON.stringify(raw ?? null);
     if (this._namesKey !== key) {
       this._namesKey = key;
-      this._names = new Map((Array.isArray(raw) ? raw : [])
-        .filter((e) => e && typeof e === "object" && typeof e.entity === "string" && typeof e.name === "string")
-        .map((e) => [e.entity, e.name]));
+      this._namesFrom = undefined;
+      this._names = MapCard._namesOf(raw);
     }
     return this._names;
+  }
+
+  /**
+   * @param {*} raw entity entries
+   * @returns {Map<string, string>} entity id -> its `name:`; the first entry for an id wins
+   */
+  static _namesOf(raw) {
+    const out = new Map();
+    for (const e of Array.isArray(raw) ? raw : []) {
+      if (e && typeof e === "object" && typeof e.entity === "string" && typeof e.name === "string" && !out.has(e.entity)) out.set(e.entity, e.name);
+    }
+    return out;
   }
 
   _overviewZoneColor = (id) => this.presenceRenderService?.zoneColor({ id }) ?? "var(--primary-color)";

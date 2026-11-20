@@ -10,6 +10,7 @@ import Logger from "../util/Logger.js";
 import Entity from "../models/Entity.js";
 import FocusFollowConfig from "./FocusFollowConfig.js";
 import { parsePathOptions } from "../services/path/options.js";
+import { parseEntityFilter } from "../util/EntityFilter.js";
 
 
 export default class MapConfig {
@@ -101,15 +102,14 @@ export default class MapConfig {
         this.historyEnd = inputConfig.history_end ?? "now";
     }
 
-    this.entities = MapConfig.firstPerEntity(inputConfig["entities"] ? inputConfig.entities : []).map((ent) => {
-      // Pass historyStart/ historyEnd defaults down to entity
-      return new EntityConfig(ent, {
-          historyStart: this.historyStart,
-          historyEnd: this.historyEnd,
-          // Is the date range manager enabled
-          dateRangeManagerEnabled: (!!this.historyDateSelection)
-      });
-    });
+    // `entity_filter` (Lee, 2026-11-20): the card picks its own entities (util/EntityFilter.js).
+    // Parsed here so a malformed filter is refused like any invalid config; MapCard runs it.
+    this.entityFilter = parseEntityFilter(inputConfig.entity_filter);
+    /** One EntityConfig per entry object, so an entry the filter keeps is not parsed again. */
+    this._entityConfigOf = new WeakMap();
+    // The dashboard's own `entities:`, one per entity; they come before the filter's and win.
+    this.staticEntries = MapConfig.firstPerEntity(inputConfig["entities"] ? inputConfig.entities : []);
+    this.entities = this.staticEntries.map((ent) => this.entityConfigFor(ent));
 
 
     // Allow as none array
@@ -194,7 +194,7 @@ export default class MapConfig {
           this._setConfigWithDefault(inputConfig.tile_layer_attribution, '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>')
         )
       : null;
-    if(!(Number.isFinite(this.x) && Number.isFinite(this.y)) && this.focusEntity == null && this.entities.length == 0) {
+    if(!(Number.isFinite(this.x) && Number.isFinite(this.y)) && this.focusEntity == null && this.entities.length == 0 && this.entityFilter == null) {
       throw new Error("We need a map latitude & longitude; set at least [x, y], a focus_entity or have at least 1 entities defined.");
     }
     Logger.debug(`[MapConfig]: created with title: ${this.title}, focusEntity: ${this.focusEntity}, x: ${this.x}, y: ${this.y}, zoom: ${this.zoom}, cardSize: ${this.cardSize}, entities: ${this.entities.map(e => e.id)}, wms: ${this.wms.map(l => l.url)}, tileLayers: ${this.tileLayers.map(l => l.url)}, plugins: ${this.plugins.map(p => p.name)}, historyStart: ${this.historyStart}, historyEnd: ${this.historyEnd}, historyDateSelection: ${this.historyDateSelection}, themeMode: ${this.themeMode}, mapOptions: ${this.mapOptions}, focusFollow: ${this.focusFollow}`);
@@ -209,6 +209,35 @@ export default class MapConfig {
   get markerDrawing() {
     const cluster = Boolean(this.clusterMarkers);
     return { canvas: this.canvasMarkers && !cluster, cull: !cluster };
+  }
+
+  /**
+   * The EntityConfig for one entry, built once per entry object (a string entry each time).
+   * @param {object|string} ent
+   * @returns {EntityConfig}
+   */
+  entityConfigFor(ent) {
+    const keyed = ent !== null && typeof ent === "object";
+    const cached = keyed ? this._entityConfigOf.get(ent) : undefined;
+    if (cached) return cached;
+    // Pass historyStart/ historyEnd defaults down to entity
+    const config = new EntityConfig(ent, {
+      historyStart: this.historyStart,
+      historyEnd: this.historyEnd,
+      // Is the date range manager enabled
+      dateRangeManagerEnabled: (!!this.historyDateSelection)
+    });
+    if (keyed) this._entityConfigOf.set(ent, config);
+    return config;
+  }
+
+  /**
+   * The entity list with the filter's entries after the dashboard's own (the first entry per
+   * entity wins, so an entity listed in `entities:` keeps its own options).
+   * @param {object[]} filtered entries from EntityFilter.entries()
+   */
+  setFilteredEntries(filtered) {
+    this.entities = MapConfig.firstPerEntity([...this.staticEntries, ...filtered]).map((ent) => this.entityConfigFor(ent));
   }
 
   _setConfigWithDefault(input, d = null) {
