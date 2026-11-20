@@ -319,6 +319,67 @@ describe('the pointer', () => {
     expect(got[0].action).toBe('tap');
   });
 
+  // Lee 2026-11-20 17:50: a ship's click popup vanished as the pointer moved onto it, because mouseout
+  // took the promoted DOM marker off the map and Leaflet closes a removed marker's popup.
+  it('an open click popup keeps the promoted marker, through mouseout and another promotion', () => {
+    const boat = place({ z: 10000, ll: [41.8, -67.9] });
+    const jet = place({ z: 40000, ll: [41.95, -67.8] });
+    boat.bindPopup('<a href="https://example.org">link</a>');
+    tick();
+    map.fire('mousemove', { layerPoint: map.latLngToLayerPoint(boat.getLatLng()) });
+    boat.openPopup();
+    expect(boat.isPopupOpen()).toBe(true);
+    boat.dom.fire('mouseout');
+    expect(boat.mode).toBe('hover');
+    expect(map.hasLayer(boat.dom)).toBe(true);
+    expect(boat.isPopupOpen()).toBe(true);
+    map.fire('mousemove', { layerPoint: map.latLngToLayerPoint(jet.getLatLng()) });
+    expect(jet.mode).toBe('hover');
+    expect(map.__ltmcHover).toBe(jet);
+    expect(map.hasLayer(boat.dom)).toBe(true);
+    expect(boat.isPopupOpen()).toBe(true);
+  });
+
+  it('closing the popup with the pointer elsewhere puts the marker back on the canvas', () => {
+    const boat = place({ z: 10000 });
+    boat.bindPopup('x');
+    tick();
+    map.fire('mousemove', { layerPoint: map.latLngToLayerPoint(boat.getLatLng()) });
+    boat.openPopup();
+    boat.dom.fire('mouseout');
+    boat.closePopup();
+    expect(boat.pinned).toBe(false);
+    expect(boat.mode).toBe('canvas');
+    expect(map.hasLayer(boat.dom)).toBe(false);
+    expect(map.__ltmcHover).toBeNull();
+  });
+
+  it('closing the popup with the pointer still on the marker leaves it promoted until mouseout', () => {
+    const boat = place({ z: 10000 });
+    boat.bindPopup('x');
+    tick();
+    map.fire('mousemove', { layerPoint: map.latLngToLayerPoint(boat.getLatLng()) });
+    boat.openPopup();
+    const el = boat.dom.getElement();
+    const real = el.matches.bind(el);
+    jest.spyOn(el, 'matches').mockImplementation((s) => (s === ':hover' ? true : real(s)));
+    boat.closePopup();
+    expect(boat.mode).toBe('hover');
+    expect(map.hasLayer(boat.dom)).toBe(true);
+    boat.dom.fire('mouseout');
+    expect(boat.mode).toBe('canvas');
+  });
+
+  it('the popup methods reach the DOM marker (a photo bound after the marker was made)', () => {
+    const boat = place({ z: 10000 });
+    expect(boat.getPopup()).toBeUndefined();
+    boat.bindPopup('x');
+    expect(boat.dom.getPopup()).toBeDefined();
+    expect(boat.getPopup()).toBe(boat.dom.getPopup());
+    boat.unbindPopup();
+    expect(boat.dom.getPopup()).toBeFalsy();
+  });
+
   it('empty map space does nothing', () => {
     place({ z: 40000 });
     tick();

@@ -740,6 +740,15 @@ export default class MapCard extends LitElement {
       .leaflet-pane {
         z-index: 0 !important;
       }
+      /* Every pane is 0 above, so panes stack by DOM order, and the canvas markers' twelve class panes
+         (MarkerPlacement.ensurePanes, v0.1.5) are made AFTER Leaflet's tooltip and popup panes: the hover box
+         and the click popup drew under the markers (Lee 2026-11-20 17:50). They go above every other pane. */
+      .leaflet-tooltip-pane {
+        z-index: 1 !important;
+      }
+      .leaflet-popup-pane {
+        z-index: 2 !important;
+      }
       .leaflet-edit-resize {
         border-radius: 50%;
         cursor: nesw-resize !important;

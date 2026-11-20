@@ -257,7 +257,20 @@ export class CanvasMarker {
     dom.off("tooltipclose");
     dom.on("tooltipopen", () => entity._startTooltipClock?.(self));
     dom.on("tooltipclose", () => entity._stopTooltipClock?.());
-    dom.on("mouseout", () => { if (self.mode === "hover") self.layer.demote(self); });
+    // A click popup PINS the promoted marker in the DOM: taking the DOM marker off the map closes
+    // its popup (Leaflet binds `remove: closePopup`), so on mouseout the popup vanished before the
+    // pointer reached a link in it (Lee 2026-11-20 17:50, a ship's popup). While pinned, mouseout
+    // and another marker's promotion leave it; when the popup closes it goes back to the canvas
+    // unless the pointer is still on it.
+    dom.on("popupopen", () => { self.pinned = true; });
+    dom.on("popupclose", () => {
+      self.pinned = false;
+      if (self.mode !== "hover") return;
+      let over = false;
+      try { over = Boolean(self.dom.getElement?.()?.matches?.(":hover")); } catch { /* */ }
+      if (!over) self.layer.demote(self);
+    });
+    dom.on("mouseout", () => { if (self.mode === "hover") self.layer.demote(self); });   // demote() keeps a pinned one
   }
   _attr(n, v) {
     this.a[n] = String(v);
@@ -305,6 +318,14 @@ export class CanvasMarker {
   setTooltipContent(c) { this.dom.setTooltipContent(c); return this; }
   isTooltipOpen() { return this.dom.isTooltipOpen?.() ?? false; }
   getTooltip() { return this.dom.getTooltip?.(); }
+  // The click popup (Entity._bindPopup, refreshMarkerPopup): a photo or link that arrives after the
+  // marker was made binds it on this stand-in, so the popup methods reach the DOM marker too.
+  bindPopup(...args) { this.dom.bindPopup(...args); return this; }
+  unbindPopup() { this.dom.unbindPopup?.(); return this; }
+  openPopup(...args) { this.dom.openPopup?.(...args); return this; }
+  closePopup() { this.dom.closePopup?.(); return this; }
+  isPopupOpen() { return this.dom.isPopupOpen?.() ?? false; }
+  getPopup() { return this.dom.getPopup?.(); }
   on(...args) { this.dom.on(...args); return this; }
   off(...args) { this.dom.off(...args); return this; }
   fire(...args) { this.dom.fire(...args); return this; }
@@ -604,7 +625,7 @@ export const CanvasMarkerLayer = Renderer.extend({
   },
 
   demote(it) {
-    if (it.mode !== "hover") return;
+    if (it.mode !== "hover" || it.pinned) return;
     try { it.dom.closeTooltip?.(); it.dom.remove(); } catch { /* */ }
     it.mode = "canvas";
     this._unhover(it);
