@@ -167,6 +167,9 @@ export default class MapConfig {
     // (every non-passive zone, picture pins, shared zone bubbles); `false` keeps the older markers.
     // presence/PresenceRenderService.js.
     this.presenceMarkers = inputConfig.presence_markers !== false;
+    // `overview` (Lee, 2026-11-19, step 2): the People / Devices / Zones panel beside the map. Unset: shown when
+    // the card fills a panel view, as Home Assistant's own map card; true or false forces it. presence/LtmcMapOverview.js.
+    this.overview = typeof inputConfig.overview === "boolean" ? inputConfig.overview : undefined;
     // `weather_area` (Lee, 2026-11-02): {latitude, longitude, radius_km}. Shapes are drawn only where they touch it,
     // radar tiles only inside its box. util/WeatherArea.js.
     this.weatherArea = parseWeatherArea(inputConfig.weather_area);

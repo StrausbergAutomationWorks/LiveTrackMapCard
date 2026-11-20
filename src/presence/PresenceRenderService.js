@@ -6,6 +6,7 @@ import {
   colorIndex, paletteVar, zoneColorVar, contrastingContent, groupMarkers, bubbles, staysTogether,
   bubbleLayout, pinFootprint, mergeOverlapping,
 } from "./PresenceRules.js";
+import { hiddenByTab, showsRadius, accuracyShown, focusZoom, SELECTED_MARKER_SCALE } from "./OverviewRules.js";
 import { PRESENCE_CSS, PRESENCE_STYLE_ID } from "./presenceStyles.js";
 
 /** Panes: zone and accuracy circles over the tiles, zone icons under the markers, people above them. */
@@ -43,6 +44,12 @@ export default class PresenceRenderService {
   _zoneSig = "";
   _pending = null;
   _zones = [];
+  /** The overview beside the map (step 2): shown, its tab, its selection; and who hears a selection. */
+  overview = false;
+  tab = "people";
+  selected = undefined;
+  /** @type {((entityId: string) => void)|null} with the overview shown, a tap selects instead of opening more-info */
+  onSelect = null;
 
   /**
    * @param {L.Map} map
@@ -110,6 +117,21 @@ export default class PresenceRenderService {
     this.redraw();
   }
 
+  /**
+   * The overview's state, as Home Assistant's panel layout applies it: the tab hides persons or
+   * trackers, only the selection shows an accuracy circle and leaves its bubble at 1.25x, a zone's
+   * radius shows when selected or on the Zones tab, and a tap selects. Redraws when anything changed.
+   * @param {{shown: boolean, tab?: string, selected?: string}} o
+   */
+  setOverview({ shown, tab = "people", selected = undefined }) {
+    const next = { overview: Boolean(shown), tab, selected: shown ? selected : undefined };
+    if (next.overview === this.overview && next.tab === this.tab && next.selected === this.selected) return;
+    Object.assign(this, next);
+    const zp = this.map?.getPane?.(ZONE_PANE);
+    if (zp) zp.style.pointerEvents = this.overview ? "" : "none";
+    if (this.hass) this.redraw();
+  }
+
   redraw() {
     try {
       this._drawZones();
@@ -163,21 +185,24 @@ export default class PresenceRenderService {
 
   _drawZones() {
     this._zoneLayer.clearLayers();
+    const selectable = this.overview && typeof this.onSelect === "function";
     for (const z of this._zones) {
       const color = this.zoneColor(z);
-      if (z.radius) {
+      if (z.radius && (!this.overview || showsRadius(z.id, this.selected, this.tab))) {
         L.circle([z.lat, z.lng], {
           radius: z.radius, color, weight: CIRCLE_LINE_WIDTH, opacity: 1,
           fillColor: color, fillOpacity: CIRCLE_FILL_OPACITY, interactive: false, pane: ZONE_CIRCLE_PANE,
         }).addTo(this._zoneLayer);
       }
-      L.marker([z.lat, z.lng], {
+      const marker = L.marker([z.lat, z.lng], {
         icon: L.divIcon({
-          className: "ltmc-zone-icon", html: this._zoneElement(z, color),
+          className: "ltmc-zone-icon" + (selectable ? " ltmc-selectable" : ""), html: this._zoneElement(z, color),
           iconSize: [ZONE_CIRCLE_SIZE, ZONE_CIRCLE_SIZE], iconAnchor: [ZONE_CIRCLE_SIZE / 2, ZONE_CIRCLE_SIZE / 2],
         }),
-        interactive: false, keyboard: false, pane: ZONE_PANE,
-      }).addTo(this._zoneLayer);
+        interactive: selectable, keyboard: false, pane: ZONE_PANE, bubblingMouseEvents: false, title: z.name,
+      });
+      if (selectable) marker.on("click", () => this.onSelect(z.id));
+      marker.addTo(this._zoneLayer);
     }
   }
 
@@ -209,6 +234,7 @@ export default class PresenceRenderService {
     for (const id of this.entityIds) {
       const s = states[id];
       if (!s) continue;
+      if (this.overview && hiddenByTab(id, this.tab, this.selected)) continue;
       const loc = locationOf(s, states);
       if (!loc) continue;
       const p = this.map.project([loc.lat, loc.lng], zoom);
@@ -272,15 +298,19 @@ export default class PresenceRenderService {
     try {
       const pending = this._pending;
       this._pending = null;
-      let groups = groupMarkers(this._members());
+      const all = this._members();
+      // Selected, it leaves its bubble and is drawn last, above the rest (HA: cluster false, raised).
+      const chosen = this.overview ? all.find((m) => m.id === this.selected) : undefined;
+      let groups = groupMarkers(chosen ? all.filter((m) => m !== chosen) : all);
       groups.forEach((g) => this._prepare(g, pending));
       groups = mergeOverlapping(groups, (g) => this._rectOf(g), (g) => this._prepare(g, pending));
       this._markerLayer.clearLayers();
       this.groups = groups;
       for (const g of groups) {
         if (g.layout) this._drawBubble(g);
-        else this._drawPin(g.members[0]);
+        else this._drawPin(g.members[0], false);
       }
+      if (chosen) this._drawPin(chosen, true);
     } catch (e) {
       Logger.error("[PresenceRenderService] regroup failed", e);
     }
@@ -303,28 +333,87 @@ export default class PresenceRenderService {
     return frame;
   }
 
-  _drawPin(member) {
+  /**
+   * A free pin. Selected (the overview's), its frame is 1.25x, its dot shows and it sits above the rest.
+   * @param {object} member
+   * @param {boolean} selected
+   */
+  _drawPin(member, selected) {
     const color = this.entityColor(member.id);
-    if (member.gpsAccuracy > 0) {
+    const accuracy = accuracyShown(member.gpsAccuracy, selected, this.overview);
+    if (accuracy > 0) {
       L.circle([member.lat, member.lng], {
-        radius: member.gpsAccuracy, color, weight: member.gpsAccuracy > PRECISE_GPS_ACCURACY ? CIRCLE_LINE_WIDTH : 0,
+        radius: accuracy, color, weight: accuracy > PRECISE_GPS_ACCURACY ? CIRCLE_LINE_WIDTH : 0,
         opacity: 1, fillColor: color, fillOpacity: CIRCLE_FILL_OPACITY, interactive: false, pane: ZONE_CIRCLE_PANE,
       }).addTo(this._markerLayer);
     }
+    const size = selected ? Math.round(MARKER_SIZE * SELECTED_MARKER_SCALE) : MARKER_SIZE;
     const root = document.createElement("div");
-    root.className = "ltmc-pin";
-    const frame = this._frame(member, MARKER_SIZE);
+    root.className = "ltmc-pin" + (selected ? " selected" : "");
+    const frame = this._frame(member, size);
     const tail = document.createElement("div");
     tail.className = "ltmc-tail";
     const dot = document.createElement("div");
     dot.className = "ltmc-dot";
     root.append(frame, tail, dot);
-    frame.addEventListener("click", (ev) => { ev.stopPropagation(); this._moreInfo(member.id); });
-    const fp = pinFootprint(MARKER_SIZE);
+    frame.addEventListener("click", (ev) => { ev.stopPropagation(); this._tap(member.id); });
+    const fp = pinFootprint(size);
     L.marker([member.lat, member.lng], {
       icon: L.divIcon({ className: "ltmc-pin-icon", html: root, iconSize: fp.size, iconAnchor: fp.anchor }),
-      pane: PRESENCE_PANE, keyboard: false, bubblingMouseEvents: false,
+      pane: PRESENCE_PANE, keyboard: false, bubblingMouseEvents: false, zIndexOffset: selected ? 1000 : 0,
     }).addTo(this._markerLayer);
+  }
+
+  /**
+   * A tap on a person or tracker: with the overview shown it selects (HA's panel layout), else more-info.
+   * @param {string} id
+   */
+  _tap(id) {
+    if (this.overview && typeof this.onSelect === "function") this.onSelect(id);
+    else this._moreInfo(id);
+  }
+
+  /**
+   * The overview's selection brought into view, as Home Assistant does: a zone's circle fitted no
+   * deeper than the current zoom; a person or tracker zoomed in only as far as clears the nearest
+   * other marker by 80 px (17 at most), flying there when it is off screen; the panel's side kept clear.
+   * @param {string} id
+   * @param {{left?: number, right?: number, bottom?: number}} [padding] what the panel covers, px
+   * @returns {boolean} whether it moved the map
+   */
+  focus(id, padding = {}) {
+    const states = this.hass?.states ?? {};
+    const s = states[id];
+    if (!s || !this.map) return false;
+    const opts = {
+      paddingTopLeft: [padding.left ?? 0, padding.top ?? 0],
+      paddingBottomRight: [padding.right ?? 0, padding.bottom ?? 0],
+    };
+    const zoom = this.map.getZoom();
+    if (domainOf(id) === "zone") {
+      const a = s.attributes ?? {};
+      if (typeof a.latitude !== "number" || typeof a.longitude !== "number") return false;
+      const center = L.latLng(a.latitude, a.longitude);
+      const bounds = center.toBounds(2 * (a.radius ?? 100)).pad(0.2);
+      this.map.fitBounds(bounds, { ...opts, maxZoom: Math.min(zoom, this.maxZoom()) });
+      return true;
+    }
+    const loc = locationOf(s, states);
+    if (!loc) return false;
+    const center = L.latLng(loc.lat, loc.lng);
+    const here = this.map.project(center, zoom);
+    // The nearest other person, tracker or zone. HA counts every marker on its map; on the shared map
+    // that would be the nearest aircraft or train, so only the overview's own kinds count here.
+    let nearest = Infinity;
+    for (const other of [...this._members(), ...this._zones]) {
+      if (other.id === id || (other.lat === loc.lat && other.lng === loc.lng)) continue;
+      nearest = Math.min(nearest, here.distanceTo(this.map.project([other.lat, other.lng], zoom)));
+    }
+    const target = Math.min(focusZoom(zoom, nearest), this.maxZoom());
+    const bounds = L.latLngBounds([center, center]);
+    const fly = !this.map.getBounds().contains(center);
+    (fly ? this.map.flyToBounds : this.map.fitBounds).call(this.map, bounds, { ...opts, maxZoom: target });
+    return true;
   }
 
   _drawBubble(group) {
@@ -339,7 +428,7 @@ export default class PresenceRenderService {
     for (const m of group.members.slice(0, layout.shownCount)) {
       const avatar = this._frame(m, null);
       if (group.open) {
-        avatar.addEventListener("click", (ev) => { ev.stopPropagation(); this._moreInfo(m.id); });
+        avatar.addEventListener("click", (ev) => { ev.stopPropagation(); this._tap(m.id); });
       }
       bubble.appendChild(avatar);
     }

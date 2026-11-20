@@ -142,4 +142,12 @@ export const PRESENCE_CSS = `
 .ltmc-cluster.open .ltmc-bubble {
   cursor: default;
 }
+/* The overview's selection (step 2): a larger frame, the dot shown, the accuracy circle carries the colour. */
+.ltmc-pin.selected .ltmc-dot {
+  visibility: visible;
+}
+/* With the overview shown a zone's circle is a button that selects it. */
+.ltmc-zone-icon.ltmc-selectable {
+  cursor: pointer;
+}
 `;

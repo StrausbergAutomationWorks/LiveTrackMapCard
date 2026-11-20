@@ -25,6 +25,10 @@ import { GroupFilter } from '../util/GroupFilter.js';
 import { PathFollower } from '../services/path/PathFollower.js';
 import { CreditsToggle } from '../util/CreditsToggle.js';
 import PresenceRenderService from '../presence/PresenceRenderService.js';
+import '../presence/LtmcMapOverview.js';
+import {
+  OVERVIEW_GAP, inPanelView, overviewShown, overviewPadding, selectedFromSearch, searchWith,
+} from '../presence/OverviewRules.js';
 
 export default class MapCard extends LitElement {
   static get properties() {
@@ -63,6 +67,11 @@ export default class MapCard extends LitElement {
   geoJsonRenderService;
   hasError = false;
   hadError = false;
+  /** The overview beside the map (step 2): shown, its tab, its selection, and what it covers. */
+  _overviewOn = false;
+  _overviewTab = "people";
+  _overviewSelected = undefined;
+  _overviewSize = { width: 0, height: 0 };
 
   setup() {
     Logger.debug("[MapCard] Setting up map card");
@@ -122,6 +131,7 @@ export default class MapCard extends LitElement {
       this.geoJsonRenderService.setup();
       this.entitiesRenderService.setup();
       this.presenceRenderService.setup();
+      this._setupOverview();
       this.initialViewRenderService.setup();
       // After the entities exist: a check that finds stale ones redraws.
       this.staleStateService.start();
@@ -185,7 +195,7 @@ export default class MapCard extends LitElement {
                 <div id="map" style="min-height: ${this._config.mapHeight}px">
                   <ha-icon-button
                     label='Reset focus'
-                    style='${this._isDarkMode() ? "color:#ffffff;" : "color:#000000;"} position: absolute; top: 75px; left: 3px; z-index: 1;'
+                    style='${this._isDarkMode() ? "color:#ffffff;" : "color:#000000;"} position: absolute; top: 75px; left: ${3 + this._leftInset()}px; z-index: 1;'
                     @click=${this._fitMap}
                     tabindex="0"
                   >
@@ -194,7 +204,7 @@ export default class MapCard extends LitElement {
                   ${this._config.clusterMarkers ? html`
                     <ha-icon-button
                       label='Toggle grouping'
-                      style='${this._isDarkMode() ? "color:#ffffff;" : "color:#000000;"} position: absolute; top: 115px; left: 3px; z-index: 1;'
+                      style='${this._isDarkMode() ? "color:#ffffff;" : "color:#000000;"} position: absolute; top: 115px; left: ${3 + this._leftInset()}px; z-index: 1;'
                       @click=${this._toggleClustering}
                       tabindex="0"
                     >
@@ -202,6 +212,20 @@ export default class MapCard extends LitElement {
                     </ha-icon-button>
                   ` : ''}
                 </div>
+                ${this._overviewOn && this.presenceRenderService ? html`
+                  <ltmc-map-overview
+                    id="overview"
+                    .hass=${this.hass}
+                    .entityIds=${this.presenceRenderService.entityIds}
+                    .names=${this._overviewNames()}
+                    .selected=${this._overviewSelected}
+                    .tab=${this._overviewTab}
+                    .zoneColor=${this._overviewZoneColor}
+                    @ltmc-overview-select=${this._onOverviewSelect}
+                    @ltmc-overview-tab=${this._onOverviewTab}
+                    @ltmc-overview-resize=${this._onOverviewResize}
+                  ></ltmc-map-overview>
+                ` : ''}
               </div>
             </ha-card>
         `;
@@ -332,6 +356,8 @@ export default class MapCard extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     Logger.debug("[MapCard.connectedCallback] called");
+    globalThis.addEventListener?.("popstate", this._syncSelection);
+    globalThis.addEventListener?.("location-changed", this._syncSelection);
     if (this.setupNeeded) {
       this.requestUpdate();
     }
@@ -367,6 +393,8 @@ export default class MapCard extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     Logger.debug("[MapCard.disconnectedCallback] called");
+    globalThis.removeEventListener?.("popstate", this._syncSelection);
+    globalThis.removeEventListener?.("location-changed", this._syncSelection);
     if (this.map) {
       this._teardown();
       this.setupNeeded = true;
@@ -383,6 +411,137 @@ export default class MapCard extends LitElement {
     this.presenceRenderService.setEntities(this._config.entities);
     this.entitiesRenderService.drawnElsewhere = (id) => this.presenceRenderService?.drawsId(id) === true;
   }
+
+  /**
+   * The overview beside the map (step 2, Lee 2026-11-19): People, Devices and Zones, as Home Assistant's
+   * map card shows it in a panel view. Shown when the card fills a panel view (railair-map's card sits in
+   * auto-entities, so the enclosing hui-panel-view is looked for) or when `overview: true`; never with
+   * `overview: false` or `presence_markers: false`. Its tab filters persons and trackers on the map, its
+   * selection lives in the URL (?entity_id=, as HA), a tap on a person, tracker or zone selects, a tap on
+   * the map clears it.
+   */
+  _setupOverview() {
+    const svc = this.presenceRenderService;
+    this._overviewOn = Boolean(svc?.enabled) && overviewShown(this._config.overview, inPanelView(this));
+    if (!svc) return;
+    svc.onSelect = (id) => this._overviewSelect(id);
+    this._overviewPath = globalThis.location?.pathname;
+    this._overviewSelected = this._overviewOn ? selectedFromSearch(globalThis.location?.search) : undefined;
+    this._onMapClick = () => { if (this._overviewSelected) this._overviewSelect(undefined); };
+    this.map.on("click", this._onMapClick);
+    svc.setOverview({ shown: this._overviewOn, tab: this._overviewTab, selected: this._overviewSelected });
+    // A selection named in the URL is brought into view once the initial view has been set.
+    if (this._overviewSelected) setTimeout(() => this._focusSelected(), 0);
+  }
+
+  /**
+   * Select (or with `undefined` clear) a person, tracker or zone. A new selection is focused on the map;
+   * clearing returns the map to its initial view (HA refits its map).
+   * @param {string|undefined} id
+   * @param {{push?: boolean}} [o] push: record it in the URL (false when the URL itself changed)
+   */
+  _overviewSelect(id, { push = true } = {}) {
+    if (!this._overviewOn) return;
+    if (id === this._overviewSelected) { if (id) this._focusSelected(); return; }
+    const was = this._overviewSelected;
+    this._overviewSelected = id;
+    if (push) this._navigateSelection(id);
+    this.presenceRenderService?.setOverview({ shown: true, tab: this._overviewTab, selected: id });
+    this.requestUpdate();
+    if (id) this._focusSelected();
+    else if (was) this._fitMap();
+  }
+
+  _focusSelected() {
+    if (this._overviewSelected) this.presenceRenderService?.focus(this._overviewSelected, this._overviewPaddingNow() ?? {});
+  }
+
+  /** @param {string|undefined} id */
+  _navigateSelection(id) {
+    try {
+      const loc = globalThis.location;
+      globalThis.history.pushState(globalThis.history.state, "", `${loc.pathname}${searchWith(loc.search, id)}${loc.hash}`);
+      globalThis.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
+    } catch (e) {
+      Logger.warn?.("[MapCard] the selection could not be put in the URL", e);
+    }
+  }
+
+  /** Back and forward, or another card's navigation: follow the URL's selection on this card's page. */
+  _syncSelection = () => {
+    if (!this._overviewOn || globalThis.location?.pathname !== this._overviewPath) return;
+    const id = selectedFromSearch(globalThis.location.search);
+    if (id !== this._overviewSelected) this._overviewSelect(id, { push: false });
+  };
+
+  _onOverviewSelect(ev) {
+    this._overviewSelect(ev.detail?.entityId);
+  }
+
+  _onOverviewTab(ev) {
+    const tab = ev.detail?.tab;
+    if (!tab || tab === this._overviewTab) return;
+    this._overviewTab = tab;
+    this.presenceRenderService?.setOverview({ shown: this._overviewOn, tab, selected: this._overviewSelected });
+    this.requestUpdate();
+  }
+
+  _onOverviewResize(ev) {
+    const before = JSON.stringify(this._overviewPaddingNow() ?? null);
+    const { width, height } = ev.detail ?? {};
+    // A collapsed overview keeps its width; zero both so it takes no space.
+    this._overviewSize = width && height ? ev.detail : { width: 0, height: 0 };
+    this._applyInsets();
+    this.requestUpdate();
+    if (this._overviewSelected && JSON.stringify(this._overviewPaddingNow() ?? null) !== before) this._focusSelected();
+  }
+
+  _isPhone() {
+    return Boolean(globalThis.matchMedia?.("(max-width: 600px)")?.matches);
+  }
+
+  /** @returns {{left?: number, right?: number, bottom?: number}|undefined} what the panel covers */
+  _overviewPaddingNow() {
+    if (!this._overviewOn) return undefined;
+    const { width, height, fitHeight } = this._overviewSize;
+    if (!width || !height) return undefined;
+    const phone = this._isPhone();
+    let rtl = false;
+    try { rtl = getComputedStyle(this).direction === "rtl"; } catch { /* no style */ }
+    return overviewPadding(phone, phone ? (fitHeight ?? height) : width, rtl);
+  }
+
+  /** @returns {number} px the desktop panel takes from the map's left side (0 on a phone or without it) */
+  _leftInset() {
+    const w = this._overviewSize?.width;
+    return this._overviewOn && w && !this._isPhone() ? w + 2 * OVERVIEW_GAP : 0;
+  }
+
+  /** Keep Leaflet's controls beside the panel (desktop) or above the sheet (phone), as HA keeps its own. */
+  _applyInsets() {
+    const box = this.map?.getContainer?.();
+    if (!box?.querySelectorAll) return;
+    const left = this._leftInset();
+    box.querySelectorAll(".leaflet-top.leaflet-left, .leaflet-bottom.leaflet-left").forEach((el) => { el.style.left = left ? `${left}px` : ""; });
+    const h = this._overviewSize?.height;
+    const bottom = this._overviewOn && h && this._isPhone() ? h + 8 : 0;
+    box.querySelectorAll(".leaflet-bottom").forEach((el) => { el.style.bottom = bottom ? `${bottom}px` : ""; });
+  }
+
+  /** @returns {Map<string, string>} a dashboard `name:` per entity, which the overview shows as HA does */
+  _overviewNames() {
+    const raw = this.config?.entities;
+    const key = JSON.stringify(raw ?? null);
+    if (this._namesKey !== key) {
+      this._namesKey = key;
+      this._names = new Map((Array.isArray(raw) ? raw : [])
+        .filter((e) => e && typeof e === "object" && typeof e.entity === "string" && typeof e.name === "string")
+        .map((e) => [e.entity, e.name]));
+    }
+    return this._names;
+  }
+
+  _overviewZoneColor = (id) => this.presenceRenderService?.zoneColor({ id }) ?? "var(--primary-color)";
 
   /**
    * The credits box collapses behind an "i" button (Lee, 2026-11-19;
@@ -467,11 +626,31 @@ export default class MapCard extends LitElement {
         overflow: hidden;
       }
       #mapContainer {
+        position: relative;
         border-radius: var(--ha-card-border-radius, 12px);
         overflow: hidden;
         z-index: 0;
         height: 100%;
         width: 100%;
+      }
+      /* The overview (step 2): floating at the start side, as HA's #overview; on a phone its sheet is in the top layer. */
+      #overview {
+        position: absolute;
+        top: 12px;
+        inset-inline-start: 12px;
+        width: min(360px, calc(100% - 24px));
+        max-height: calc(100% - 24px);
+        display: flex;
+        z-index: 2;
+      }
+      #overview[single-tab] {
+        width: min(300px, calc(100% - 24px));
+      }
+      #overview[phone] {
+        top: auto;
+        bottom: 0;
+        width: 0;
+        height: 0;
       }
       #map {
         height: 100%;

@@ -172,6 +172,7 @@ y: 3.652
 | `layer_control`        | true | `false` removes the checkboxes. Every overlay stays as configured, and a choice a viewer stored earlier is ignored. |
 | `layer_control_collapsed` | true | The checkboxes fold behind the layers icon at the top right; a tap (or hovering, with a mouse) opens them. `false` keeps them always open. |
 | `presence_markers` | true | People, devices and zones drawn as Home Assistant's own map draws them: every non-passive zone, picture pins, everyone in a zone in one bubble above it. See [People, devices and zones](#people-devices-and-zones). `false` keeps the older markers. |
+| `overview` | (panel views) | The People / Devices / Zones panel beside the map, as Home Assistant's own map card shows it. Unset: shown when the card fills a panel view. `true` shows it anywhere, `false` never. See [The overview](#the-overview). |
 | `attribution_collapse` | true | The credits box opens in full with the map, then collapses behind an **i** button after 5 seconds or at the viewer's first press, scroll or key on the map (OpenStreetMap's attribution guideline allows both). The button reopens it, at most 40% of the map's height and scrollable. `false` keeps the box always open. |
 | `weather_area`         | none | `{latitude, longitude, radius_km}`. Shapes are drawn only where they touch this circle, and weather radar tiles only inside the box around it. |
 | `lightning`            | on, unticked                                                                                                                 | The lightning overlay. See [Lightning](#lightning). `false` removes it. |
@@ -416,6 +417,29 @@ Only these three kinds change: every other entity is drawn exactly as before. A 
 or tracker given another `display:` (`icon`, `state`, `attribute`) keeps the older
 marker. `display: pill`, the former place pill, now means the new look.
 `presence_markers: false` turns all of it off.
+
+#### The overview
+
+When the card fills a **panel view** (also inside a wrapper such as auto-entities), it
+shows the panel Home Assistant's own map card shows there: tabs **People**, **Devices**
+and **Zones**, a row for each with its state and how long ago, and the count of people in
+each zone. On a screen 600 px wide or narrower the panel is a bottom sheet you drag
+between collapsed, half and full height.
+
+- **Tabs filter the map.** People hides device markers, Devices hides people; zones and
+  every other entity stay.
+- **Selecting** a row, or tapping a person, device or zone on the map, brings it into
+  view (zoomed in only as far as it takes to stand clear of its neighbours), shows its
+  picture larger with its accuracy circle, and lists its last 24 hours: a person's or
+  device's state changes, or who entered and left a zone. The panel also offers
+  directions and, for administrators, the entity's settings. The selection is kept in the
+  page address (`?entity_id=`), so the browser's back button clears it; a tap on the map
+  clears it too.
+- With the panel shown, accuracy circles are drawn only for the selection, and a zone's
+  radius only when that zone is selected or on the Zones tab.
+
+`overview: true` shows the panel outside a panel view; `overview: false` never shows it.
+Activity needs Home Assistant's `history` integration (on by default).
 
 The design and its constants follow Home Assistant's frontend (Apache-2.0); see
 `THIRD_PARTY_NOTICES.md`.
