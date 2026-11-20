@@ -46,7 +46,7 @@ describe("addOverlay", () => {
     const layer = makeLayer();
     expect(svc.addOverlay(layer, "US alerts")).toBe(true);
     expect(L.Control.Layers).toHaveBeenCalledTimes(1);
-    expect(svc.control.opts).toEqual({ collapsed: false, position: "topright" });
+    expect(svc.control.opts).toEqual({ collapsed: true, position: "topright" });
     expect(svc.control.overlays).toEqual({ "US alerts": layer });
     expect(layer.addTo).toHaveBeenCalledWith(map);
   });
@@ -81,6 +81,36 @@ describe("addOverlay", () => {
     expect(store._m.get(OVERLAY_STORAGE_PREFIX + "US alerts")).toBe("0");
     map.handlers.overlayadd({ layer });
     expect(store._m.get(OVERLAY_STORAGE_PREFIX + "US alerts")).toBe("1");
+  });
+
+  it("layer_control_collapsed: false keeps the checkboxes open, as before, with no click guard", async () => {
+    const svc = new TileLayersService(makeMap(), [], [], {}, {}, {}, memStorage(), true, false);
+    svc.addOverlay(makeLayer(), "US alerts");
+    expect(svc.control.opts).toEqual({ collapsed: false, position: "topright" });
+    expect(svc.unguard).toBeUndefined();
+  });
+
+  it("folded, the control gets the first-click guard", async () => {
+    const svc = new TileLayersService(makeMap(), [], [], {}, {}, {}, memStorage());
+    svc.addOverlay(makeLayer(), "US alerts");
+    expect(typeof svc.unguard).toBe("function");
+  });
+
+  it("a choice stored under the former label is used, and kept under the new one", async () => {
+    const store = memStorage({ [OVERLAY_STORAGE_PREFIX + "Live Track Weather US alerts"]: "0" });
+    const svc = new TileLayersService(makeMap(), [], [], {}, {}, {}, store);
+    const layer = makeLayer();
+    expect(svc.addOverlay(layer, "US alerts", true, "Live Track Weather US alerts")).toBe(false);
+    expect(layer.addTo).not.toHaveBeenCalled();
+    expect(store._m.get(OVERLAY_STORAGE_PREFIX + "US alerts")).toBe("0");
+  });
+
+  it("a choice under the new label wins over the former one; no former choice, the default", async () => {
+    const store = memStorage({ [OVERLAY_STORAGE_PREFIX + "Storm reports"]: "1", [OVERLAY_STORAGE_PREFIX + "Live Track Weather Storm reports"]: "0" });
+    const svc = new TileLayersService(makeMap(), [], [], {}, {}, {}, store);
+    expect(svc.addOverlay(makeLayer(), "Storm reports", false, "Live Track Weather Storm reports")).toBe(true);
+    expect(svc.addOverlay(makeLayer(), "Fires", false, "Live Track Weather Fires")).toBe(false);
+    expect(store._m.has(OVERLAY_STORAGE_PREFIX + "Fires")).toBe(false);
   });
 
   it("removeOverlay drops the checkbox and stops remembering it; harmless with no control", async () => {

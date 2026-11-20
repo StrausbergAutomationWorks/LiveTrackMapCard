@@ -254,6 +254,19 @@ describe("the service", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it("the checkbox leaves the publisher's device name off, and passes the former label (Lee, 2026-11-19)", () => {
+    const ov = overlays();
+    const svc = new ShapeLayersService({}, undefined, undefined, ov, { fetch: okFetch() });
+    const h = hassOf({ "sensor.w": pub({ friendly_name: "Live Track Weather US alerts" }) });
+    h.entities = { "sensor.w": { entity_id: "sensor.w", device_id: "d1" } };
+    h.devices = { d1: { id: "d1", name: "Live Track Weather" } };
+    svc.render(h);
+    const [, name, show, former] = ov.addOverlay.mock.calls[0];
+    expect(name).toBe("US alerts");
+    expect(show).toBe(true);
+    expect(former).toBe("Live Track Weather US alerts");
+  });
+
   it("weather_area: only what touches it is drawn (Lee, 2026-11-02)", async () => {
     const ov = overlays();
     const svc = new ShapeLayersService({}, undefined, undefined, ov, { fetch: okFetch(), area: { lat: 0.1, lon: 0.9, km: 30 } });

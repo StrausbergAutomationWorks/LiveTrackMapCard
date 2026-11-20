@@ -40,6 +40,11 @@ describe('MapCard and the credits box', () => {
     expect(new MapConfig({ x: 41.9, y: -88, attribution_collapse: false }).creditsCollapse).toBe(false);
   });
 
+  it('the layer control folds unless layer_control_collapsed is false', () => {
+    expect(new MapConfig({ x: 41.9, y: -88 }).layerControlCollapsed).toBe(true);
+    expect(new MapConfig({ x: 41.9, y: -88, layer_control_collapsed: false }).layerControlCollapsed).toBe(false);
+  });
+
   it('sets it up on the map by default', () => {
     card._config = { creditsCollapse: true };
     card._setupCreditsToggle();

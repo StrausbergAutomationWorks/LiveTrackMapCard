@@ -3,6 +3,7 @@ import Logger from "../../util/Logger.js";
 import { apiPath } from "../../util/TrackLine.js";
 import { INFO_POPUP } from "../../util/InfoPopup.js";
 import { geometryTouchesArea } from "../../util/WeatherArea.js";
+import { layerLabel } from "../../util/LayerLabel.js";
 import {
   isPointPublisherState, discoverPointPublishers, parsePointLayersOption, pointOrderOf, pointStyleFor, pointsOf,
   pointsUrlOf, visiblePoints, hitTest, pointPopupHtml,
@@ -235,11 +236,12 @@ export default class PointLayersService {
     if (!p) {
       const attribution = typeof state?.attributes?.attribution === "string" ? state.attributes.attribution : undefined;
       const layer = new PointCanvasLayer(attribution ? { attribution } : {});
-      const name = item.name ?? (typeof state?.attributes?.friendly_name === "string" && state.attributes.friendly_name) ?? id;
+      // The device name left off the label (util/LayerLabel.js, Lee 2026-11-19).
+      const label = layerLabel(this.hass ?? { states: { [id]: state } }, id, item.name);
       p = { layer, url: null, status: null, order: 0, state: null };
       this.publishers.set(id, p);
       layer.on?.("add", () => this._restack());
-      this.overlays.addOverlay(layer, name || id, item.show);
+      this.overlays.addOverlay(layer, label.name, item.show, label.former);
     }
     if (!isPointPublisherState(state)) {
       if (p.url || p.state) p.layer.setData(null, {});

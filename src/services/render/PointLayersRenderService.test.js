@@ -159,6 +159,19 @@ describe("rules 1, 2, 5: discovery, fetch, checkbox", () => {
     expect(ctx.drawImage).toHaveBeenCalled();
   });
 
+  it("the checkbox leaves the publisher's device name off, and passes the former label (Lee, 2026-11-19)", () => {
+    stubCanvas();
+    const ov = overlays();
+    const h = hassWith({ "sensor.f": pub({ friendly_name: "Live Track Weather Fire detections" }) });
+    h.entities = { "sensor.f": { entity_id: "sensor.f", device_id: "d1" } };
+    h.devices = { d1: { id: "d1", name: "Live Track Weather" } };
+    new PointLayersService(map, undefined, ov).render(h);
+    const [, name, show, former] = ov.addOverlay.mock.calls[0];
+    expect(name).toBe("Fire detections");
+    expect(show).toBe(true);
+    expect(former).toBe("Live Track Weather Fire detections");
+  });
+
   it("a new URL fetches again; the same state does not", async () => {
     stubCanvas();
     const svc = new PointLayersService(map, undefined, overlays());

@@ -5,6 +5,7 @@ import WmsLayerConfig from "../../configs/WmsLayerConfig";
 import Layer from "../../models/Layer";
 import LayerWithHistory from "../../models/LayerWithHistory";
 import Map from "leaflet";
+import { guardFirstClick } from "../../util/LayerControlGuard.js";
 
 /** Where a viewer's choice for a named overlay is kept, per overlay name. */
 export const OVERLAY_STORAGE_PREFIX = "ltmc.overlay.";
@@ -57,8 +58,10 @@ export default class TileLayersService {
   /** The layer control, when any overlay is named; else null. */
   control = null;
 
-  constructor(map, tileLayersConfig, wmsLayersConfig, urlResolver, linkedEntityService, dateRangeManager, storage = globalThis.localStorage, controlled = true) {
+  constructor(map, tileLayersConfig, wmsLayersConfig, urlResolver, linkedEntityService, dateRangeManager, storage = globalThis.localStorage, controlled = true, collapsed = true) {
     this.controlled = controlled;
+    // Folded behind Leaflet's layers icon unless `layer_control_collapsed: false` (Lee, 2026-11-19).
+    this.collapsed = collapsed !== false;
     this.map = map;
     this.tileLayersConfig = tileLayersConfig;
     this.wmsLayersConfig = wmsLayersConfig;
@@ -102,9 +105,11 @@ export default class TileLayersService {
   }
 
   /**
-   * A layer control with one checkbox per named overlay, top right, always
-   * open (no icon to hover). Each change is remembered in the viewer's own
-   * browser. Nothing is added when no overlay is named.
+   * A layer control with one checkbox per named overlay, top right, folded
+   * behind Leaflet's layers icon (a tap or hover opens it; open always with
+   * `layer_control_collapsed: false`; it was always open until 2026-11-19).
+   * Each change is remembered in the viewer's own browser. Nothing is added
+   * when no overlay is named.
    * @param {{[name: string]: object}} named
    */
   _addControl(named) {
@@ -119,8 +124,10 @@ export default class TileLayersService {
    */
   _ensureControl(named = {}) {
     if (this.control) return this.control;
-    this.control = new L.Control.Layers(null, named, { collapsed: false, position: "topright" });
+    this.control = new L.Control.Layers(null, named, { collapsed: this.collapsed, position: "topright" });
     this.control.addTo(this.map);
+    // Folded, the click that opens the list must not tick its first box (util/LayerControlGuard.js).
+    if (this.collapsed) this.unguard = guardFirstClick(this.control.getContainer?.());
     this.byLayer = new globalThis.Map(Object.entries(named).map(([n, layer]) => [layer, n]));
     const remember = (shown) => (e) => {
       const n = this.byLayer.get(e.layer);
@@ -138,15 +145,21 @@ export default class TileLayersService {
    * @param {object} layer a Leaflet layer
    * @param {string} name the checkbox label
    * @param {boolean} [show] the default when the viewer has made no choice
+   * @param {string} [former] the label this layer had before (util/LayerLabel.js): a
+   *   choice stored under it is used when none is stored under `name`, and kept under `name`
    * @returns {boolean} whether the layer is on the map
    */
-  addOverlay(layer, name, show = true) {
+  addOverlay(layer, name, show = true, former = undefined) {
     if (!this.controlled) {
       const shown = show !== false;
       if (shown) layer.addTo(this.map);
       return shown;
     }
-    const stored = storedOverlayChoice(name, this.storage);
+    let stored = storedOverlayChoice(name, this.storage);
+    if (stored === null && former && former !== name) {
+      stored = storedOverlayChoice(former, this.storage);
+      if (stored !== null) storeOverlayChoice(name, stored, this.storage);
+    }
     const on = stored ?? show !== false;
     if (on) layer.addTo(this.map);
     const control = this._ensureControl();

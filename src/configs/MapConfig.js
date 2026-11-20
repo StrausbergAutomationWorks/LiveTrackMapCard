@@ -157,6 +157,9 @@ export default class MapConfig {
     // `layer_control: false` (Lee, 2026-11-02): no checkboxes. Every overlay stays as configured here and a viewer's
     // stored choice is ignored, since nobody could change it back. TileLayersService.
     this.layerControl = inputConfig.layer_control !== false;
+    // `layer_control_collapsed` (Lee, 2026-11-19): the checkboxes fold behind Leaflet's layers icon; `false` keeps
+    // them always open, as before. TileLayersService.
+    this.layerControlCollapsed = inputConfig.layer_control_collapsed !== false;
     // `attribution_collapse` (Lee, 2026-11-19): the credits box opens in full, then collapses behind an "i" button
     // after 5 s or the viewer's first touch; `false` keeps it always open. util/CreditsToggle.js.
     this.creditsCollapse = parseCreditsCollapse(inputConfig.attribution_collapse);

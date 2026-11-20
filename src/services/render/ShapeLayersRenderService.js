@@ -2,6 +2,7 @@ import L from "leaflet";
 import Logger from "../../util/Logger.js";
 import { infoOf, infoHtml, INFO_POPUP } from "../../util/InfoPopup.js";
 import { geometryTouchesArea } from "../../util/WeatherArea.js";
+import { layerLabel } from "../../util/LayerLabel.js";
 
 export { infoOf, infoHtml, escapeHtml, INFO_POPUP, INFO_TITLE_MAX, INFO_TEXT_MAX } from "../../util/InfoPopup.js";
 
@@ -327,8 +328,9 @@ export default class ShapeLayersService {
     if (!p) {
       const attribution = typeof state?.attributes?.attribution === "string" ? state.attributes.attribution : undefined;
       const group = L.layerGroup([], attribution ? { attribution } : {});
-      const name = item.name ?? (typeof state?.attributes?.friendly_name === "string" && state.attributes.friendly_name) ?? id;
-      this.overlays.addOverlay(group, name || id, item.show);
+      // The device name left off the label (util/LayerLabel.js, Lee 2026-11-19).
+      const label = layerLabel(this.hass ?? { states: { [id]: state } }, id, item.name);
+      this.overlays.addOverlay(group, label.name, item.show, label.former);
       p = { group, url: null, state: null, fileStatus: null, drawn: 0, order: 0 };
       this.publishers.set(id, p);
       // A re-ticked box puts its shapes back on top: restore the order (D16).

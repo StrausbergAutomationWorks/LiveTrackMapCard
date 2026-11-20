@@ -83,7 +83,7 @@ describe("named overlays", () => {
     expect(mockRendered.map((l) => l.shown)).toEqual([true, true]);
   });
 
-  it("a named overlay gets a checkbox, always open, top right", async () => {
+  it("a named overlay gets a checkbox, folded behind the layers icon, top right", async () => {
     const map = makeMap();
     const svc = new TileLayersService(map, [{ url: "orm", name: "Rail lines", show: true }], [], {}, {}, {}, memStorage());
     await svc.setup();
@@ -91,7 +91,7 @@ describe("named overlays", () => {
     const c = mockLayers.mock.instances[0];
     expect(c.base).toBeNull();
     expect(Object.keys(c.overlays)).toEqual(["Rail lines"]);
-    expect(c.opts).toEqual({ collapsed: false, position: "topright" });
+    expect(c.opts).toEqual({ collapsed: true, position: "topright" });
     expect(c.addTo).toHaveBeenCalledWith(map);
     expect(mockRendered[0].shown).toBe(true);
   });

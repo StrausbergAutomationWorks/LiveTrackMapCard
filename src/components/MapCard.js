@@ -84,7 +84,7 @@ export default class MapCard extends LitElement {
     if (this._config.historyDateSelection) {
       this.dateRangeManager = new HaDateRangeService(this.hass);
     }
-    this.tileLayersService = new TileLayersService(this.map, this._config.tileLayers, this._config.wms, this.urlResolver, this.linkedEntityService, this.dateRangeManager, undefined, this._config.layerControl);
+    this.tileLayersService = new TileLayersService(this.map, this._config.tileLayers, this._config.wms, this.urlResolver, this.linkedEntityService, this.dateRangeManager, undefined, this._config.layerControl, this._config.layerControlCollapsed);
     // Entities the page still holds after Home Assistant removed them - a
     // reconnect merges instead of replacing (HaStaleStateService). A change
     // to the record redraws, which hides or restores the markers.
