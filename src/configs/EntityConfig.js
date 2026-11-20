@@ -286,11 +286,6 @@ export default class EntityConfig {
    */
   positionTransition;
   /**
-   * @type {number} Min map zoom at which a `display: pill` marker shows the
-   * offset callout + leader line; below it the pill centers on the point.
-   */
-  pillCalloutMinZoom;
-  /**
    * @type {string|null} Entity attribute holding the angle, in degrees, to
    * turn a picture marker by. Null turns nothing.
    */
@@ -332,6 +327,9 @@ export default class EntityConfig {
   constructor(config, defaults) {
     this.id = (typeof config === 'string' || config instanceof String) ? config : config.entity;
     this.fingerprint = JSON.stringify(config);
+    // `display: pill` (the place pill) is folded into the people, devices and zones drawn as Home Assistant
+    // draws them (presence/, Lee 2026-11-19): it keeps its name so presence/PresenceRules.js drawnAsPresence
+    // can take the entity; nothing in the older marker draws a pill any more.
     this.display = config.display ? config.display : "marker";
     this.attribute = config.attribute ? config.attribute : "";
     this.prefix = config.display === "attribute" ? (config.prefix ? config.prefix : "") : "";
@@ -388,7 +386,6 @@ export default class EntityConfig {
     this.positionTransition = config.position_transition === "auto"
       ? "auto"
       : EntityConfig._nonNegativeSeconds(config.position_transition);
-    this.pillCalloutMinZoom = config.pill_callout_min_zoom ?? 15;
     this.rotationAttribute = EntityConfig._nonEmptyString(config.rotation_attribute);
     this.rotationTransition = EntityConfig._nonNegativeSeconds(config.rotation_transition);
     this.arrowAttribute = EntityConfig._nonEmptyString(config.arrow_attribute);

@@ -8,15 +8,18 @@ describe("EntityConfig", () => {
     historyEnd: null
   };
 
-  describe("pillCalloutMinZoom", () => {
-    it("defaults to 15", () => {
-      const entityConfig = new EntityConfig({ entity: "device_tracker.mom" }, defaults);
-      expect(entityConfig.pillCalloutMinZoom).toBe(15);
+  describe("display: pill (folded into presence/, 2026-11-19)", () => {
+    it("keeps the name pill, so presence can take the entity", () => {
+      expect(new EntityConfig({ entity: "device_tracker.mom", display: "pill" }, defaults).display).toBe("pill");
     });
 
-    it("can be overridden via pill_callout_min_zoom", () => {
+    it("no longer reads pill_callout_min_zoom", () => {
       const entityConfig = new EntityConfig({ entity: "device_tracker.mom", pill_callout_min_zoom: 12 }, defaults);
-      expect(entityConfig.pillCalloutMinZoom).toBe(12);
+      expect(entityConfig.pillCalloutMinZoom).toBeUndefined();
+    });
+
+    it("defaults display to marker", () => {
+      expect(new EntityConfig({ entity: "person.x" }, defaults).display).toBe("marker");
     });
   });
 

@@ -163,6 +163,10 @@ export default class MapConfig {
     // `attribution_collapse` (Lee, 2026-11-19): the credits box opens in full, then collapses behind an "i" button
     // after 5 s or the viewer's first touch; `false` keeps it always open. util/CreditsToggle.js.
     this.creditsCollapse = parseCreditsCollapse(inputConfig.attribution_collapse);
+    // `presence_markers` (Lee, 2026-11-19): people, devices and zones as Home Assistant's own map draws them
+    // (every non-passive zone, picture pins, shared zone bubbles); `false` keeps the older markers.
+    // presence/PresenceRenderService.js.
+    this.presenceMarkers = inputConfig.presence_markers !== false;
     // `weather_area` (Lee, 2026-11-02): {latitude, longitude, radius_km}. Shapes are drawn only where they touch it,
     // radar tiles only inside its box. util/WeatherArea.js.
     this.weatherArea = parseWeatherArea(inputConfig.weather_area);

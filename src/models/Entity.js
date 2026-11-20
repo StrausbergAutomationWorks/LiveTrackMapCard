@@ -773,45 +773,10 @@ export default class Entity {
       // Added to the map or cluster group first, so the slide moves a marker
       // that is already there.
       if (catchUp) this._startCatchUp(catchUp);
-      // Track the current place so update() can recreate the pill on zone change
-      this._currentPlaceIcon = this.placeIcon;
-      // For `display: pill`, the offset callout + leader only show at/above
-      // pillCalloutMinZoom; recreate the marker when zoom crosses that boundary
-      // so it isn't obtrusive when zoomed out region-wide.
-      if (this.display == "pill") {
-        this._calloutActive = this.map.getZoom() >= this.config.pillCalloutMinZoom;
-        this._onZoomEnd = () => {
-          if (!this.marker) return;
-          const active = this.map.getZoom() >= this.config.pillCalloutMinZoom;
-          if (active !== this._calloutActive) {
-            this._calloutActive = active;
-            this._recreateMarker();
-          }
-        };
-        this.map.on("zoomend", this._onZoomEnd);
-      }
     }
     this.historyManager.setup();
     this.circle.setup();
     this.geoJson.setup();
-  }
-
-  /**
-   * Remove and rebuild the marker in place (preserving cluster membership).
-   * @private
-   */
-  _recreateMarker() {
-    const cg = this._clusterGroup;
-    this._settleSlide();
-    this.marker.remove();
-    this.marker = this.createMapMarker();
-    if (cg) {
-      cg.addLayer(this.marker);
-    } else {
-      this.marker.addTo(this.map);
-    }
-    this._currentTitle = this.title;
-    this._currentPlaceIcon = this.placeIcon;
   }
 
   /** @param {TimelineEntry} entry */
@@ -857,14 +822,6 @@ export default class Entity {
 
   /** @returns {string} */
   get tooltip() {
-    // placeName only resolves in pill mode and when inside a zone.
-    const placeName = this.placeName;
-    if (placeName) {
-      // "<person> is at <place>" - strip a trailing tracker-ish suffix so
-      // "Mom Location" reads as "Mom is at Extended Family".
-      const who = (this.friendlyName ?? "").replace(/\s+(location|tracker|device|phone|gps)$/i, "");
-      return `${who} is at ${placeName}`;
-    }
     return this.friendlyName ?? "";
   }
 
@@ -913,46 +870,6 @@ export default class Entity {
 
   get icon() {
     return this.config.icon ?? this.attributes.icon;
-  }
-
-  /**
-   * The HA zone state object the entity is currently inside (a "named place"),
-   * or null when it isn't in one. Drives the place-pill marker. Matches the
-   * entity's RAW state against each zone's friendly_name (case-insensitive);
-   * the home zone reports state "home".
-   * @returns {object|null}
-   */
-  get zoneState() {
-    const raw = this.hass.states[this.id]?.state;
-    if (!raw || ["not_home", "away", "unknown", "unavailable"].includes(raw.toLowerCase())) {
-      return null;
-    }
-    const target = raw.toLowerCase();
-    for (const eid in this.hass.states) {
-      if (!eid.startsWith("zone.")) continue;
-      const fn = (this.hass.states[eid].attributes?.friendly_name ?? "").toLowerCase();
-      if (fn && fn === target) {
-        return this.hass.states[eid];
-      }
-    }
-    if (target === "home" && this.hass.states["zone.home"]) {
-      return this.hass.states["zone.home"];
-    }
-    return null;
-  }
-
-  /** @returns {string|null} mdi icon of the current named place (pill mode only). */
-  get placeIcon() {
-    if (this.display != "pill") return null;
-    const z = this.zoneState;
-    return z ? (z.attributes?.icon ?? "mdi:map-marker") : null;
-  }
-
-  /** @returns {string|null} friendly_name of the current named place (pill mode only). */
-  get placeName() {
-    if (this.display != "pill") return null;
-    const z = this.zoneState;
-    return z ? (z.attributes?.friendly_name ?? null) : null;
   }
 
   /**
@@ -1074,17 +991,14 @@ export default class Entity {
       this._clusterGroup = clusterGroup;
       this._lastSetLatLng = this.latLng;
       if (catchUp) this._startCatchUp(catchUp);
-      this._currentPlaceIcon = this.placeIcon;
     }
 
     // Only update marker if it exists (not hidden by GeoJSON config)
     if (this.marker) {
-      // Recreate the marker when the display title changes (state/attribute
-      // modes) OR when the entity enters/leaves a named place (place-pill).
+      // Recreate the marker when the display title changes (state/attribute modes).
       const titleChanged = (this.display == "state" || this.display == "attribute") && this.title != this._currentTitle;
-      const placeIconChanged = this.placeIcon != this._currentPlaceIcon;
-      if (titleChanged || placeIconChanged) {
-        Logger.debug("[Entity] recreating marker for " + this.id + " (title/place change)");
+      if (titleChanged) {
+        Logger.debug("[Entity] recreating marker for " + this.id + " (title change)");
         // When recreating marker, we need to track if it was in a cluster
         const wasInCluster = clusterGroup && clusterGroup.hasLayer(this.marker);
         this._settleSlide();
@@ -1098,7 +1012,6 @@ export default class Entity {
           this.marker.addTo(this.map);
         }
         this._currentTitle = this.title;
-        this._currentPlaceIcon = this.placeIcon;
       }
 
       this.refreshMarkerPopup();
@@ -1882,25 +1795,9 @@ export default class Entity {
     this._currentZIndex = zIndexOffset;
 
     const extraCssClasses = this.darkMode ? "dark" : "";
-    // Pill mode (opt-in via display: pill): zone icon + initials when the entity
-    // is in a named place; falls back to the normal initials marker otherwise.
-    // placeIcon already returns null unless display === "pill".
-    const placeIcon = this.placeIcon;
-    if (this.display == "pill") {
-      icon = null;
-    }
-    // Pill-callout geometry (must match MapCardEntityMarker's pill render): the
-    // pill sits up-left of the point with a short leader line down-right to a
-    // dot on the exact location, so it doesn't cover what's underneath. The
-    // callout only engages at/above pillCalloutMinZoom; zoomed out, the pill
-    // centers on the point with no leader (so it isn't obtrusive region-wide).
+    // The place pill (`display: pill`) was folded into the people, devices and
+    // zones drawn as Home Assistant draws them (presence/, Lee 2026-11-19).
     const s = this.config.size;
-    const pillW = 2 * s + 14;
-    const pillH = s + 8;
-    const off = Math.round(s * 0.7);
-    const boxW = pillW + off;
-    const boxH = pillH + off;
-    const callout = placeIcon != null && this.map.getZoom() >= this.config.pillCalloutMinZoom;
 
     // `marker_info` (D4e), or a photo or links (D4g, backlog 346): a click opens a popup here instead of the
     // entity dialog; the popup's "Details" opens the dialog.
@@ -1921,8 +1818,6 @@ export default class Entity {
             ground-shadow="${shadowAlt}"
             rotation="${rotation ?? ""}"
             rotation-transition="${this.config.rotationTransition ?? 0}"
-            place-icon="${placeIcon ?? ""}"
-            callout="${callout}"
             color="${color}"
             label-color="${labelColor ?? ""}"
             arrow="${arrow ?? ""}"
@@ -1949,8 +1844,8 @@ export default class Entity {
             info="${hasInfo ? "true" : ""}"
           ></${MARKER_TAG}>
         `,
-        iconSize: placeIcon ? (callout ? [boxW, boxH] : [pillW, pillH]) : [s, s],
-        iconAnchor: placeIcon ? (callout ? [boxW - 2, boxH - 2] : [pillW / 2, pillH / 2]) : [s / 2, s / 2],
+        iconSize: [s, s],
+        iconAnchor: [s / 2, s / 2],
         className: ''
       }),
       zIndexOffset

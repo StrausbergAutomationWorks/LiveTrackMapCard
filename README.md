@@ -171,6 +171,7 @@ y: 3.652
 | `weather_radar`        | on, ticked                                                                                                                   | The weather radar overlay. See [Weather radar](#weather-radar). `false` removes it. |
 | `layer_control`        | true | `false` removes the checkboxes. Every overlay stays as configured, and a choice a viewer stored earlier is ignored. |
 | `layer_control_collapsed` | true | The checkboxes fold behind the layers icon at the top right; a tap (or hovering, with a mouse) opens them. `false` keeps them always open. |
+| `presence_markers` | true | People, devices and zones drawn as Home Assistant's own map draws them: every non-passive zone, picture pins, everyone in a zone in one bubble above it. See [People, devices and zones](#people-devices-and-zones). `false` keeps the older markers. |
 | `attribution_collapse` | true | The credits box opens in full with the map, then collapses behind an **i** button after 5 seconds or at the viewer's first press, scroll or key on the map (OpenStreetMap's attribution guideline allows both). The button reopens it, at most 40% of the map's height and scrollable. `false` keeps the box always open. |
 | `weather_area`         | none | `{latitude, longitude, radius_km}`. Shapes are drawn only where they touch this circle, and weather radar tiles only inside the box around it. |
 | `lightning`            | on, unticked                                                                                                                 | The lightning overlay. See [Lightning](#lightning). `false` removes it. |
@@ -360,7 +361,7 @@ Either the name of the `entity` or:
 | name                   | Default                               | note                                                                                          |
 |------------------------|---------------------------------------|-----------------------------------------------------------------------------------------------|
 | `entity`               |                                       | The entity id                                                                                 |
-| `display`              | `marker`                              | `icon`, `state`, `attribute`, `marker` or `pill`. <br/>`marker` will display the picture if available. <br/>`icon` will display the icon if available, otherwise a label composed of first letters of the entity's name. <br/>`pill` shows the entity's **current zone icon + its initials** together when it is inside a Home Assistant zone, and the normal initials marker otherwise. See [Place pill](#place-pill-display-pill). |
+| `display`              | `marker`                              | `icon`, `state`, `attribute` or `marker`. <br/>`marker` will display the picture if available. <br/>`icon` will display the icon if available, otherwise a label composed of first letters of the entity's name. <br/>A `person`, `device_tracker` or `zone` with `marker` (or no `display`) is drawn as Home Assistant draws it; see [People, devices and zones](#people-devices-and-zones). `pill`, the former place pill, now means the same. |
 | `picture`              |                                       | Set a custom picture to use on the marker.                                                    |
 | `icon`                 |                                       | Set a custom icon to use if `display` is set to `icon`. e.g. `mdi:cake`                           |
 | `label`                |                                       | Set a custom text label to display on the marker (overrides auto-generated initials). On picture markers, `label` / `prefix` / `suffix` overlay the photo; auto-generated initials do not. |
@@ -385,95 +386,39 @@ Either the name of the `entity` or:
 | `z_index_offset`       | 1                                     | z-index value that determines what is displayed on top when markers overlap. (Setting a gap of at least 20 between the values assigned to each entity is recommended.) |
 | `use_base_entity_only` | false                                 | When set to `true`, the tracking will use only the base entity without including any associated device trackers. This is useful for scenarios where you want to track the base entity directly and ignore any associated trackers. |
 | `position_update_threshold` | 10                               | Distance threshold in meters. Marker position only updates if the entity has moved more than this distance. Prevents unnecessary map updates from GPS drift. Useful for clustered markers. |
-| `pill_callout_min_zoom` | 15                              | Only for `display: pill`. Map zoom at/above which the pill is drawn as an offset callout (up-left of the point, with a thin leader line to a dot on the exact location). Below this zoom the pill simply centres on the point with no leader, so it isn't obtrusive when the whole region is in view. |
 | `circle`               |                                       | Display a circle around the marker. <br/>More details [Circle options](#circle-options) |
 | `geojson`              |                                       | Display GeoJSON data from an entity attribute. <br/>More details [GeoJSON options](#geojson-options) |
 
-### Place pill (`display: pill`)
+### People, devices and zones
 
-A `pill` marker answers "who is where" in a single glance. When a tracked entity
-is inside a Home Assistant zone, its marker is drawn as a small stadium ("pill")
-holding two circles: the **zone's icon** on the left and the entity's **initials**
-on the right — for example a church icon next to `ML`, or a home icon next to
-`MG`. When the entity is not in any zone it falls back to the normal initials
-marker. It is opt-in per entity and changes nothing for entities that don't set
-`display: pill`.
+Since 2026-11 (`presence_markers`, on by default) the card draws a `person`, a
+`device_tracker` and every zone the way Home Assistant's own map has drawn them since
+2026.10:
 
-#### Why
+- **Zones.** Every zone that is not passive is drawn, whether or not the dashboard lists
+  it: a 36 px coloured circle with the zone's icon (or its initials), and the zone's
+  radius as a circle in the same colour. Home is the theme's primary colour; every other
+  zone takes the same colour Home Assistant gives it, read from the entity registry (the
+  order zones were created in) and the theme's palette. A passive zone is not drawn.
+- **People and devices.** A framed picture on a small pin; without a picture, the first
+  letters of its name. A pin shows its GPS accuracy as a circle in its own colour.
+- **Everyone in a zone shares one bubble** floating above the zone's circle, a lone
+  occupant included. Who is in a zone comes from Home Assistant's `in_zones` (the first
+  active zone), else from the position: the smallest zone that contains it.
+- **Crowds merge.** Members of one zone share its bubble while they are within 160 px of
+  each other on screen; anyone else merges with markers within 40 px; bubbles that would
+  overlap merge. A bubble shows up to four pictures, the fourth slot becoming "+N".
+- **A tap on a bubble** zooms to its members; once zooming in could not part them (or at
+  the maximum zoom) the bubble opens, and each picture in it opens that entity's details.
+  A tap on a pin opens its details.
 
-With the stock marker you can see *that* someone is on the map, but to learn
-*which named place* they're at you have to recognise the spot or click through.
-And when a person sits on top of their home/zone, you either get two overlapping
-markers or a cluster bubble showing a count. The pill folds identity and place
-into one marker — "Mom is at the church" is readable without interaction — using
-data Home Assistant already has (zones + the entity's state).
+Only these three kinds change: every other entity is drawn exactly as before. A person
+or tracker given another `display:` (`icon`, `state`, `attribute`) keeps the older
+marker. `display: pill`, the former place pill, now means the new look.
+`presence_markers: false` turns all of it off.
 
-#### How it resolves the person and the place
-
-There is no extra configuration linking a person to a place; it is derived live:
-
-1. **The entity is the person.** You list a `person.*` or `device_tracker.*` on
-   the map as usual. The card already places it at its GPS position and derives
-   its **initials** from the entity's `friendly_name` (first letter of each word,
-   e.g. `Mom Location` → `ML`). `label:` still overrides the initials if set.
-2. **Zones are the named places.** Each HA `zone.*` has a `friendly_name`, an
-   `icon`, a latitude/longitude and a radius. These already exist whenever you
-   create a zone (Settings → Areas & Zones).
-3. **Home Assistant links them via state.** When a `device_tracker`/`person` is
-   inside a zone, HA sets that entity's **state to the zone's name** (the Home
-   zone reports `home`). This is the join between person and place, maintained by
-   HA core — the card doesn't compute geometry.
-4. **The card reads it back.** For a `pill` entity it takes the entity's raw
-   state, finds the `zone.*` whose `friendly_name` matches it (case-insensitive;
-   `home` → the Home zone), and uses that zone's `icon` for the left circle. If
-   the state is `not_home`/`away`/unknown — or matches no zone — there is no
-   place, so the normal initials marker is shown instead.
-5. **Tooltip.** Hovering shows `<person> is at <place>`, e.g. *Mom is at
-   Extended Family*. The person name is the entity's `friendly_name` with a
-   trailing `Location`/`Tracker`/`Device`/`Phone`/`GPS` stripped, so
-   `Mom Location` reads as `Mom`. (This uses a Leaflet tooltip, which opens
-   immediately, rather than the browser's delayed native `title`.)
-
-The marker is rebuilt automatically when the entity enters or leaves a zone, so
-the pill appears, swaps icon, or collapses to initials as the person moves.
-
-#### Zoom-aware callout
-
-At/above `pill_callout_min_zoom` (default `15`) the pill is offset up-and-left of
-the exact position and connected by a thin **leader line** to a small dot on the
-real location, so the pill doesn't cover what's underneath. Below that zoom — when
-the whole town or region is in view and a leader line would just be clutter — the
-pill simply centres on the point with no leader. Set `pill_callout_min_zoom` lower
-to engage the callout sooner, or very high to effectively disable it.
-
-#### Appearance
-
-The pill reuses the entity's existing `color` (the same per-entity colour the
-normal marker uses, or whatever you set with `color:`) for the outline, icon,
-initials and leader, and `size` for each circle. Dark mode is honoured.
-
-#### Requirements
-
-- The places must be real HA **zones** with an `icon` and a `friendly_name`
-  (icons like `mdi:home`, `mdi:church`, `mdi:account-group`).
-- The entity must report its zone in its **state** — GPS `device_tracker`s and
-  `person`s do this automatically; the Home zone reports `home`.
-
-#### Example
-
-```yaml
-type: custom:live-track-map-card
-entities:
-  - entity: device_tracker.mom_location
-    display: pill
-  - entity: person.matt
-    display: pill
-    pill_callout_min_zoom: 14   # show the offset callout a bit sooner
-```
-
-With `device_tracker.mom_location` in the *Extended Family* zone this renders a
-pill of `mdi:account-group` + `ML`, tooltip "Mom is at Extended Family"; when she
-leaves it becomes a plain `ML` marker.
+The design and its constants follow Home Assistant's frontend (Apache-2.0); see
+`THIRD_PARTY_NOTICES.md`.
 
 ### History options
 

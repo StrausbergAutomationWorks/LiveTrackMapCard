@@ -24,6 +24,7 @@ import HaStaleStateService from '../services/HaStaleStateService.js';
 import { GroupFilter } from '../util/GroupFilter.js';
 import { PathFollower } from '../services/path/PathFollower.js';
 import { CreditsToggle } from '../util/CreditsToggle.js';
+import PresenceRenderService from '../presence/PresenceRenderService.js';
 
 export default class MapCard extends LitElement {
   static get properties() {
@@ -93,6 +94,7 @@ export default class MapCard extends LitElement {
     // 345). A change redraws, which hides or restores the markers.
     this.groupFilter = new GroupFilter(() => this.requestUpdate());
     this.entitiesRenderService = new EntitiesRenderService(this.map, this.hass, this._config.focusFollow, this._config.entities, this.linkedEntityService, this.dateRangeManager, this.historyService, this._isDarkMode(), this._config.clusterMarkers, (id) => this.staleStateService.isStale(id), (id) => this.groupFilter.hides(this.hass?.states?.[id]?.attributes));
+    this._setupPresence();
     this.initialViewRenderService = new InitialViewRenderService(this.map, this._config, this.hass, this.entitiesRenderService);
 
     this.pluginsRenderService = new PluginsRenderService(this.map, this._config.plugins);
@@ -119,6 +121,7 @@ export default class MapCard extends LitElement {
       this.cloudOverlayService.setup();
       this.geoJsonRenderService.setup();
       this.entitiesRenderService.setup();
+      this.presenceRenderService.setup();
       this.initialViewRenderService.setup();
       // After the entities exist: a check that finds stale ones redraws.
       this.staleStateService.start();
@@ -162,6 +165,7 @@ export default class MapCard extends LitElement {
       this.pointLayersService?.render(this.hass);
       this.radarOverlayService?.render(this.hass);
       this.entitiesRenderService.render(this.hass);
+      this.presenceRenderService?.render(this.hass);
       this.initialViewRenderService.render();
 
       if (!this.hasError && this.hadError) {
@@ -299,6 +303,7 @@ export default class MapCard extends LitElement {
     if (onlyEntitiesChanged) {
       try {
         Logger.debug("[MapCard] entity list changed - updating in place");
+        this.presenceRenderService?.setEntities(mapConfig.entities);
         this.entitiesRenderService.updateEntityConfigs(mapConfig.entities);
         return;
       } catch (e) {
@@ -353,6 +358,8 @@ export default class MapCard extends LitElement {
     this.lightningOverlayService?.cleanup();
     this.cloudOverlayService?.cleanup();
     this.entitiesRenderService?.cleanup();
+    this.presenceRenderService?.cleanup();
+    this.presenceRenderService = undefined;
     this.map.remove();
     this.map = undefined;
   }
@@ -364,6 +371,17 @@ export default class MapCard extends LitElement {
       this._teardown();
       this.setupNeeded = true;
     }
+  }
+
+  /**
+   * People, devices and zones as Home Assistant's map draws them (Lee, 2026-11-19): the presence service
+   * takes the dashboard's person, device_tracker and zone entities, and EntitiesRenderService leaves
+   * their older markers off the map. `presence_markers: false` takes nothing.
+   */
+  _setupPresence() {
+    this.presenceRenderService = new PresenceRenderService(this.map, { enabled: this._config.presenceMarkers, styleHost: () => this });
+    this.presenceRenderService.setEntities(this._config.entities);
+    this.entitiesRenderService.drawnElsewhere = (id) => this.presenceRenderService?.drawsId(id) === true;
   }
 
   /**

@@ -73,10 +73,6 @@ describe("two looks that take turns", () => {
     expect(out).toMatch(/class="marker star /);
   });
 
-  it("not for a pill", () => {
-    expect(make({ placeIcon: "mdi:home" }).render()).not.toContain("alt-wrap");
-  });
-
   it("the delay shows in both looks", () => {
     const [a, b] = layers(make({ delayBadge: "+12", delayLevel: "amber" }).render());
     expect(a).toContain("+12");

@@ -59,6 +59,14 @@ export default class EntitiesRenderService {
   isFiltered = () => false;
 
   /**
+   * Is this entity drawn by another service (people, devices and zones by
+   * presence/PresenceRenderService, Lee 2026-11-19)? Its marker is kept off
+   * the map here, but it still counts when the map fits its entities.
+   * @type {(id: string) => boolean}
+   */
+  drawnElsewhere = () => false;
+
+  /**
    * Entities not drawn because another source already draws the same
    * object (06_MAP_CONTRACT.md D11). Recomputed on every render: a
    * proximity pair can form or part as positions move.
@@ -74,7 +82,7 @@ export default class EntitiesRenderService {
     const candidates = [];
     for (const ent of this.entities) {
       try {
-        if (this.isStale(ent.id) || this.isFiltered(ent.id)) continue;
+        if (this.isStale(ent.id) || this.isFiltered(ent.id) || this.drawnElsewhere(ent.id)) continue;
         const ll = ent.latLng;
         if (!ll) continue;
         candidates.push({ id: ent.id, attributes: ent.attributes, lat: ll.lat, lng: ll.lng });
@@ -94,7 +102,7 @@ export default class EntitiesRenderService {
   /** Hide every entity D11 has merged away, and every one whose group the viewer hid (D4f). */
   hideMerged() {
     for (const ent of this.entities) {
-      if (this.merged.has(ent.id) || this.isFiltered(ent.id)) {
+      if (this.merged.has(ent.id) || this.isFiltered(ent.id) || this.drawnElsewhere(ent.id)) {
         try { ent.hide(this.markerClusterGroup); } catch (e) { Logger.error("hide failed " + ent.id, e); }
       }
     }
@@ -120,7 +128,7 @@ export default class EntitiesRenderService {
     const texts = new Set();
     for (const ent of this.entities ?? []) {
       try {
-        if (this.isHidden(ent.id) || !ent.latLng) continue;
+        if (this.isHidden(ent.id) || this.drawnElsewhere(ent.id) || !ent.latLng) continue;
         const a = ent.attributes?.attribution;
         if (typeof a === "string") texts.add(a);
       } catch (e) {
@@ -331,7 +339,7 @@ export default class EntitiesRenderService {
         if (this.hass) {
           ent.hass = this.hass;
         }
-        if (this.isHidden(ent.id)) {
+        if (this.isHidden(ent.id) || this.drawnElsewhere(ent.id)) {
           ent.hide(this.markerClusterGroup);
           return;
         }

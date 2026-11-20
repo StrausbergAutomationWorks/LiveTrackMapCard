@@ -99,11 +99,8 @@ describe("marker fill", () => {
     expect(style).not.toContain("text-shadow");
   });
 
-  it("leaves the place pill and its badges as they were", () => {
+  it("draws no place pill any more (folded into presence/, 2026-11-19)", () => {
     const out = marker({ placeIcon: "mdi:home", callout: "false" });
-    expect(out).toContain('class="place-pill"');
-    expect(out).not.toContain("background-color");
-    expect(out).not.toContain("text-shadow");
-    expect(out).not.toContain("color: #FFFFFF");
+    expect(out).not.toContain("place-pill");
   });
 });
