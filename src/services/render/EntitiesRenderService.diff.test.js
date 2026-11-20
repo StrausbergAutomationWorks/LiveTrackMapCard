@@ -135,7 +135,8 @@ describe('selfContained', () => {
 });
 
 describe('the drawing choice', () => {
-  const make = (map, cluster, drawing) => new EntitiesRenderService(map, {}, { isNone: true }, [], null, null, null, false, cluster, null, drawing);
+  // markerDrawing is the 12th argument since the rebase onto main (isFiltered, D4f, took the 11th).
+  const make = (map, cluster, drawing) => new EntitiesRenderService(map, {}, { isNone: true }, [], null, null, null, false, cluster, null, null, drawing);
   it('is applied to the map', () => {
     const map = {};
     make(map, false, { canvas: true, cull: true });

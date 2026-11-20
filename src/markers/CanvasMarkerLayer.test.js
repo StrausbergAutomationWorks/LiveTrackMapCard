@@ -241,11 +241,11 @@ describe('one canvas per D10 class', () => {
     const jet = place({ z: 40000 });
     const boat = place({ z: 10000 });
     const ls = layers(map);
-    expect(ls[4]._items.has(jet)).toBe(true);
-    expect(ls[1]._items.has(boat)).toBe(true);
-    expect(ls[0]).toBeUndefined();
-    expect(ls[4]._container.parentNode).toBe(map.getPane(canvasPane(4)));
-    expect(ls[1]._container.parentNode).toBe(map.getPane(canvasPane(1)));
+    expect(ls[5]._items.has(jet)).toBe(true);
+    expect(ls[2]._items.has(boat)).toBe(true);
+    expect(ls[1]).toBeUndefined();
+    expect(ls[5]._container.parentNode).toBe(map.getPane(canvasPane(5)));
+    expect(ls[2]._container.parentNode).toBe(map.getPane(canvasPane(2)));
   });
 
   it('D10 across canvas and DOM: a canvas jet is above a DOM buoy, train and helicopter', () => {
@@ -254,20 +254,20 @@ describe('one canvas per D10 class', () => {
     const train = place({ z: 20000, attrs: { 'ring-color': '#ffffff' } });
     const heli = place({ z: 30000, attrs: { 'ring-width': '3' } });
     const zOf = (el) => Number(el.style.zIndex);
-    const jetPane = layers(map)[4]._container.parentNode;
+    const jetPane = layers(map)[5]._container.parentNode;
     for (const dom of [buoy, train, heli]) {
       expect(dom.getElement).toBeDefined();
       const pane = dom.getElement().parentNode;
       expect(zOf(jetPane)).toBeGreaterThan(zOf(pane));
     }
-    expect(heli.getElement().parentNode).toBe(map.getPane(domPane(3)));
+    expect(heli.getElement().parentNode).toBe(map.getPane(domPane(4)));
   });
 
   it('a DOM marker above a canvas one stays above it: a ringed jet over a canvas boat', () => {
     place({ z: 10000 });
     const ringedJet = place({ z: 40000, attrs: { 'ring-width': '3' } });
     const zOf = (el) => Number(el.style.zIndex);
-    expect(zOf(ringedJet.getElement().parentNode)).toBeGreaterThan(zOf(layers(map)[1]._container.parentNode));
+    expect(zOf(ringedJet.getElement().parentNode)).toBeGreaterThan(zOf(layers(map)[2]._container.parentNode));
   });
 
   it('inside one canvas, drawn by offset, then from the top of the screen down (as Leaflet stacks)', () => {
@@ -275,7 +275,7 @@ describe('one canvas per D10 class', () => {
     const highZ = place({ z: 20010, ll: [41.95, -67.90] });
     const highY = place({ z: 20000, ll: [41.95, -67.85] });
     tick();
-    const ctx = layers(map)[2]._ctx;
+    const ctx = layers(map)[3]._ctx;
     const last = ctx.arcs.slice(-3).map((a) => a.x);
     const x = (m) => map.latLngToLayerPoint(m.getLatLng()).x;
     expect(last).toEqual([x(highY), x(lowY), x(highZ)]);
@@ -293,7 +293,7 @@ describe('the pointer', () => {
     expect(jet.mode).toBe('hover');
     expect(boat.mode).toBe('canvas');
     expect(map.__ltmcHover).toBe(jet);
-    expect(jet.dom.getElement().parentNode).toBe(map.getPane(domPane(4)));
+    expect(jet.dom.getElement().parentNode).toBe(map.getPane(domPane(5)));
   });
 
   it('promoting another marker, in another class, puts the first back', () => {
@@ -350,10 +350,10 @@ describe('a change of class (a changed map_layer)', () => {
     const m = place({ z: 10000 });
     const moves = stats.bandMoves;
     m.setZIndexOffset(40000);
-    expect(layers(map)[1]._items.has(m)).toBe(false);
-    expect(layers(map)[4]._items.has(m)).toBe(true);
-    expect(m.layer).toBe(layers(map)[4]);
-    expect(m.dom.options.pane).toBe(domPane(4));
+    expect(layers(map)[2]._items.has(m)).toBe(false);
+    expect(layers(map)[5]._items.has(m)).toBe(true);
+    expect(m.layer).toBe(layers(map)[5]);
+    expect(m.dom.options.pane).toBe(domPane(5));
     expect(stats.bandMoves).toBeGreaterThan(moves);
   });
 
@@ -369,7 +369,7 @@ describe('a change of class (a changed map_layer)', () => {
   it('a change inside the class keeps the canvas', () => {
     const m = place({ z: 20000 });
     m.setZIndexOffset(20500);
-    expect(m.layer).toBe(layers(map)[2]);
+    expect(m.layer).toBe(layers(map)[3]);
     expect(m.z).toBe(20500);
   });
 
@@ -377,7 +377,7 @@ describe('a change of class (a changed map_layer)', () => {
     const m = place({ z: 20000 });
     m.getElement().querySelector().setAttribute('ring-width', '3');
     expect(m.mode).toBe('dom');
-    expect(m.dom.getElement().parentNode).toBe(map.getPane(domPane(2)));
+    expect(m.dom.getElement().parentNode).toBe(map.getPane(domPane(3)));
   });
 });
 
@@ -489,8 +489,8 @@ describe('an animated picture', () => {
     expect(heli.mode).toBe('dom');
     expect(sar.mode).toBe('dom');
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-    expect(heli.dom.getElement().parentNode).toBe(map.getPane(domPane(3)));
-    expect(sar.dom.getElement().parentNode).toBe(map.getPane(domPane(1)));
+    expect(heli.dom.getElement().parentNode).toBe(map.getPane(domPane(4)));
+    expect(sar.dom.getElement().parentNode).toBe(map.getPane(domPane(2)));
     expect(canvasMarkerFor(bandMarker(domMarker({ z: 40000, attrs: { picture: '/heli.svg' } }), map), entity(), TAG)).toBeNull();
   });
 
@@ -513,9 +513,9 @@ describe('layerFor', () => {
     document.body.appendChild(d2);
     const m2 = L.map(d2, { animate: false, zoomAnimation: false, fadeAnimation: false }).setView([41.9, -67.9], 10);
     try {
-      expect(m2.getPane(canvasPane(2))).toBeUndefined();
-      const l = layerFor(m2, 2);
-      expect(l._container.parentNode).toBe(m2.getPane(canvasPane(2)));
+      expect(m2.getPane(canvasPane(3))).toBeUndefined();
+      const l = layerFor(m2, 3);
+      expect(l._container.parentNode).toBe(m2.getPane(canvasPane(3)));
     } finally {
       m2.remove();
       d2.remove();
@@ -523,10 +523,10 @@ describe('layerFor', () => {
   });
 
   it('makes one layer per class and hands back the same one', () => {
-    const a = layerFor(map, 3);
-    expect(layerFor(map, 3)).toBe(a);
-    expect(a.band).toBe(3);
-    expect(a.options.pane).toBe(canvasPane(3));
-    expect(layerFor(map, 1)._anim).toBe(a._anim);
+    const a = layerFor(map, 4);
+    expect(layerFor(map, 4)).toBe(a);
+    expect(a.band).toBe(4);
+    expect(a.options.pane).toBe(canvasPane(4));
+    expect(layerFor(map, 2)._anim).toBe(a._anim);
   });
 });

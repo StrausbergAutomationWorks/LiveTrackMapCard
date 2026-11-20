@@ -2,7 +2,7 @@ import L from '../models/leafletGlobal.testhelper.js';
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { MAP_LAYER_OFFSETS } from '../configs/EntityConfig.js';
 import {
-  BANDS, BAND_STEP, PANE_BASE, bandOf, canvasPane, domPane, ensurePanes, setupPlacement, placement, bandMarker,
+  BANDS, BAND_STEP, BAND_BASE, PANE_BASE, bandOf, canvasPane, domPane, ensurePanes, setupPlacement, placement, bandMarker,
 } from './MarkerPlacement.js';
 import { stats } from './MarkerStats.js';
 
@@ -25,12 +25,14 @@ describe('the classes', () => {
   it('are D10\'s, in the order of their offsets', () => {
     const byOffset = Object.entries(MAP_LAYER_OFFSETS).sort((a, b) => a[1] - b[1]).map(([n]) => n);
     expect(BANDS).toEqual(byOffset);
-    BANDS.forEach((name, i) => expect(MAP_LAYER_OFFSETS[name]).toBe(i * BAND_STEP));
+    BANDS.forEach((name, i) => expect(MAP_LAYER_OFFSETS[name]).toBe(-10000 + i * BAND_STEP));
+    expect(BAND_BASE).toBe(-10000);
   });
 
+  // D10 since 83f8d70: weather (-10000) 0, fixed (0) 1, water 2, rail 3, air_low 4, air 5.
   it.each([
-    [0, 0], [9999, 0], [10000, 1], [19999, 1], [20000, 2], [30000, 3], [40000, 4], [40123, 4], [99999, 4],
-    [-1, 0], [-50000, 0], [undefined, 0], [null, 0], [NaN, 0], ['20000', 2], ['x', 0],
+    [0, 1], [9999, 1], [10000, 2], [19999, 2], [20000, 3], [30000, 4], [40000, 5], [40123, 5], [99999, 5],
+    [-1, 0], [-10000, 0], [-10001, 0], [-50000, 0], [undefined, 1], [null, 1], [NaN, 1], ['20000', 3], ['x', 1],
   ])('bandOf(%p) is %p', (offset, band) => {
     expect(bandOf(offset)).toBe(band);
   });
@@ -41,7 +43,7 @@ describe('the classes', () => {
 });
 
 describe('the panes', () => {
-  it('are ten, canvas then DOM for each class, from 601 up', () => {
+  it('are twelve, canvas then DOM for each class, from 601 up', () => {
     ensurePanes(map);
     const order = [];
     BANDS.forEach((_, b) => order.push(canvasPane(b), domPane(b)));
@@ -49,7 +51,7 @@ describe('the panes', () => {
     // Leaflet's own panes take their z-index from leaflet.css, which jsdom does not load:
     // markerPane 600, tooltipPane 650.
     expect(PANE_BASE).toBeGreaterThan(600);
-    expect(z(domPane(4))).toBeLessThan(650);
+    expect(z(domPane(5))).toBeLessThan(650);
   });
 
   it('every canvas pane lets the pointer through; DOM panes do not', () => {
@@ -72,9 +74,9 @@ describe('the panes', () => {
 
   it('are made once', () => {
     ensurePanes(map);
-    const first = map.getPane(canvasPane(2));
+    const first = map.getPane(canvasPane(3));
     ensurePanes(map);
-    expect(map.getPane(canvasPane(2))).toBe(first);
+    expect(map.getPane(canvasPane(3))).toBe(first);
   });
 });
 
@@ -87,10 +89,10 @@ describe('setupPlacement / placement', () => {
   it('records the choice; the panes exist only with the canvas', () => {
     setupPlacement(map, { canvas: false, cull: true });
     expect(placement(map)).toEqual({ canvas: false, cull: true });
-    expect(map.getPane(canvasPane(0))).toBeUndefined();
+    expect(map.getPane(canvasPane(1))).toBeUndefined();
     setupPlacement(map, { canvas: true, cull: true });
     expect(placement(map)).toEqual({ canvas: true, cull: true });
-    expect(map.getPane(canvasPane(0))).toBeDefined();
+    expect(map.getPane(canvasPane(1))).toBeDefined();
   });
 
   it('takes truthiness, and a null map does nothing', () => {
@@ -106,15 +108,15 @@ describe('bandMarker', () => {
 
   it('puts a DOM marker in its class\'s pane', () => {
     const m = bandMarker(marker(20000), map).addTo(map);
-    expect(m.options.pane).toBe(domPane(2));
-    expect(m.getElement().parentNode).toBe(map.getPane(domPane(2)));
+    expect(m.options.pane).toBe(domPane(3));
+    expect(m.getElement().parentNode).toBe(map.getPane(domPane(3)));
   });
 
   it('moves it to the new class\'s pane when its offset changes class, still on the map', () => {
     const m = bandMarker(marker(20000), map).addTo(map);
     const moves = stats.bandMoves;
     m.setZIndexOffset(40000);
-    expect(m.getElement().parentNode).toBe(map.getPane(domPane(4)));
+    expect(m.getElement().parentNode).toBe(map.getPane(domPane(5)));
     expect(m.options.zIndexOffset).toBe(40000);
     expect(map.hasLayer(m)).toBe(true);
     expect(stats.bandMoves).toBe(moves + 1);
@@ -132,9 +134,9 @@ describe('bandMarker', () => {
     const m = bandMarker(marker(10000), map);
     m.setZIndexOffset(30000);
     expect(map.hasLayer(m)).toBe(false);
-    expect(m.options.pane).toBe(domPane(3));
+    expect(m.options.pane).toBe(domPane(4));
     m.addTo(map);
-    expect(m.getElement().parentNode).toBe(map.getPane(domPane(3)));
+    expect(m.getElement().parentNode).toBe(map.getPane(domPane(4)));
   });
 
   it('wraps once', () => {

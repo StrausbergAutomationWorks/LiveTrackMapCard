@@ -444,7 +444,7 @@ function drawDisc(ctx, it, p, now, layer) {
 }
 
 export const CanvasMarkerLayer = Renderer.extend({
-  options: { padding: 0.1, pane: canvasPane(0) },
+  options: { padding: 0.1, pane: canvasPane(bandOf(0)) },
 
   initialize(options) {
     Renderer.prototype.initialize.call(this, options);
@@ -454,7 +454,7 @@ export const CanvasMarkerLayer = Renderer.extend({
     this._spriteBytes = 0;
     this._drawnList = [];
     this._raf = null;
-    this.band = 0;
+    this.band = bandOf(0);
     this._anim = new JsMap();
   },
 
@@ -756,7 +756,7 @@ export function layers(map) {
 /**
  * The canvas for one D10 class, made on first use.
  * @param {object} map
- * @param {number} band 0..4
+ * @param {number} band 0..5
  * @returns {object} a CanvasMarkerLayer on the map
  */
 export function layerFor(map, band) {

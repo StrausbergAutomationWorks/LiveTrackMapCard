@@ -63,22 +63,22 @@ describe('with the canvas and culling on', () => {
     const { entity } = makeEntity({ layer: 'air' });
     entity.setup(null);
     expect(isCanvas(entity.marker)).toBe(true);
-    expect(entity.marker.layer).toBe(layers(map)[4]);
-    expect(layers(map)[4]._container.parentNode).toBe(map.getPane(canvasPane(4)));
+    expect(entity.marker.layer).toBe(layers(map)[5]);
+    expect(layers(map)[5]._container.parentNode).toBe(map.getPane(canvasPane(5)));
   });
 
   it('a helicopter on air_low, a vessel on water: each on its own class\'s canvas', () => {
     const a = makeEntity({ layer: 'air_low' }).entity; a.setup(null);
     const b = makeEntity({ layer: 'water' }).entity; b.setup(null);
-    expect(a.marker.layer.band).toBe(3);
-    expect(b.marker.layer.band).toBe(1);
+    expect(a.marker.layer.band).toBe(4);
+    expect(b.marker.layer.band).toBe(2);
   });
 
   it('no map_layer is fixed, the bottom class', () => {
     const { entity, attributes } = makeEntity({ layer: null });
     delete attributes.map_layer;
     entity.setup(null);
-    expect(entity.marker.layer.band).toBe(0);
+    expect(entity.marker.layer.band).toBe(1);
   });
 
   it('a changed map_layer moves it, in place', () => {
@@ -88,15 +88,15 @@ describe('with the canvas and culling on', () => {
     attributes.map_layer = 'water';
     entity.refreshMarkerZIndex();
     expect(entity.marker).toBe(marker);
-    expect(marker.layer.band).toBe(1);
-    expect(marker.dom.options.pane).toBe(domPane(1));
+    expect(marker.layer.band).toBe(2);
+    expect(marker.dom.options.pane).toBe(domPane(2));
   });
 
   it('a bare picture is not plain: a DOM marker in its class\'s pane', () => {
     const { entity } = makeEntity({ layer: 'rail', display: 'attribute' });
     entity.setup(null);
     expect(isCanvas(entity.marker)).toBe(false);
-    expect(entity.marker.getElement().parentNode).toBe(map.getPane(domPane(2)));
+    expect(entity.marker.getElement().parentNode).toBe(map.getPane(domPane(3)));
   });
 
   it('a DOM marker far off screen is culled', () => {

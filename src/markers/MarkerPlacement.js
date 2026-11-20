@@ -1,12 +1,13 @@
 // Where a marker goes: on the canvas or in the DOM, and in which pane.
 //
-// 06_MAP_CONTRACT.md D10 stacks the map's objects in five classes, fixed < water < rail <
-// air_low < air, by a zIndexOffset step of 10000 per class. Leaflet orders DOM markers by
+// 06_MAP_CONTRACT.md D10 stacks the map's objects in six classes, weather < fixed < water <
+// rail < air_low < air, by a zIndexOffset step of 10000 per class (weather -10000, fixed 0;
+// weather since 83f8d70, 2026-10-27, for tropical cyclones). Leaflet orders DOM markers by
 // screen y plus that offset, all in one pane. A canvas cannot be interleaved with DOM
 // elements inside one pane, so when the canvas is in use every class gets TWO panes of its
 // own, its canvas and then its DOM markers, stacked in class order:
 //
-//   fixed 601/602, water 603/604, rail 605/606, air_low 607/608, air 609/610
+//   weather 601/602, fixed 603/604, water 605/606, rail 607/608, air_low 609/610, air 611/612
 //
 // (Leaflet's own markerPane is 600, tooltipPane 650.) D10 then holds across canvas and DOM.
 // Inside one class the canvas markers sit under that class's DOM markers rather than being
@@ -18,38 +19,41 @@ import { Marker } from "leaflet";
 import { stats } from "./MarkerStats.js";
 
 /** D10's classes, bottom to top. */
-export const BANDS = Object.freeze(["fixed", "water", "rail", "air_low", "air"]);
+export const BANDS = Object.freeze(["weather", "fixed", "water", "rail", "air_low", "air"]);
 /** The zIndexOffset step between two classes (EntityConfig.MAP_LAYER_OFFSETS). */
 export const BAND_STEP = 10000;
+/** The offset of the bottom class, `weather` (EntityConfig.MAP_LAYER_OFFSETS). */
+export const BAND_BASE = -10000;
 /** The first pane's z-index: one above Leaflet's markerPane. */
 export const PANE_BASE = 601;
 
 /**
  * The class a zIndexOffset falls in. A dashboard `z_index_offset` override lands in the
- * class its number falls in; below 0 is `fixed`, above `air` is `air`.
+ * class its number falls in; below `weather` is `weather`, above `air` is `air`; absent
+ * or not a number is 0, `fixed`.
  * @param {number} z
- * @returns {number} 0..4
+ * @returns {number} 0..5
  */
 export function bandOf(z) {
-  const n = Math.floor((Number(z) || 0) / BAND_STEP);
+  const n = Math.floor(((Number(z) || 0) - BAND_BASE) / BAND_STEP);
   return Math.min(BANDS.length - 1, Math.max(0, n));
 }
 
 /**
  * The pane a class's canvas sits in.
- * @param {number} b class 0..4
+ * @param {number} b class 0..5
  * @returns {string}
  */
 export const canvasPane = (b) => `ltmcCanvas_${BANDS[b]}`;
 /**
  * The pane a class's DOM markers sit in.
- * @param {number} b class 0..4
+ * @param {number} b class 0..5
  * @returns {string}
  */
 export const domPane = (b) => `ltmcMarkers_${BANDS[b]}`;
 
 /**
- * Create the ten panes once per map.
+ * Create the twelve panes once per map.
  * @param {object} map Leaflet map
  */
 export function ensurePanes(map) {
