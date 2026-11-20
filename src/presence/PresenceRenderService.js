@@ -223,15 +223,32 @@ export default class PresenceRenderService {
     return out;
   }
 
+  /**
+   * The deepest zoom the base map has tiles for: the maxZoom of the first tile layer in Leaflet's tile
+   * pane (the card adds its base map before any overlay), else the map's own. Home Assistant uses its
+   * map's maximum, where its tiles end; ours can be deeper than the base tiles (seen live 2026-11-19:
+   * 24, from an overlay, and a tap zoomed to 23 over an empty map).
+   * @returns {number}
+   */
+  maxZoom() {
+    let base = null;
+    this.map.eachLayer?.((layer) => {
+      if (base === null && layer instanceof L.TileLayer && (layer.options?.pane ?? "tilePane") === "tilePane") base = layer;
+    });
+    const own = this.map.getMaxZoom();
+    const b = base?.options?.maxZoom;
+    return Number.isFinite(b) ? Math.min(b, own) : own;
+  }
+
   _atMaxZoom() {
-    return this.map.getZoom() >= this.map.getMaxZoom() - 0.01;
+    return this.map.getZoom() >= this.maxZoom() - 0.01;
   }
 
   _prepare(group, pending) {
     if (!bubbles(group)) { group.layout = null; return; }
     if (!group.open) {
       const together = () => staysTogether(
-        group.members.map((m) => this.map.project([m.lat, m.lng], this.map.getMaxZoom())), group.key !== undefined);
+        group.members.map((m) => this.map.project([m.lat, m.lng], this.maxZoom())), group.key !== undefined);
       if (this._atMaxZoom() || (pending && group.members.some((m) => pending.has(m.id)) && together())) group.open = true;
     }
     group.layout = bubbleLayout(group.members.length, Boolean(group.open), this.map.getSize().x, group.key !== undefined);
@@ -352,10 +369,11 @@ export default class PresenceRenderService {
   zoomTo(members) {
     this._pending = new Set(members.map((m) => m.id));
     const bounds = L.latLngBounds(members.map((m) => [m.lat, m.lng])).pad(0.3);
-    const zoom = Math.min(this.map.getBoundsZoom(bounds), this.map.getMaxZoom());
+    const max = this.maxZoom();
+    const zoom = Math.min(this.map.getBoundsZoom(bounds), max);
     // Already there: no moveend would come, so regroup now
     if (zoom === this.map.getZoom() && this.map.getBounds().contains(bounds)) { this.regroup(); return; }
-    this.map.fitBounds(bounds, { maxZoom: this.map.getMaxZoom() });
+    this.map.fitBounds(bounds, { maxZoom: max });
   }
 
   _moreInfo(entityId) {

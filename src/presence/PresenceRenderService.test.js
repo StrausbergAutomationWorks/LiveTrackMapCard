@@ -218,6 +218,28 @@ describe("taps", () => {
     b.querySelectorAll(".ltmc-frame")[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(heard).toHaveBeenCalledWith({ config: { entity: "person.ben", tap_action: { action: "more-info" } }, action: "tap" });
   });
+  it("the deepest zoom is the base map's, not an overlay's or the map's (live 2026-11-19: 24, a tap to 23)", () => {
+    L.tileLayer("https://tile.example/{z}/{x}/{y}.png", { maxZoom: 16 }).addTo(map);
+    L.tileLayer("https://overlay.example/{z}/{x}/{y}.png", { maxZoom: 24 }).addTo(map);
+    L.tileLayer("https://radar.example/{z}/{x}/{y}.png", { maxZoom: 24, pane: "overlayPane" }).addTo(map);
+    expect(svc.maxZoom()).toBe(16);
+    svc.render(makeHass());
+    const fit = jest.spyOn(map, "fitBounds").mockImplementation(() => map);
+    bubblesDrawn()[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(fit.mock.calls[0][1]).toEqual({ maxZoom: 16 });
+    fit.mockRestore();
+    map.setView(HOME, 16);
+    svc.regroup();
+    expect(bubblesDrawn()[0].classList.contains("open")).toBe(true);
+  });
+  it("a tile layer in its own pane is not the base map, even added first", () => {
+    L.tileLayer("https://radar.example/{z}/{x}/{y}.png", { maxZoom: 24, pane: "overlayPane" }).addTo(map);
+    L.tileLayer("https://tile.example/{z}/{x}/{y}.png", { maxZoom: 16 }).addTo(map);
+    expect(svc.maxZoom()).toBe(16);
+  });
+  it("no tile layer: the map's own maximum", () => {
+    expect(svc.maxZoom()).toBe(18);
+  });
   it("after the zoom a bubble whose members cannot part opens", () => {
     svc.render(makeHass());
     const members = svc.groups[0].members;
