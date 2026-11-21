@@ -4,7 +4,7 @@ import PresenceRenderService, { ZONE_PANE, PRESENCE_PANE, ZONE_CIRCLE_PANE, plac
 
 let el, host, map, svc;
 
-const HOME = [41.9, -88.0];
+const HOME = [41.9, -68.0];
 const zone = (lat, lng, extra = {}) => ({ entity_id: "", state: "0", attributes: { latitude: lat, longitude: lng, radius: 100, friendly_name: "Zone", icon: "mdi:map-marker", ...extra } });
 
 /**
@@ -195,7 +195,7 @@ describe("people and devices", () => {
   });
   it("someone away is a picture pin at their position, with an accuracy circle", () => {
     const st = states();
-    st["person.ana"].attributes = { ...st["person.ana"].attributes, latitude: 42.5, longitude: -87.5, in_zones: [] };
+    st["person.ana"].attributes = { ...st["person.ana"].attributes, latitude: 42.5, longitude: -67.5, in_zones: [] };
     st["person.ana"].state = "not_home";
     svc.render(makeHass(st));
     expect(pinsDrawn()).toEqual(["person.ana"]);
@@ -285,7 +285,7 @@ describe("taps", () => {
   });
   it("a pin's tap opens more-info", () => {
     const st = states();
-    st["person.ana"].attributes = { ...st["person.ana"].attributes, latitude: 42.5, longitude: -87.5, in_zones: [] };
+    st["person.ana"].attributes = { ...st["person.ana"].attributes, latitude: 42.5, longitude: -67.5, in_zones: [] };
     st["person.ana"].state = "not_home";
     svc.render(makeHass(st));
     const heard = jest.fn();
