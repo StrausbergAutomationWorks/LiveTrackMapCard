@@ -9,7 +9,8 @@ import EntityHistoryManager from "./EntityHistoryManager.js";
 import TimelineEntry from "./TimelineEntry.js";
 import { hoverHtml, titleLine, HOVER_REFRESH_MS } from "../util/HoverLabel.js";
 import { infoOf, infoHtml, INFO_POPUP } from "../util/InfoPopup.js";
-import { hasExtras, extrasHtml } from "../util/MarkerExtras.js";
+import { hasExtras, extrasHtml, photoOf } from "../util/MarkerExtras.js";
+import { lookupOf, lookedUp, askPhoto } from "../util/PhotoLookup.js";
 import { apiPath, appendPosition, trackColor, trackOf, trackPoints, TRACK_OPACITY, TRACK_WEIGHT } from "../util/TrackLine.js";
 import { lateness } from "../util/Lateness.js";
 import { metres, pathAt, trackRoute } from "../util/TrackPath.js";
@@ -836,7 +837,40 @@ export default class Entity {
    * @returns {string}
    */
   tooltipHtml(nowMs = Date.now()) {
-    return hoverHtml(this.attributes, this.tooltip, nowMs);
+    this._askPhoto();
+    return hoverHtml(this._photoAttrs(), this.tooltip, nowMs);
+  }
+
+  /**
+   * D4i (backlog 361): the attributes with a looked-up photo in `marker_photo`, when the entity carries none of
+   * its own and the lookup has answered with one. Otherwise the attributes as they are.
+   * @returns {object}
+   */
+  _photoAttrs() {
+    const a = this.attributes;
+    if (!a || photoOf(a.marker_photo)) return a;
+    const path = lookupOf(a.marker_photo_lookup);
+    const photo = path ? lookedUp(path) : undefined;
+    return photo ? { ...a, marker_photo: photo } : a;
+  }
+
+  /**
+   * D4i: the hover box opened; ask for the photo once (PhotoLookup keeps the answer for the page). When it
+   * arrives, the open hover box is redrawn with it and the click popup is bound if it was not.
+   * @private
+   */
+  _askPhoto() {
+    const a = this.attributes;
+    if (!a || photoOf(a.marker_photo)) return;
+    const path = lookupOf(a.marker_photo_lookup);
+    if (!path) return;
+    const asked = askPhoto(this.hass, path);
+    if (!asked) return;
+    asked.then((ok) => {
+      if (!ok || this.removed) return;
+      this.refreshTooltip();
+      this.refreshMarkerPopup();
+    });
   }
 
   /** Redraw the hover label if it is open: new attributes, or the clock. */
@@ -1223,7 +1257,7 @@ export default class Entity {
    * @returns {boolean}
    */
   _wantsPopup() {
-    return infoOf(this.attributes?.marker_info) !== null || hasExtras(this.attributes);
+    return infoOf(this.attributes?.marker_info) !== null || hasExtras(this._photoAttrs());
   }
 
   /**
@@ -1234,11 +1268,12 @@ export default class Entity {
   _bindPopup(marker) {
     marker.bindPopup(() => {
       const info = infoOf(this.attributes?.marker_info);
-      if (!hasExtras(this.attributes)) return info ? infoHtml(info) : "";
+      const attrs = this._photoAttrs();   // D4i: a looked-up photo counts as the entity's own
+      if (!hasExtras(attrs)) return info ? infoHtml(info) : "";
       // D4e's text carries its own title; otherwise the popup is named as the hover box is (it closes now)
       const shown = Boolean(this._track);
-      return info ? infoHtml(info) + extrasHtml(this.attributes, undefined, shown)
-        : extrasHtml(this.attributes, titleLine(this.attributes ?? {}, this.tooltip), shown);
+      return info ? infoHtml(info) + extrasHtml(attrs, undefined, shown)
+        : extrasHtml(attrs, titleLine(attrs ?? {}, this.tooltip), shown);
     }, { ...INFO_POPUP, offset: [0, -this.config.size / 2] });
     if (marker._ltmcPopupWired) return;   // refreshMarkerPopup may bind again; the handlers stay
     marker._ltmcPopupWired = true;
