@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import L from "leaflet";
-import PresenceRenderService, { ZONE_PANE, PRESENCE_PANE, ZONE_CIRCLE_PANE } from "./PresenceRenderService.js";
+import PresenceRenderService, { ZONE_PANE, PRESENCE_PANE, ZONE_CIRCLE_PANE, placeZonePanes } from "./PresenceRenderService.js";
 
 let el, host, map, svc;
 
@@ -89,6 +89,39 @@ describe("which entities", () => {
     off.render(makeHass());
     expect(off.drawsId("person.ana")).toBe(false);
     expect(map.getPane("ltmcPresence")).toBeTruthy(); // from svc, not off
+  });
+});
+
+// Lee 2026-11-20 19:23: every .leaflet-pane is z-index 0 on this card, so DOM order decides; made last, the zone
+// panes covered every marker. They go just before markerPane, under every marker pane made before or after.
+describe("pane order (DOM order decides on this card)", () => {
+  const order = () => [...map.getPane("mapPane").children];
+  const idx = (name) => order().indexOf(map.getPane(name));
+
+  it("puts the zone circles, then the zone icons, just before Leaflet's markerPane", () => {
+    expect(idx(ZONE_CIRCLE_PANE)).toBe(idx("markerPane") - 2);
+    expect(idx(ZONE_PANE)).toBe(idx("markerPane") - 1);
+    expect(idx(ZONE_PANE)).toBeGreaterThan(idx("overlayPane"));
+  });
+
+  it("keeps the zones under marker panes made afterwards (MarkerPlacement's class panes)", () => {
+    const late = map.createPane("ltmcMarkers_air");
+    expect(order().indexOf(late)).toBeGreaterThan(idx(ZONE_PANE));
+    expect(order().indexOf(late)).toBeGreaterThan(idx(ZONE_CIRCLE_PANE));
+  });
+
+  it("puts misplaced zone panes back, and is safe to run again", () => {
+    map.getPane("mapPane").appendChild(map.getPane(ZONE_PANE));
+    map.getPane("mapPane").appendChild(map.getPane(ZONE_CIRCLE_PANE));
+    placeZonePanes(map);
+    placeZonePanes(map);
+    expect(idx(ZONE_CIRCLE_PANE)).toBe(idx("markerPane") - 2);
+    expect(idx(ZONE_PANE)).toBe(idx("markerPane") - 1);
+    expect(() => placeZonePanes(null)).not.toThrow();
+  });
+
+  it("leaves the people's pane where it was made: it is raised by MapCard's CSS, not by DOM order", () => {
+    expect(idx(PRESENCE_PANE)).toBeGreaterThan(idx("markerPane"));
   });
 });
 

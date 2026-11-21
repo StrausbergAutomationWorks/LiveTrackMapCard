@@ -13,7 +13,26 @@ import { PRESENCE_CSS, PRESENCE_STYLE_ID } from "./presenceStyles.js";
 export const ZONE_CIRCLE_PANE = "ltmcZoneCircles";
 export const ZONE_PANE = "ltmcZones";
 export const PRESENCE_PANE = "ltmcPresence";
+// ⚠ These numbers do NOTHING on this card: MapCard's styles force every `.leaflet-pane` to `z-index: 0
+// !important`, so panes stack by DOM order. Made last, the zone panes covered every marker (Lee 2026-11-20
+// 19:23: "the zones need to be on the lowest layer so that entities pass on top of them"). placeZonePanes()
+// puts them in the DOM; people are raised by MapCard's `.leaflet-ltmcPresence-pane` rule. Kept as the intent.
 const PANE_Z = { [ZONE_CIRCLE_PANE]: 405, [ZONE_PANE]: 590, [PRESENCE_PANE]: 640 };
+
+/**
+ * The zone circles, then the zone icons, just BEFORE Leaflet's markerPane: above the tiles, the D12 fills, the
+ * points and the radar (all placed earlier in the DOM), and under markerPane and every marker class pane
+ * (MarkerPlacement, made after it), so a moving marker passes over a zone. Safe to call again.
+ * @param {object} map Leaflet map
+ */
+export function placeZonePanes(map) {
+  const marker = map?.getPane?.("markerPane");
+  if (!marker?.parentNode) return;
+  for (const name of [ZONE_CIRCLE_PANE, ZONE_PANE]) {
+    const pane = map.getPane(name);
+    if (pane && pane !== marker) marker.parentNode.insertBefore(pane, marker);
+  }
+}
 
 /** Theme values HA defines; used only when a variable reads empty (a page outside Home Assistant). */
 export const THEME_FALLBACK = Object.freeze({
@@ -71,6 +90,7 @@ export default class PresenceRenderService {
         if (name !== PRESENCE_PANE) pane.style.pointerEvents = "none";
       }
     }
+    placeZonePanes(this.map);
     this._zoneLayer = L.layerGroup().addTo(this.map);
     this._markerLayer = L.layerGroup().addTo(this.map);
     this._injectStyle();
