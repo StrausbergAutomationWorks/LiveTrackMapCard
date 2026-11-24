@@ -32,7 +32,8 @@ jest.mock("leaflet", () => {
 });
 
 import ShapeLayersService, {
-  buildDrawList, infosOf, shapesOf, LINE_HIT_PX, INFO_POPUP, DEFAULT_SHAPE_STYLE, _resetShapeCache,
+  buildDrawList, infosOf, shapesOf, LINE_HIT_PX, INFO_POPUP, DEFAULT_SHAPE_STYLE, DEFAULT_FILE_LINE_STYLE,
+  parseFileLineStyle, _resetShapeCache,
 } from "./ShapeLayersRenderService.js";
 import { layerShown, publisherShownByDefault, LAYER_DEFAULT_OFF } from "../../util/LayerDefault.js";
 
@@ -112,7 +113,7 @@ describe("change 2: lines from the file", () => {
     expect(buildDrawList(pub().attributes, shapes).missing).toEqual(["cable/a", "cable/b"]);
   });
 
-  it("a file line is drawn as a line: its colour, the outline's weight and opacity, no fill; a casing beneath it", async () => {
+  it("a file line is drawn as a line: its colour, the FILE-LINE weight and opacity, no fill; a casing beneath it", async () => {
     const styles = { cable: { color: "#5C6BC0", priority: 5, casing: "#FFFFFF" } };
     const svc = new ShapeLayersService({}, undefined, undefined, overlays(), { fetch: okFetch({ meta: {}, shapes: { "cable/a": LINE } }) });
     svc.render(hassOf({ "sensor.all": pub({ zones: { "cable/a": "cable" }, styles }) }));
@@ -120,8 +121,8 @@ describe("change 2: lines from the file", () => {
     const layers = svc.publishers.get("sensor.all").group.layers;
     expect(layers).toHaveLength(2);
     const [casing, line] = layers;
-    expect(casing.opts.style()).toEqual({ color: "#FFFFFF", weight: DEFAULT_SHAPE_STYLE.weight + 2, opacity: DEFAULT_SHAPE_STYLE.opacity, fill: false });
-    expect(line.opts.style()).toEqual({ color: "#5C6BC0", weight: DEFAULT_SHAPE_STYLE.weight, opacity: DEFAULT_SHAPE_STYLE.opacity, fill: false });
+    expect(casing.opts.style()).toEqual({ color: "#FFFFFF", weight: DEFAULT_FILE_LINE_STYLE.weight + 2, opacity: DEFAULT_FILE_LINE_STYLE.opacity, fill: false });
+    expect(line.opts.style()).toEqual({ color: "#5C6BC0", weight: DEFAULT_FILE_LINE_STYLE.weight, opacity: DEFAULT_FILE_LINE_STYLE.opacity, fill: false });
     expect(line.opts.interactive).toBe(false);
   });
 
@@ -132,6 +133,56 @@ describe("change 2: lines from the file", () => {
     const [area] = svc.publishers.get("sensor.all").group.layers;
     expect(area.opts.style().fillOpacity).toBe(DEFAULT_SHAPE_STYLE.fillOpacity);
     expect(area.opts.style().fillColor).toBe("#5C6BC0");
+  });
+});
+
+describe("change 4: lines from the file draw at their own, lighter default (2026-11-24, from pictures)", () => {
+  it("the default is lighter than the outline's, and the one picked", () => {
+    expect(DEFAULT_FILE_LINE_STYLE).toEqual({ weight: 1, opacity: 0.5 });
+    expect(DEFAULT_FILE_LINE_STYLE.weight).toBeLessThan(DEFAULT_SHAPE_STYLE.weight);
+    expect(DEFAULT_FILE_LINE_STYLE.opacity).toBeLessThan(DEFAULT_SHAPE_STYLE.opacity);
+  });
+
+  it("parseFileLineStyle: file_line_weight and file_line_opacity override; bad values keep the default", () => {
+    expect(parseFileLineStyle(undefined)).toEqual(DEFAULT_FILE_LINE_STYLE);
+    expect(parseFileLineStyle({ weight: 5, opacity: 0.1 })).toEqual(DEFAULT_FILE_LINE_STYLE);
+    expect(parseFileLineStyle({ file_line_weight: 1.5, file_line_opacity: 0.35 })).toEqual({ weight: 1.5, opacity: 0.35 });
+    expect(parseFileLineStyle({ file_line_weight: 0, file_line_opacity: 0 })).toEqual({ weight: 0, opacity: 0 });
+    expect(parseFileLineStyle({ file_line_opacity: 1 })).toEqual({ weight: 1, opacity: 1 });
+    expect(parseFileLineStyle({ file_line_weight: -1, file_line_opacity: 1.5 })).toEqual(DEFAULT_FILE_LINE_STYLE);
+    expect(parseFileLineStyle({ file_line_weight: "2", file_line_opacity: NaN })).toEqual(DEFAULT_FILE_LINE_STYLE);
+    expect(parseFileLineStyle({ file_line_weight: Infinity })).toEqual(DEFAULT_FILE_LINE_STYLE);
+    expect(parseFileLineStyle([1, 2])).toEqual(DEFAULT_FILE_LINE_STYLE);
+  });
+
+  it("the dashboard's file_line_* reach the drawn line, its casing and its band", async () => {
+    const styles = { cable: { color: "#5C6BC0", priority: 5, casing: "#FFFFFF" } };
+    const svc = new ShapeLayersService({}, undefined, { file_line_weight: 3, file_line_opacity: 0.4, weight: 7, opacity: 0.8 }, overlays(), { fetch: okFetch() });
+    svc.render(hassOf({ "sensor.all": pub({ zones: { "cable/a": "cable" }, styles }) }));
+    await flush();
+    const [casing, line, band] = svc.publishers.get("sensor.all").group.layers;
+    expect(casing.opts.style()).toEqual({ color: "#FFFFFF", weight: 5, opacity: 0.4, fill: false });
+    expect(line.opts.style()).toEqual({ color: "#5C6BC0", weight: 3, opacity: 0.4, fill: false });
+    expect(band.opts.style()).toEqual({ color: "#5C6BC0", weight: LINE_HIT_PX, opacity: 0, fill: false });
+  });
+
+  it("a polygons line keeps the outline's weight and opacity, file_line_* or not", async () => {
+    const styles = { cable: { color: "#C62828", priority: 1, casing: "#FFFFFF" } };
+    const svc = new ShapeLayersService({}, undefined, { file_line_weight: 1, file_line_opacity: 0.2 }, overlays(), { fetch: jest.fn(() => new Promise(() => {})) });
+    svc.render(hassOf({ "sensor.trouble": pub({ polygons: [{ event: "cable", ...LINE, info: { title: "2Africa" } }], styles }) }));
+    const [casing, line, band] = svc.publishers.get("sensor.trouble").group.layers;
+    expect(casing.opts.style()).toEqual({ color: "#FFFFFF", weight: DEFAULT_SHAPE_STYLE.weight + 2, opacity: DEFAULT_SHAPE_STYLE.opacity, fill: false });
+    expect(line.opts.style()).toEqual({ color: "#C62828", weight: DEFAULT_SHAPE_STYLE.weight, opacity: DEFAULT_SHAPE_STYLE.opacity, fill: false });
+    expect(band.opts.style().weight).toBe(LINE_HIT_PX);
+  });
+
+  it("an area from the file keeps the outline's weight and opacity", async () => {
+    const svc = new ShapeLayersService({}, undefined, { file_line_weight: 9, file_line_opacity: 0.1 }, overlays(), { fetch: okFetch({ meta: {}, shapes: { "zone/c": AREA } }) });
+    svc.render(hassOf({ "sensor.all": pub({ zones: { "zone/c": "cable" } }) }));
+    await flush();
+    const [area] = svc.publishers.get("sensor.all").group.layers;
+    expect(area.opts.style().weight).toBe(DEFAULT_SHAPE_STYLE.weight);
+    expect(area.opts.style().opacity).toBe(DEFAULT_SHAPE_STYLE.opacity);
   });
 });
 
@@ -175,7 +226,7 @@ describe("change 3: info from the file", () => {
   });
 
   it("the band is never thinner than the drawn line", async () => {
-    const svc = new ShapeLayersService({}, undefined, { weight: 20 }, overlays(), { fetch: okFetch() });
+    const svc = new ShapeLayersService({}, undefined, { file_line_weight: 20 }, overlays(), { fetch: okFetch() });
     svc.render(hassOf({ "sensor.all": pub({ zones: { "cable/a": "cable" } }) }));
     await flush();
     const [, band] = svc.publishers.get("sensor.all").group.layers;

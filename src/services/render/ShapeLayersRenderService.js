@@ -37,6 +37,15 @@ export const CASING_PX = 1;
 export const RETRY_MS = 10 * 60 * 1000;
 
 /**
+ * Lines from a shape FILE (backlog 363: Live Track Internet's "all cables") are
+ * reference, drawn thin and faint under everything live; `shape_style`'s
+ * `file_line_weight` and `file_line_opacity` override each. Decided 2026-11-24:
+ * a card default for file lines, the values picked from pictures. Lines in
+ * `polygons` (storms, cables in trouble) keep the outline's weight and opacity.
+ */
+export const DEFAULT_FILE_LINE_STYLE = Object.freeze({ weight: 1, opacity: 0.5 });
+
+/**
  * Defaults; `shape_style` in the card config overrides each. Chosen by Lee
  * from pictures of the real alerts, 2026-10-05: fill 0.25; outline 2 px at
  * 0.9, because a pale event colour (Small Craft Advisory) vanishes on water
@@ -143,6 +152,22 @@ export function parseShapeStyle(input) {
   if (typeof input.weight === "number" && Number.isFinite(input.weight) && input.weight >= 0) s.weight = input.weight;
   if (input.renderer === "canvas" || input.renderer === "svg") s.renderer = input.renderer;
   if (typeof input.by_priority === "boolean") s.byPriority = input.by_priority;
+  return s;
+}
+
+/**
+ * `shape_style`'s `file_line_weight` (px, 0 or more) and `file_line_opacity`
+ * (0-1), each optional; anything else keeps the default (backlog 363).
+ * @param {*} input the card's `shape_style`
+ * @returns {{weight: number, opacity: number}}
+ */
+export function parseFileLineStyle(input) {
+  const s = { ...DEFAULT_FILE_LINE_STYLE };
+  if (!isPlainObject(input)) return s;
+  const w = input.file_line_weight;
+  const o = input.file_line_opacity;
+  if (typeof w === "number" && Number.isFinite(w) && w >= 0) s.weight = w;
+  if (typeof o === "number" && Number.isFinite(o) && o >= 0 && o <= 1) s.opacity = o;
   return s;
 }
 
@@ -284,6 +309,7 @@ export default class ShapeLayersService {
     this.map = map;
     this.option = parseShapeLayersOption(option);
     this.style = parseShapeStyle(styleOption);
+    this.fileLine = parseFileLineStyle(styleOption);
     this.overlays = overlays;
     this.fetch = deps.fetch ?? ((...a) => globalThis.fetch(...a));
     this.now = deps.now ?? (() => Date.now());
@@ -468,11 +494,14 @@ export default class ShapeLayersService {
       const feature = { type: "Feature", properties: {}, geometry: it.geometry };
       // A `polygons` line, or a key whose geometry in the file is a line (backlog 363).
       const isLineItem = it.kind === "line" || it.line === true;
+      // A line from the FILE draws at the file-line style, a `polygons` line at the outline's (backlog 363).
+      const lineWeight = it.line === true ? this.fileLine.weight : this.style.weight;
+      const lineOpacity = it.line === true ? this.fileLine.opacity : this.style.opacity;
       if (isLineItem && it.casing) {
         p.group.addLayer(L.geoJSON(feature, {
           interactive: false,
           renderer,
-          style: () => ({ color: it.casing, weight: this.style.weight + 2 * CASING_PX, opacity: this.style.opacity, fill: false }),
+          style: () => ({ color: it.casing, weight: lineWeight + 2 * CASING_PX, opacity: lineOpacity, fill: false }),
         }));
       }
       // A clickable line is answered by a transparent band over it, LINE_HIT_PX wide (backlog 363): a 2 px
@@ -482,7 +511,7 @@ export default class ShapeLayersService {
         interactive: !!it.info && !band,
         renderer,
         style: () => (isLineItem
-          ? { color: it.color, weight: this.style.weight, opacity: this.style.opacity, fill: false }
+          ? { color: it.color, weight: lineWeight, opacity: lineOpacity, fill: false }
           : {
             color: it.color,
             fillColor: it.color,
@@ -497,7 +526,7 @@ export default class ShapeLayersService {
         const hit = L.geoJSON(feature, {
           interactive: true,
           renderer,
-          style: () => ({ color: it.color, weight: Math.max(LINE_HIT_PX, this.style.weight), opacity: 0, fill: false }),
+          style: () => ({ color: it.color, weight: Math.max(LINE_HIT_PX, lineWeight), opacity: 0, fill: false }),
         });
         hit.bindPopup(infoHtml(it.info), INFO_POPUP);
         p.group.addLayer(hit);

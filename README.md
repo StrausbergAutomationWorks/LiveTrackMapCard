@@ -220,7 +220,7 @@ y: 3.652
 | `path_strict_zoom`     | 14                                                                                                                           | From this zoom a boat is never slid on a move the card has not checked: while the water tiles for a move are still loading, the boat is placed at its new position instead of sliding straight. |
 | `path_tile_sources`    | OpenStreetMap, then OpenFreeMap                                                                                              | The vector tile sources the water comes from, tried in order. See [Path-following](#path-following). |
 | `shape_layers`         | auto                                                                                                                         | Filled areas published by an integration, such as weather alerts. See [Shapes on the map](#shapes-on-the-map). `false` turns them off. |
-| `shape_style`          | fill 0.25, outline 2 px at 0.9                                                                                               | How those areas are drawn. See [Shapes on the map](#shapes-on-the-map). |
+| `shape_style`          | fill 0.25, outline 2 px at 0.9; lines from a shape file 1 px at 0.5                                                          | How those areas are drawn. See [Shapes on the map](#shapes-on-the-map). |
 | `point_layers`         | auto | Points published by an integration as one file, such as fire detections. See [Points on the map](#points-on-the-map). `false` turns them off. |
 | `weather_radar`        | on, ticked                                                                                                                   | The weather radar overlay. See [Weather radar](#weather-radar). `false` removes it. |
 | `layer_control`        | true | `false` removes the checkboxes. Every overlay stays as configured, and a choice a viewer stored earlier is ignored. |
@@ -286,7 +286,7 @@ Some integrations publish areas rather than points: weather alerts by forecast z
 * **Several publishers** are stacked by each one's `shape_order` (an integer, 0 when absent): a lower one is drawn beneath, ties by entity id, and the order holds through updates and when a box is ticked again.
 * **Lines** (a storm's track, for example) are drawn in their event's colour with no fill. An event's style may name a `casing` colour, drawn 1 px either side beneath the line so it reads on any map.
 * **Clickable shapes:** an item of `polygons` may carry `info`, `{"title": ..., "text": ...}` in plain text. That shape is clickable and opens a popup with the title in bold and the text's lines (at most 200 and 4,000 characters; nothing in it is read as HTML). Every other shape stays non-interactive, so clicks pass to the map.
-* **The file may hold lines too** (submarine cables, for example), drawn as lines are, and an `info` mapping beside its shapes, `{key: {"title": ..., "text": ...}}`, which makes those keys clickable in the same way. A clickable line answers a tap anywhere within 6 px of it, so a thin line can still be hit with a finger.
+* **The file may hold lines too** (submarine cables, for example), and an `info` mapping beside its shapes, `{key: {"title": ..., "text": ...}}`, which makes those keys clickable in the same way. Lines from the file are reference, so they are drawn thin and faint (1 px at 0.5, `file_line_weight` and `file_line_opacity` below) beneath anything drawn at the outline's weight. A clickable line answers a tap anywhere within 6 px of it, so a thin line can still be hit with a finger.
 * **Off until ticked:** a publisher may ask for its box to start unticked (`layer_default: "off"`), for a layer that is reference rather than news. Your dashboard's `show` overrides that, and a viewer's own choice overrides both.
 
 ```yaml
@@ -302,6 +302,8 @@ shape_style:                # optional; each key optional
   opacity: 0.9              # outline
   renderer: svg             # or canvas
   by_priority: false        # true: stronger fill for more important events
+  file_line_weight: 1       # lines from a shape file, px
+  file_line_opacity: 0.5    # lines from a shape file
 ```
 
 ### Points on the map
