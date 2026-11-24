@@ -89,16 +89,19 @@ describe("D12 amended for item 310: clickable shapes", () => {
     expect(withInfo.popup).toEqual({ html: '<div class="ltmc-shape-info"><b>Gale</b><br>Southwest gale 8.</div>', o: INFO_POPUP });
   });
 
-  it("a cased line with info: the line is clickable, its casing is not", () => {
+  it("a cased line with info: only its band is clickable, not the casing or the drawn line (backlog 363)", () => {
     const overlays = { addOverlay: jest.fn(), removeOverlay: jest.fn() };
     const svc = new ShapeLayersService({}, undefined, undefined, overlays, { fetch: jest.fn() });
     const s = pub([{ event: "w", type: "LineString", coordinates: [[0, 0], [1, 1]], info: { text: "track" } }]);
     s.attributes.styles.w.casing = "#FFFFFF";
     svc.render({ states: { "sensor.met": s } });
-    const [casing, line] = svc.publishers.get("sensor.met").group.layers;
+    const [casing, line, band] = svc.publishers.get("sensor.met").group.layers;
     expect(casing.opts.interactive).toBe(false);
     expect(casing.bindPopup).not.toHaveBeenCalled();
-    expect(line.opts.interactive).toBe(true);
-    expect(L.geoJSON).toHaveBeenCalledTimes(2);
+    expect(line.opts.interactive).toBe(false);
+    expect(line.bindPopup).not.toHaveBeenCalled();
+    expect(band.opts.interactive).toBe(true);
+    expect(band.popup).toEqual({ html: '<div class="ltmc-shape-info">track</div>', o: INFO_POPUP });
+    expect(L.geoJSON).toHaveBeenCalledTimes(3);
   });
 });

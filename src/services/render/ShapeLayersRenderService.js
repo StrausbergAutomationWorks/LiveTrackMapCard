@@ -3,6 +3,7 @@ import Logger from "../../util/Logger.js";
 import { infoOf, infoHtml, INFO_POPUP } from "../../util/InfoPopup.js";
 import { geometryTouchesArea } from "../../util/WeatherArea.js";
 import { layerLabel } from "../../util/LayerLabel.js";
+import { layerShown } from "../../util/LayerDefault.js";
 
 export { infoOf, infoHtml, escapeHtml, INFO_POPUP, INFO_TITLE_MAX, INFO_TEXT_MAX } from "../../util/InfoPopup.js";
 
@@ -16,9 +17,15 @@ export { infoOf, infoHtml, escapeHtml, INFO_POPUP, INFO_TITLE_MAX, INFO_TEXT_MAX
  * keeps it in memory only, and fills translucent shapes over the tiles and
  * under every marker, lowest priority first. Nothing here names a publisher.
  * A `polygons` item carrying `info` {title, text} is clickable and shows it
- * (D12 as amended for Live Track Weather item 310); every other shape stays
- * non-interactive.
+ * (D12 as amended for Live Track Weather item 310); so is a key whose file
+ * carries `info` beside `shapes` (amended for Live Track Internet, backlog
+ * 363); every other shape stays non-interactive. A key's geometry in the file
+ * may be a line, drawn as a `polygons` line is (backlog 363). A publisher may
+ * start its checkbox unticked with `layer_default: "off"` (backlog 363).
  */
+
+/** A clickable line is answered this many px wide, whatever its drawn weight (backlog 363). */
+export const LINE_HIT_PX = 12;
 
 /** Colour and priority for an event the publisher sent no style for (D12 rule 8). */
 export const UNKNOWN_STYLE = Object.freeze({ color: "#808080", priority: 999 });
@@ -93,9 +100,10 @@ export function discoverPublishers(states) {
 
 /**
  * `shape_layers`: absent or "auto" discovers; false turns it off; a list names
- * publishers as `{entity, name, show}` or a bare entity id.
+ * publishers as `{entity, name, show}` or a bare entity id. `show` is null when
+ * the dashboard set none, so the publisher's `layer_default` decides (backlog 363).
  * @param {*} input
- * @returns {{mode: "auto"}|{mode: "off"}|{mode: "list", items: {entity: string, name: ?string, show: boolean}[]}}
+ * @returns {{mode: "auto"}|{mode: "off"}|{mode: "list", items: {entity: string, name: ?string, show: ?boolean}[]}}
  */
 export function parseShapeLayersOption(input) {
   if (input === undefined || input === null || input === true || input === "auto") return { mode: "auto" };
@@ -115,7 +123,7 @@ export function parseShapeLayersOption(input) {
     items.push({
       entity,
       name: typeof o.name === "string" && o.name.trim() !== "" ? o.name.trim() : null,
-      show: o.show !== false,
+      show: typeof o.show === "boolean" ? o.show : null,
     });
   }
   return { mode: "list", items };
@@ -177,12 +185,15 @@ export function isLine(g) {
 /**
  * The list to draw, in drawing order (D12 rules 3, 5, 7, 8): largest priority
  * first, 1 last; within a priority zones before polygons; zones by key,
- * polygons in the order sent.
+ * polygons in the order sent. A zone whose geometry is a line carries
+ * `line: true`; a zone whose key has an entry in the file's `info` carries it
+ * (both backlog 363).
  * @param {object} attributes the publisher's attributes
  * @param {?object} shapes the file's `shapes`, or null before it arrives
- * @returns {{items: {kind: string, key: ?string, event: string, geometry: object, color: string, priority: number}[], missing: string[]}}
+ * @param {?object} [infos] the file's `info`, `{key: {title, text}}`, or null
+ * @returns {{items: {kind: string, key: ?string, event: string, geometry: object, color: string, priority: number, line?: boolean, info?: object}[], missing: string[]}}
  */
-export function buildDrawList(attributes, shapes) {
+export function buildDrawList(attributes, shapes, infos = null) {
   const items = [];
   const missing = [];
   const styles = attributes?.styles;
@@ -191,8 +202,10 @@ export function buildDrawList(attributes, shapes) {
       const event = attributes.zones[key];
       if (typeof event !== "string") continue;
       const geometry = shapes[key];
-      if (!isArea(geometry)) { missing.push(key); continue; }
-      items.push({ kind: "zone", key, event, geometry, ...styleFor(event, styles) });
+      const line = isLine(geometry);
+      if (!isArea(geometry) && !line) { missing.push(key); continue; }
+      const info = isPlainObject(infos) ? infoOf(infos[key]) : null;
+      items.push({ kind: "zone", key, event, geometry, ...styleFor(event, styles), ...(line ? { line: true } : {}), ...(info ? { info } : {}) });
     }
   }
   const polygons = Array.isArray(attributes?.polygons) ? attributes.polygons : [];
@@ -249,6 +262,16 @@ export function shapesOf(json) {
   return isPlainObject(json) && isPlainObject(json.shapes) ? json.shapes : null;
 }
 
+/**
+ * A parsed file's `info`, the clickable text per key beside `shapes` (backlog 363).
+ * Optional: a file without it, or with anything but a mapping, has none.
+ * @param {*} json
+ * @returns {?object}
+ */
+export function infosOf(json) {
+  return isPlainObject(json) && isPlainObject(json.info) ? json.info : null;
+}
+
 export default class ShapeLayersService {
   /**
    * @param {L.Map} map
@@ -302,13 +325,13 @@ export default class ShapeLayersService {
 
   /**
    * @param {object} states
-   * @returns {Map<string, {name: ?string, show: boolean}>} publishers to keep a checkbox for
+   * @returns {Map<string, {name: ?string, show: ?boolean}>} publishers to keep a checkbox for
    */
   _wanted(states) {
     const out = new Map();
     if (this.option.mode === "off") return out;
     if (this.option.mode === "auto") {
-      for (const id of discoverPublishers(states)) out.set(id, { name: null, show: true });
+      for (const id of discoverPublishers(states)) out.set(id, { name: null, show: null });
       return out;
     }
     // A named entity keeps its checkbox while it exists, drawn or not.
@@ -320,7 +343,7 @@ export default class ShapeLayersService {
 
   /**
    * @param {string} id
-   * @param {{name: ?string, show: boolean}} item
+   * @param {{name: ?string, show: ?boolean}} item
    * @param {object} state
    */
   _update(id, item, state) {
@@ -330,7 +353,8 @@ export default class ShapeLayersService {
       const group = L.layerGroup([], attribution ? { attribution } : {});
       // The device name left off the label (util/LayerLabel.js, Lee 2026-11-19).
       const label = layerLabel(this.hass ?? { states: { [id]: state } }, id, item.name);
-      this.overlays.addOverlay(group, label.name, item.show, label.former);
+      // The dashboard's `show`, else the publisher's `layer_default` (backlog 363); the viewer's tick wins over both.
+      this.overlays.addOverlay(group, label.name, layerShown(item.show, state?.attributes), label.former);
       p = { group, url: null, state: null, fileStatus: null, drawn: 0, order: 0 };
       this.publishers.set(id, p);
       // A re-ticked box puts its shapes back on top: restore the order (D16).
@@ -353,7 +377,7 @@ export default class ShapeLayersService {
     p.state = state;
     p.fileStatus = fileStatus;
     p.order = shapeOrderOf(state.attributes);
-    this._draw(p, state.attributes, fileStatus === "ok" ? file.shapes : null);
+    this._draw(p, state.attributes, fileStatus === "ok" ? file.shapes : null, fileStatus === "ok" ? file.info : null);
     this._restack(p);
   }
 
@@ -402,6 +426,7 @@ export default class ShapeLayersService {
         if (!shapes) throw new Error("no shapes mapping");
         entry.status = "ok";
         entry.shapes = shapes;
+        entry.info = infosOf(json);
       })
       .catch((e) => {
         if (e?.name === "AbortError") {
@@ -426,10 +451,11 @@ export default class ShapeLayersService {
    * @param {object} p the publisher record
    * @param {object} attributes
    * @param {?object} shapes
+   * @param {?object} [infos] the file's `info` (backlog 363)
    */
-  _draw(p, attributes, shapes) {
+  _draw(p, attributes, shapes, infos = null) {
     p.group.clearLayers();
-    const { items: all, missing } = buildDrawList(attributes, shapes);
+    const { items: all, missing } = buildDrawList(attributes, shapes, infos);
     const items = this.area ? all.filter((it) => geometryTouchesArea(it.geometry, this.area)) : all;
     for (const key of missing) {
       if (warnedKeys.has(key)) continue;
@@ -440,17 +466,22 @@ export default class ShapeLayersService {
     const renderer = this._renderer();
     items.forEach((it, i) => {
       const feature = { type: "Feature", properties: {}, geometry: it.geometry };
-      if (it.kind === "line" && it.casing) {
+      // A `polygons` line, or a key whose geometry in the file is a line (backlog 363).
+      const isLineItem = it.kind === "line" || it.line === true;
+      if (isLineItem && it.casing) {
         p.group.addLayer(L.geoJSON(feature, {
           interactive: false,
           renderer,
           style: () => ({ color: it.casing, weight: this.style.weight + 2 * CASING_PX, opacity: this.style.opacity, fill: false }),
         }));
       }
+      // A clickable line is answered by a transparent band over it, LINE_HIT_PX wide (backlog 363): a 2 px
+      // line is too thin to hit with a finger. The drawn line itself stays non-interactive.
+      const band = isLineItem && !!it.info;
       const layer = L.geoJSON(feature, {
-        interactive: !!it.info,
+        interactive: !!it.info && !band,
         renderer,
-        style: () => (it.kind === "line"
+        style: () => (isLineItem
           ? { color: it.color, weight: this.style.weight, opacity: this.style.opacity, fill: false }
           : {
             color: it.color,
@@ -460,8 +491,17 @@ export default class ShapeLayersService {
             fillOpacity: opacities[i],
           }),
       });
-      if (it.info) layer.bindPopup(infoHtml(it.info), INFO_POPUP);
+      if (it.info && !band) layer.bindPopup(infoHtml(it.info), INFO_POPUP);
       p.group.addLayer(layer);
+      if (band) {
+        const hit = L.geoJSON(feature, {
+          interactive: true,
+          renderer,
+          style: () => ({ color: it.color, weight: Math.max(LINE_HIT_PX, this.style.weight), opacity: 0, fill: false }),
+        });
+        hit.bindPopup(infoHtml(it.info), INFO_POPUP);
+        p.group.addLayer(hit);
+      }
     });
     p.drawn = items.length;
   }

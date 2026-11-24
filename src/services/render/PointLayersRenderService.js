@@ -4,6 +4,7 @@ import { apiPath } from "../../util/TrackLine.js";
 import { INFO_POPUP } from "../../util/InfoPopup.js";
 import { geometryTouchesArea } from "../../util/WeatherArea.js";
 import { layerLabel } from "../../util/LayerLabel.js";
+import { layerShown } from "../../util/LayerDefault.js";
 import {
   isPointPublisherState, discoverPointPublishers, parsePointLayersOption, pointOrderOf, pointStyleFor, pointsOf,
   pointsUrlOf, visiblePoints, hitTest, pointPopupHtml,
@@ -224,7 +225,7 @@ export default class PointLayersService {
     const out = new Map();
     if (this.option.mode === "off") return out;
     if (this.option.mode === "auto") {
-      for (const id of discoverPointPublishers(states)) out.set(id, { name: null, show: true });
+      for (const id of discoverPointPublishers(states)) out.set(id, { name: null, show: null });
       return out;
     }
     for (const it of this.option.items) if (states[it.entity]) out.set(it.entity, { name: it.name, show: it.show });
@@ -241,7 +242,8 @@ export default class PointLayersService {
       p = { layer, url: null, status: null, order: 0, state: null };
       this.publishers.set(id, p);
       layer.on?.("add", () => this._restack());
-      this.overlays.addOverlay(layer, label.name, item.show, label.former);
+      // The dashboard's `show`, else the publisher's `layer_default` (backlog 363); the viewer's tick wins over both.
+      this.overlays.addOverlay(layer, label.name, layerShown(item.show, state?.attributes), label.former);
     }
     if (!isPointPublisherState(state)) {
       if (p.url || p.state) p.layer.setData(null, {});

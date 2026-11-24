@@ -38,7 +38,7 @@ describe("rule 1: a publisher by attribute shape", () => {
     expect(parsePointLayersOption(false)).toEqual({ mode: "off" });
     expect(parsePointLayersOption("off")).toEqual({ mode: "off" });
     expect(parsePointLayersOption(["sensor.a", { entity: " sensor.b ", name: "Fires", show: false }, { entity: "sensor.a" }, { name: "x" }]))
-      .toEqual({ mode: "list", items: [{ entity: "sensor.a", name: null, show: true }, { entity: "sensor.b", name: "Fires", show: false }] });
+      .toEqual({ mode: "list", items: [{ entity: "sensor.a", name: null, show: null }, { entity: "sensor.b", name: "Fires", show: false }] });
   });
 
   it("point_order: an integer, else 0", () => {

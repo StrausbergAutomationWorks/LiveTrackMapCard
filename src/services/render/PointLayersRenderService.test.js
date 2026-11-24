@@ -196,6 +196,17 @@ describe("rules 1, 2, 5: discovery, fetch, checkbox", () => {
     expect(ov2.addOverlay).not.toHaveBeenCalled();
   });
 
+  it("backlog 363: layer_default \"off\" starts the box unticked; a dashboard's show true overrides it", () => {
+    stubCanvas();
+    const ov = overlays();
+    new PointLayersService(map, undefined, ov).render(hassWith({ "sensor.f": pub({ layer_default: "off" }), "sensor.g": pub({ friendly_name: "Sites" }) }));
+    expect(Object.fromEntries(ov.addOverlay.mock.calls.map((c) => [c[1], c[2]]))).toEqual({ "Fire detections": false, Sites: true });
+    const ov2 = overlays();
+    new PointLayersService(map, [{ entity: "sensor.f", show: true }, "sensor.g"], ov2)
+      .render(hassWith({ "sensor.f": pub({ layer_default: "off" }), "sensor.g": pub({ friendly_name: "Sites", layer_default: "off" }) }));
+    expect(ov2.addOverlay.mock.calls.map((c) => [c[1], c[2]])).toEqual([["Fire detections", true], ["Sites", false]]);
+  });
+
   it("a styles change redraws without a fetch", async () => {
     stubCanvas();
     const ov = overlays();

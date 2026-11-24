@@ -286,6 +286,8 @@ Some integrations publish areas rather than points: weather alerts by forecast z
 * **Several publishers** are stacked by each one's `shape_order` (an integer, 0 when absent): a lower one is drawn beneath, ties by entity id, and the order holds through updates and when a box is ticked again.
 * **Lines** (a storm's track, for example) are drawn in their event's colour with no fill. An event's style may name a `casing` colour, drawn 1 px either side beneath the line so it reads on any map.
 * **Clickable shapes:** an item of `polygons` may carry `info`, `{"title": ..., "text": ...}` in plain text. That shape is clickable and opens a popup with the title in bold and the text's lines (at most 200 and 4,000 characters; nothing in it is read as HTML). Every other shape stays non-interactive, so clicks pass to the map.
+* **The file may hold lines too** (submarine cables, for example), drawn as lines are, and an `info` mapping beside its shapes, `{key: {"title": ..., "text": ...}}`, which makes those keys clickable in the same way. A clickable line answers a tap anywhere within 6 px of it, so a thin line can still be hit with a finger.
+* **Off until ticked:** a publisher may ask for its box to start unticked (`layer_default: "off"`), for a layer that is reference rather than news. Your dashboard's `show` overrides that, and a viewer's own choice overrides both.
 
 ```yaml
 shape_layers: auto          # the default: every publisher found
@@ -304,7 +306,7 @@ shape_style:                # optional; each key optional
 
 ### Points on the map
 
-Some integrations publish thousands of points that are not worth an entity each: satellite fire detections, or air-quality monitors, for example. The card finds any entity that publishes them (a `points_url` under `/api/` naming a file of points, and `point_styles` saying how each kind looks), fetches the file once with your sign-in, and draws the points as small dots on one canvas per publisher, above the shapes and below every marker. Each publisher gets a checkbox in the layer control, on by default.
+Some integrations publish thousands of points that are not worth an entity each: satellite fire detections, or air-quality monitors, for example. The card finds any entity that publishes them (a `points_url` under `/api/` naming a file of points, and `point_styles` saying how each kind looks), fetches the file once with your sign-in, and draws the points as small dots on one canvas per publisher, above the shapes and below every marker. Each publisher gets a checkbox in the layer control, on by default unless the publisher asks for it to start unticked (`layer_default: "off"`, as for shapes).
 
 * **Only what is on screen is drawn**, and where several dots would land within one dot of each other only the first is drawn, so a whole continent of points costs about as much as a handful. The dots are redrawn when the map stops moving.
 * **Click a dot** for a popup: the kind of point in bold, then each value the file gives for it. The pointer becomes a hand over a dot. Dots never take clicks from markers.

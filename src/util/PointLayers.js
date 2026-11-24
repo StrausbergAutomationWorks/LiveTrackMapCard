@@ -52,9 +52,10 @@ export function discoverPointPublishers(states) {
 
 /**
  * `point_layers`: absent or "auto" discovers; false or "off" turns it off; a list names publishers as
- * `{entity, name, show}` or a bare entity id (as `shape_layers`).
+ * `{entity, name, show}` or a bare entity id (as `shape_layers`). `show` is null when the dashboard set none, so the
+ * publisher's `layer_default` decides (backlog 363).
  * @param {*} input
- * @returns {{mode: string, items?: {entity: string, name: ?string, show: boolean}[]}}
+ * @returns {{mode: string, items?: {entity: string, name: ?string, show: ?boolean}[]}}
  */
 export function parsePointLayersOption(input) {
   if (input === undefined || input === null || input === true || input === "auto") return { mode: "auto" };
@@ -67,7 +68,7 @@ export function parsePointLayersOption(input) {
     const entity = o.entity.trim();
     if (seen.has(entity)) continue;
     seen.add(entity);
-    items.push({ entity, name: typeof o.name === "string" && o.name.trim() ? o.name.trim() : null, show: o.show !== false });
+    items.push({ entity, name: typeof o.name === "string" && o.name.trim() ? o.name.trim() : null, show: typeof o.show === "boolean" ? o.show : null });
   }
   return { mode: "list", items };
 }

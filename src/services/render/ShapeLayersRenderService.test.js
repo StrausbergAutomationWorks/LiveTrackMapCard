@@ -118,10 +118,13 @@ describe("shape_layers option", () => {
     expect(parseShapeLayersOption([
       "sensor.a", { entity: " sensor.b ", name: " Warnings ", show: false }, { entity: "sensor.a", name: "dup" }, { name: "no entity" }, 7,
     ])).toEqual({ mode: "list", items: [
-      { entity: "sensor.a", name: null, show: true },
+      { entity: "sensor.a", name: null, show: null },
       { entity: "sensor.b", name: "Warnings", show: false },
     ] });
-    expect(parseShapeLayersOption({ entity: "sensor.c" })).toEqual({ mode: "list", items: [{ entity: "sensor.c", name: null, show: true }] });
+    // show null when the dashboard set none: the publisher's layer_default decides (backlog 363)
+    expect(parseShapeLayersOption({ entity: "sensor.c" })).toEqual({ mode: "list", items: [{ entity: "sensor.c", name: null, show: null }] });
+    expect(parseShapeLayersOption({ entity: "sensor.c", show: true }).items[0].show).toBe(true);
+    expect(parseShapeLayersOption({ entity: "sensor.c", show: "no" }).items[0].show).toBeNull();
   });
 });
 
