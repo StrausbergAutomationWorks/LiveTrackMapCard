@@ -23,8 +23,9 @@ jest.mock("leaflet", () => {
         return g;
       }),
       geoJSON: jest.fn((data, opts) => {
-        const l = { data, opts, bringToFront: jest.fn(), popup: null };
+        const l = { data, opts, bringToFront: jest.fn(), popup: null, handlers: {} };
         l.bindPopup = jest.fn((html, o) => { l.popup = { html, o }; return l; });
+        l.on = jest.fn((ev, fn) => { l.handlers[ev] = fn; return l; });
         return l;
       }),
     },
@@ -183,6 +184,57 @@ describe("change 4: lines from the file draw at their own, lighter default (2026
     const [area] = svc.publishers.get("sensor.all").group.layers;
     expect(area.opts.style().weight).toBe(DEFAULT_SHAPE_STYLE.weight);
     expect(area.opts.style().opacity).toBe(DEFAULT_SHAPE_STYLE.opacity);
+  });
+});
+
+describe("change 5: a dot answers before a clickable shape under it (D19 rule 4, 2026-11-24)", () => {
+  it("a clickable line's band and a clickable area ask the points first, with the click's container point", async () => {
+    const svc = new ShapeLayersService({}, undefined, undefined, overlays(), { fetch: okFetch() });
+    svc.pointsFirst = jest.fn(() => true);
+    svc.render(hassOf({ "sensor.all": pub() }));
+    await flush();
+    const [line, band, plain, area] = svc.publishers.get("sensor.all").group.layers;
+    expect(Object.keys(line.handlers)).toEqual([]);
+    expect(Object.keys(plain.handlers)).toEqual([]);
+    band.handlers.click({ containerPoint: { x: 3, y: 4 } });
+    area.handlers.click({ containerPoint: { x: 5, y: 6 } });
+    expect(svc.pointsFirst.mock.calls).toEqual([[{ x: 3, y: 4 }], [{ x: 5, y: 6 }]]);
+  });
+
+  it("the shape's own popup is bound first, so a dot's popup replaces it", async () => {
+    const svc = new ShapeLayersService({}, undefined, undefined, overlays(), { fetch: okFetch() });
+    svc.render(hassOf({ "sensor.all": pub({ zones: { "cable/a": "cable" } }) }));
+    await flush();
+    const band = svc.publishers.get("sensor.all").group.layers[1];
+    expect(band.bindPopup.mock.invocationCallOrder[0]).toBeLessThan(band.on.mock.invocationCallOrder[0]);
+    // and a clickable area
+    const svc2 = new ShapeLayersService({}, undefined, undefined, overlays(), { fetch: okFetch() });
+    svc2.render(hassOf({ "sensor.all": pub({ zones: { "zone/c": "cable" } }) }));
+    await flush();
+    const [area] = svc2.publishers.get("sensor.all").group.layers;
+    expect(area.bindPopup.mock.invocationCallOrder[0]).toBeLessThan(area.on.mock.invocationCallOrder[0]);
+  });
+
+  it("no point service, or one that throws: the shape's popup stays and nothing breaks", async () => {
+    const err = jest.spyOn(console, "error").mockImplementation(() => {});
+    const svc = new ShapeLayersService({}, undefined, undefined, overlays(), { fetch: okFetch() });
+    svc.render(hassOf({ "sensor.all": pub({ zones: { "cable/a": "cable" } }) }));
+    await flush();
+    const band = svc.publishers.get("sensor.all").group.layers[1];
+    expect(() => band.handlers.click({ containerPoint: { x: 1, y: 1 } })).not.toThrow();
+    svc.pointsFirst = () => { throw new Error("boom"); };
+    expect(() => band.handlers.click({ containerPoint: { x: 1, y: 1 } })).not.toThrow();
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
+  });
+
+  it("polygons lines with info ask too (Cables in trouble over a landing point)", () => {
+    const svc = new ShapeLayersService({}, undefined, undefined, overlays(), { fetch: jest.fn(() => new Promise(() => {})) });
+    svc.pointsFirst = jest.fn(() => false);
+    svc.render(hassOf({ "sensor.trouble": pub({ polygons: [{ event: "cable", ...LINE, info: { title: "2Africa" } }] }) }));
+    const band = svc.publishers.get("sensor.trouble").group.layers[1];
+    band.handlers.click({ containerPoint: { x: 9, y: 9 } });
+    expect(svc.pointsFirst).toHaveBeenCalledWith({ x: 9, y: 9 });
   });
 });
 

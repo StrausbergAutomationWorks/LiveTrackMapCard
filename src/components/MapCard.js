@@ -114,6 +114,8 @@ export default class MapCard extends LitElement {
     this.shapeLayersService = new ShapeLayersService(this.map, this._config.shapeLayers, this._config.shapeStyle, this.tileLayersService, { area: this._config.weatherArea });
     // Points on the map (D19): dots from a publisher's file, above the fills, below the markers.
     this.pointLayersService = new PointLayersService(this.map, this._config.pointLayers, this.tileLayersService, { area: this._config.weatherArea });
+    // A dot answers before a clickable shape under it: a shape's click never reaches the map (D19 rule 4).
+    this.shapeLayersService.pointsFirst = (cp) => this.pointLayersService?.openAt(cp) ?? false;
     // The weather radar overlay (D13): one layer, its own pane under the fills.
     this.radarOverlayService = new RadarOverlayService(this.map, this._config.weatherRadar, this.tileLayersService, { area: this._config.weatherArea });
     // Lightning (D14): its own pane right above the radar's.

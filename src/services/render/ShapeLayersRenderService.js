@@ -314,6 +314,8 @@ export default class ShapeLayersService {
     this.fetch = deps.fetch ?? ((...a) => globalThis.fetch(...a));
     this.now = deps.now ?? (() => Date.now());
     this.area = deps.area ?? null;
+    /** Set by MapCard: opens the popup of a dot under a container point, returns whether it did (D19 rule 4). */
+    this.pointsFirst = deps.pointsFirst ?? null;
     this.hass = null;
     this.renderer = null;
     /** @type {Map<string, {group: object, url: ?string, state: ?object, fileStatus: ?string, drawn: number}>} */
@@ -520,7 +522,10 @@ export default class ShapeLayersService {
             fillOpacity: opacities[i],
           }),
       });
-      if (it.info && !band) layer.bindPopup(infoHtml(it.info), INFO_POPUP);
+      if (it.info && !band) {
+        layer.bindPopup(infoHtml(it.info), INFO_POPUP);
+        this._dotsFirst(layer);
+      }
       p.group.addLayer(layer);
       if (band) {
         const hit = L.geoJSON(feature, {
@@ -529,10 +534,26 @@ export default class ShapeLayersService {
           style: () => ({ color: it.color, weight: Math.max(LINE_HIT_PX, lineWeight), opacity: 0, fill: false }),
         });
         hit.bindPopup(infoHtml(it.info), INFO_POPUP);
+        this._dotsFirst(hit);
         p.group.addLayer(hit);
       }
     });
     p.drawn = items.length;
+  }
+
+  /**
+   * A dot drawn over a clickable shape answers first (D19 rule 4 as amended 2026-11-24). Registered after the
+   * shape's own popup binding, so it runs after that popup opens; a dot's popup then replaces it (autoClose).
+   * @param {object} layer a clickable shape layer
+   */
+  _dotsFirst(layer) {
+    layer.on?.("click", (e) => {
+      try {
+        this.pointsFirst?.(e?.containerPoint);
+      } catch (err) {
+        Logger.error("[ShapeLayers] a dot under the click could not be asked; the shape's popup stays", err);
+      }
+    });
   }
 
   /** @param {object} p */

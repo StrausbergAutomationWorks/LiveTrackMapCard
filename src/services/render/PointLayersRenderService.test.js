@@ -382,6 +382,21 @@ describe("rule 4: click and hover", () => {
     expect(p.openOn).toHaveBeenCalledWith(map);
   });
 
+  it("openAt: a dot under the point opens its popup and says so; elsewhere, or disposed, false", async () => {
+    stubCanvas();
+    const svc = new PointLayersService(map, undefined, overlays());
+    svc.render(hassWith({ "sensor.f": pub() }));
+    await flush();
+    expect(svc.openAt({ x: 160, y: 50 })).toBe(false);
+    expect(svc.openAt(undefined)).toBe(false);
+    expect(L.popup).not.toHaveBeenCalled();
+    expect(svc.openAt({ x: 101, y: 51 })).toBe(true);
+    expect(L._popups[0].openOn).toHaveBeenCalledWith(map);
+    svc.disposed = true;
+    expect(svc.openAt({ x: 101, y: 51 })).toBe(false);
+    expect(L.popup).toHaveBeenCalledTimes(1);
+  });
+
   it("the topmost publisher answers first (point_order)", async () => {
     stubCanvas();
     const svc = new PointLayersService(map, undefined, overlays());

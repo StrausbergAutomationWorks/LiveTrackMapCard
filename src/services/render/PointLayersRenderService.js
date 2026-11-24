@@ -321,10 +321,23 @@ export default class PointLayersService {
   }
 
   _click(e) {
-    const h = e?.containerPoint ? this._hitAt(e.containerPoint) : null;
-    if (!h) return;
+    this.openAt(e?.containerPoint);
+  }
+
+  /**
+   * Opens the popup of the dot under a container point, the topmost publisher first. A clickable shape (D12) asks
+   * this on its own click, because the dots are drawn above the shapes and Leaflet stops a shape's click from
+   * reaching the map (Layer._openPopup: "prevent map click"). D19 rule 4 as amended 2026-11-24.
+   * @param {?{x: number, y: number}} cp a container point
+   * @returns {boolean} a dot was there and its popup opened
+   */
+  openAt(cp) {
+    if (this.disposed || !cp) return false;
+    const h = this._hitAt(cp);
+    if (!h) return false;
     const { latlng, html } = h.q.layer.popupFor(h.i);
     L.popup(INFO_POPUP).setLatLng(latlng).setContent(html).openOn(this.map);
+    return true;
   }
 
   _hover(e) {

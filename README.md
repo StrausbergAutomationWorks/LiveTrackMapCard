@@ -311,7 +311,7 @@ shape_style:                # optional; each key optional
 Some integrations publish thousands of points that are not worth an entity each: satellite fire detections, or air-quality monitors, for example. The card finds any entity that publishes them (a `points_url` under `/api/` naming a file of points, and `point_styles` saying how each kind looks), fetches the file once with your sign-in, and draws the points as small dots on one canvas per publisher, above the shapes and below every marker. Each publisher gets a checkbox in the layer control, on by default unless the publisher asks for it to start unticked (`layer_default: "off"`, as for shapes).
 
 * **Only what is on screen is drawn**, and where several dots would land within one dot of each other only the first is drawn, so a whole continent of points costs about as much as a handful. The dots are redrawn when the map stops moving.
-* **Click a dot** for a popup: the kind of point in bold, then each value the file gives for it. The pointer becomes a hand over a dot. Dots never take clicks from markers.
+* **Click a dot** for a popup: the kind of point in bold, then each value the file gives for it. The pointer becomes a hand over a dot. Dots never take clicks from markers, but they answer before a clickable shape drawn beneath them (a landing point on a cable line, for example).
 * **A new file has a new address**, so an update is fetched once. If it cannot be loaded, nothing is drawn for that publisher and the card tries again after 10 minutes.
 * **Several publishers** are stacked by each one's `point_order` (an integer, 0 when absent): a higher one is drawn on top and answers a click first.
 * **`weather_area`** limits the dots to its circle, as it does shapes.
