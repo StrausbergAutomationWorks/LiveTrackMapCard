@@ -19,7 +19,9 @@ export { infoOf, infoHtml, escapeHtml, INFO_POPUP, INFO_TITLE_MAX, INFO_TEXT_MAX
  * A `polygons` item carrying `info` {title, text} is clickable and shows it
  * (D12 as amended for Live Track Weather item 310); so is a key whose file
  * carries `info` beside `shapes` (amended for Live Track Internet, backlog
- * 363); every other shape stays non-interactive. A key's geometry in the file
+ * 363), or a key with a live entry in the publisher's `zone_info`, which
+ * replaces the file's for that key (amended 2026-11-25); every other shape
+ * stays non-interactive. A key's geometry in the file
  * may be a line, drawn as a `polygons` line is (backlog 363). A publisher may
  * start its checkbox unticked with `layer_default: "off"` (backlog 363).
  */
@@ -212,7 +214,9 @@ export function isLine(g) {
  * first, 1 last; within a priority zones before polygons; zones by key,
  * polygons in the order sent. A zone whose geometry is a line carries
  * `line: true`; a zone whose key has an entry in the file's `info` carries it
- * (both backlog 363).
+ * (both backlog 363). A valid entry in the publisher's live `zone_info` for
+ * that key is carried instead, whole, never merged with the file's; an entry
+ * that is not valid leaves the file's in force (D12 as amended 2026-11-25).
  * @param {object} attributes the publisher's attributes
  * @param {?object} shapes the file's `shapes`, or null before it arrives
  * @param {?object} [infos] the file's `info`, `{key: {title, text}}`, or null
@@ -222,6 +226,8 @@ export function buildDrawList(attributes, shapes, infos = null) {
   const items = [];
   const missing = [];
   const styles = attributes?.styles;
+  // Live click text per key (D12 as amended 2026-11-25): it wins over the file's `info` for that key.
+  const live = isPlainObject(attributes?.zone_info) ? attributes.zone_info : null;
   if (isPlainObject(shapes) && isPlainObject(attributes?.zones)) {
     for (const key of Object.keys(attributes.zones).sort()) {
       const event = attributes.zones[key];
@@ -229,7 +235,7 @@ export function buildDrawList(attributes, shapes, infos = null) {
       const geometry = shapes[key];
       const line = isLine(geometry);
       if (!isArea(geometry) && !line) { missing.push(key); continue; }
-      const info = isPlainObject(infos) ? infoOf(infos[key]) : null;
+      const info = (live ? infoOf(live[key]) : null) ?? (isPlainObject(infos) ? infoOf(infos[key]) : null);
       items.push({ kind: "zone", key, event, geometry, ...styleFor(event, styles), ...(line ? { line: true } : {}), ...(info ? { info } : {}) });
     }
   }
