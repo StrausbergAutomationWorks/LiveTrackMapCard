@@ -33,22 +33,19 @@ built on his card. This is a separate card with its own name,
 
 Each Live Track integration publishes what it tracks as `geo_location`
 entities, and every one of them carries a `source` attribute naming the
-integration (`live_track_aircraft`, `live_track_ships`, and so on). The shared
-map is this card inside [auto-entities](https://github.com/thomasloven/lovelace-auto-entities),
-which hands the card every entity matching a filter. A new train or vessel then
-appears on the map, and leaves it, without the card being edited.
+integration (`live_track_aircraft`, `live_track_ships`, and so on). The card
+picks its own entities with `entity_filter`: every entity that matches a rule is
+on the map, so a new train or vessel appears on the map, and leaves it, without
+the card being edited. Nothing else needs to be installed.
 
 One integration:
 
 ```yaml
-type: custom:auto-entities
-card_param: entities
-card:
-  type: custom:live-track-map-card
-  x: 41.88       # latitude
-  y: -87.63      # longitude
-  zoom: 10
-filter:
+type: custom:live-track-map-card
+x: 41.88       # latitude
+y: -87.63      # longitude
+zoom: 10
+entity_filter:
   include:
     - domain: geo_location
       attributes:
@@ -66,7 +63,7 @@ every `geo_location` entity on the instance, so exclude other integrations'
 by their own `source` (here `geo_json_events`):
 
 ```yaml
-filter:
+entity_filter:
   include:
     - domain: geo_location
       options:
@@ -79,20 +76,18 @@ filter:
     - state: unavailable
 ```
 
-`card_param: entities` is required: it is what tells auto-entities which of
-the card's options to fill. Whatever goes under `options:` is applied to every
-entity the filter finds. `display: attribute` with `attribute: marker_label`
-draws the label the integration chose (a train or flight number) instead of
-one squeezed out of the entity's name. `position_transition: auto` slides each
+Whatever goes under `options:` is applied to every entity the rule matches.
+`display: attribute` with `attribute: marker_label` draws the label the
+integration chose (a train or flight number) instead of one squeezed out of the
+entity's name. `position_transition: auto` slides each
 marker to its new position over the time since its last update, at most 30
 seconds, and not at all when the browser asks for reduced motion.
 
-#### Without auto-entities: `entity_filter`
+#### `entity_filter` in full
 
-The card can pick its own entities. `entity_filter` takes auto-entities'
-`include` and `exclude` lists as they are, so moving a dashboard over is a
-matter of putting its `filter:` block under the card as `entity_filter:` and
-dropping the auto-entities wrapper:
+A fuller map: aircraft drawn as their pictures, every other Live Track marker
+with its label, people, and device trackers while they are away from their
+person:
 
 ```yaml
 type: custom:live-track-map-card
@@ -130,11 +125,14 @@ entity_filter:
   `longitude`; `away_from_person_m: 100` leaves out a device tracker while it is
   within 100 m of a person who lists it in `device_trackers` (that person's own
   marker already covers it).
-* Any other key (auto-entities' `area`, `label`, `sort` and so on) is refused
-  with an error naming it, so a filter never silently does less than written.
+* Any other key (`area`, `label`, `sort` and so on) is refused with an error
+  naming it, so a filter never silently does less than written.
 * No sort. The map stacks markers by layer and position, never by list order.
 * `entities:` still works beside it; an entity listed there keeps its own
   options.
+* A dashboard that still wraps the card in [auto-entities](https://github.com/thomasloven/lovelace-auto-entities)
+  moves over by putting its `filter:` block under the card as `entity_filter:`
+  and dropping the wrapper and its `card_param:`. The rules are the same.
 
 The card looks at an entity again only when its state changed, and updates its
 markers only when an entity arrives, leaves or moves to another rule, so a map
@@ -479,9 +477,8 @@ marker. `display: pill`, the former place pill, now means the new look.
 
 #### The overview
 
-When the card fills a **panel view** (also inside a wrapper such as auto-entities), it
-shows the panel Home Assistant's own map card shows there: tabs **People**, **Devices**
-and **Zones**, a row for each with its state and how long ago, and the count of people in
+When the card fills a **panel view**, it shows the panel Home Assistant's own map
+card shows there: tabs **People**, **Devices** and **Zones**, a row for each with its state and how long ago, and the count of people in
 each zone. On a screen 600 px wide or narrower the panel is a bottom sheet you drag
 between collapsed, half and full height.
 
