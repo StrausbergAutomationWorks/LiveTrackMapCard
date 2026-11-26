@@ -1,3 +1,4 @@
+import { escapeHtml } from "../../util/Html.js";
 import L from "leaflet";
 import Logger from "../../util/Logger.js";
 import { infoOf, infoHtml, INFO_POPUP } from "../../util/InfoPopup.js";
@@ -384,7 +385,8 @@ export default class ShapeLayersService {
     let p = this.publishers.get(id);
     if (!p) {
       const attribution = typeof state?.attributes?.attribution === "string" ? state.attributes.attribution : undefined;
-      const group = L.layerGroup([], attribution ? { attribution } : {});
+      // The attribution control writes it with innerHTML: the publisher's text, escaped (LiveTrackMapCard#1).
+      const group = L.layerGroup([], attribution ? { attribution: escapeHtml(attribution) } : {});
       // The device name left off the label (util/LayerLabel.js, Lee 2026-11-19).
       const label = layerLabel(this.hass ?? { states: { [id]: state } }, id, item.name);
       // The dashboard's `show`, else the publisher's `layer_default` (backlog 363); the viewer's tick wins over both.

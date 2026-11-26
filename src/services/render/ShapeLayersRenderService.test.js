@@ -475,3 +475,20 @@ describe("the service", () => {
     expect(fetch2).toHaveBeenCalledTimes(1);
   });
 });
+describe("LiveTrackMapCard#1 finding 2: a shape publisher's attribution", () => {
+  const hassOf = (states) => ({ states });
+  it("reaches the attribution control escaped; the checkbox name goes to the control service as it is", () => {
+    const ov = overlays();
+    const svc = new ShapeLayersService({}, undefined, undefined, ov, { fetch: okFetch() });
+    svc.render(hassOf({ "sensor.w": pub({ friendly_name: "A <b>x</b>", attribution: "<img src=x onerror=alert(1)> & \"NWS\"" }) }));
+    const [group, name] = ov.addOverlay.mock.calls[0];
+    expect(group.opts).toEqual({ attribution: "&lt;img src=x onerror=alert(1)&gt; &amp; &quot;NWS&quot;" });
+    expect(name).toBe("A <b>x</b>");
+  });
+  it("a plain attribution is unchanged", () => {
+    const ov = overlays();
+    const svc = new ShapeLayersService({}, undefined, undefined, ov, { fetch: okFetch() });
+    svc.render(hassOf({ "sensor.w": pub() }));
+    expect(ov.addOverlay.mock.calls[0][0].opts).toEqual({ attribution: "NWS" });
+  });
+});

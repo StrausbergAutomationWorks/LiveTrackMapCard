@@ -1,4 +1,5 @@
 
+import { escapeHtml } from "../../util/Html.js";
 import L from "leaflet";
 import TileLayerConfig from "../../configs/TileLayerConfig";
 import WmsLayerConfig from "../../configs/WmsLayerConfig";
@@ -164,7 +165,8 @@ export default class TileLayersService {
     if (on) layer.addTo(this.map);
     const control = this._ensureControl();
     this.byLayer.set(layer, name);
-    control.addOverlay(layer, name);
+    // Leaflet writes the label with innerHTML, and a publisher names its own layer (LiveTrackMapCard#1).
+    control.addOverlay(layer, escapeHtml(name));
     return on;
   }
 

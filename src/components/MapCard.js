@@ -1,6 +1,7 @@
 
 import L from 'leaflet';
-import { LitElement, html, css } from "lit";
+import { LitElement, html, css, unsafeCSS } from "lit";
+import { MARKERCLUSTER_CSS } from "./MarkerClusterCss.js";
 import MapConfig from "../configs/MapConfig.js"
 import HaHistoryService from "../services/HaHistoryService.js"
 import HaDateRangeService from "../services/HaDateRangeService.js"
@@ -203,8 +204,6 @@ export default class MapCard extends LitElement {
 
     return html`
             <link rel="stylesheet" href="/static/images/leaflet/leaflet.css">
-            <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
-            <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
             <ha-card header="${this._config.title}">
               <div id="mapContainer" style="min-height: ${this._config.mapHeight}px">
                 <div id="map" style="min-height: ${this._config.mapHeight}px">
@@ -701,7 +700,8 @@ export default class MapCard extends LitElement {
   }
 
   static get styles() {
-    return css`
+    // The markercluster stylesheets are bundled, not loaded from unpkg at runtime (LiveTrackMapCard#1).
+    return [unsafeCSS(MARKERCLUSTER_CSS), css`
       ha-card {
         height: 100%;
         display: flex;
@@ -909,6 +909,6 @@ export default class MapCard extends LitElement {
       .leaflet-tile-pane {
         filter: var(--map-filter);
       }
-    `;
+    `];
   }
 }

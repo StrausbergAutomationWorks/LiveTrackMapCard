@@ -17,6 +17,7 @@
 //
 // Nothing here may import MapCardEntityMarker.js: it pulls Lit into Entity's imports, which
 // the jest setup does not transform, and about 30 suites stop loading.
+import { unescapeHtml } from "../util/Html.js";
 import { Renderer, DomUtil, latLng as toLatLng } from "leaflet";
 import { stats } from "./MarkerStats.js";
 import { bandOf, canvasPane, ensurePanes } from "./MarkerPlacement.js";
@@ -38,7 +39,8 @@ export const SHADOW_EASE_MS = 3000;
 export const SHADOW_EASE_STEPS = 30;
 
 /**
- * The attributes written into a marker's DivIcon html (Entity.createMapMarker).
+ * The attributes written into a marker's DivIcon html (Entity.createMapMarker), entities decoded: the values are
+ * written escaped (util/Html.js, LiveTrackMapCard#1).
  * @param {string} html
  * @returns {{[name: string]: string}}
  */
@@ -46,7 +48,7 @@ export function parseAttrs(html) {
   const out = {};
   const re = /\s([a-z-]+)=(?:"([^"]*)"|'([^']*)')/g;
   let m;
-  while ((m = re.exec(html || ""))) out[m[1]] = m[2] !== undefined ? m[2] : m[3];
+  while ((m = re.exec(html || ""))) out[m[1]] = unescapeHtml(m[2] !== undefined ? m[2] : m[3]);
   return out;
 }
 

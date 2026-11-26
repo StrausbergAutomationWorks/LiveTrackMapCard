@@ -1,4 +1,5 @@
 
+import { attr, escapeHtml } from "../util/Html.js";
 import { DivIcon, LatLng, Map, Marker, Polyline } from "leaflet";
 import { PLACE } from "../services/path/place.js";
 import Circle from "./Circle.js";
@@ -945,7 +946,7 @@ export default class Entity {
     if (entity && entity.state) {
       const distance = this.formatDistance(entity.state, this.config.distanceUnit);
       if (distance) {
-        this.marker.setTooltipContent(distance);
+        this.marker.setTooltipContent(escapeHtml(distance));
       }
     }
   }
@@ -1334,7 +1335,7 @@ export default class Entity {
       // Anchored on the preceding whitespace so `rotation` cannot match
       // inside `rotation-transition` or any other *-rotation attribute.
       const pattern = new RegExp(`(\\s)${name}="[^"]*"`);
-      iconOptions.html = iconOptions.html.replace(pattern, (_, ws) => `${ws}${name}="${text}"`);
+      iconOptions.html = iconOptions.html.replace(pattern, (_, ws) => `${ws}${name}="${attr(text)}"`);
     }
   }
 
@@ -1872,42 +1873,42 @@ export default class Entity {
       icon: new DivIcon({
         html: `
           <${MARKER_TAG}
-            entity-id="${this.id}"
-            title="${this.title}"
-            label="${this.config.label ?? ""}"
-            prefix="${this.config.prefix}"
-            suffix="${this.config.suffix}"
-            tooltip="${this.tooltip}"
-            icon="${icon ?? ""}"
-            picture="${picture ?? ""}"
-            bare-picture="${this.barePicture ? "true" : ""}"
-            ground-shadow="${shadowAlt}"
-            rotation="${rotation ?? ""}"
-            rotation-transition="${this.config.rotationTransition ?? 0}"
-            color="${color}"
-            label-color="${labelColor ?? ""}"
-            arrow="${arrow ?? ""}"
-            label-outline="${styling["label-outline"]}"
-            arrow-color="${styling["arrow-color"]}"
-            arrow-outline="${styling["arrow-outline"]}"
-            ring-color="${styling["ring-color"]}"
-            ring-width="${styling["ring-width"]}"
-            inner-ring-color="${styling["inner-ring-color"]}"
-            inner-ring-width="${styling["inner-ring-width"]}"
-            shape="${styling["shape"]}"
-            symbol="${styling["symbol"]}"
-            alternate="${styling["alternate"]}"
-            label-placement="${styling["label-placement"]}"
-            symbol-color="${styling["symbol-color"]}"
-            symbol-outline="${styling["symbol-outline"]}"
-            delay-badge="${late["delay-badge"]}"
-            delay-level="${late["delay-level"]}"
-            pulse="${late["pulse"]}"
-            style="${this.config.css}"
-            size="${this.config.size}"
-            extra-css-classes="${extraCssClasses}"
-            tap-action='${JSON.stringify(this.config.tapAction)}'
-            info="${hasInfo ? "true" : ""}"
+            entity-id="${attr(this.id)}"
+            title="${attr(this.title)}"
+            label="${attr(this.config.label ?? "")}"
+            prefix="${attr(this.config.prefix)}"
+            suffix="${attr(this.config.suffix)}"
+            tooltip="${attr(this.tooltip)}"
+            icon="${attr(icon ?? "")}"
+            picture="${attr(picture ?? "")}"
+            bare-picture="${attr(this.barePicture ? "true" : "")}"
+            ground-shadow="${attr(shadowAlt)}"
+            rotation="${attr(rotation ?? "")}"
+            rotation-transition="${attr(this.config.rotationTransition ?? 0)}"
+            color="${attr(color)}"
+            label-color="${attr(labelColor ?? "")}"
+            arrow="${attr(arrow ?? "")}"
+            label-outline="${attr(styling["label-outline"])}"
+            arrow-color="${attr(styling["arrow-color"])}"
+            arrow-outline="${attr(styling["arrow-outline"])}"
+            ring-color="${attr(styling["ring-color"])}"
+            ring-width="${attr(styling["ring-width"])}"
+            inner-ring-color="${attr(styling["inner-ring-color"])}"
+            inner-ring-width="${attr(styling["inner-ring-width"])}"
+            shape="${attr(styling["shape"])}"
+            symbol="${attr(styling["symbol"])}"
+            alternate="${attr(styling["alternate"])}"
+            label-placement="${attr(styling["label-placement"])}"
+            symbol-color="${attr(styling["symbol-color"])}"
+            symbol-outline="${attr(styling["symbol-outline"])}"
+            delay-badge="${attr(late["delay-badge"])}"
+            delay-level="${attr(late["delay-level"])}"
+            pulse="${attr(late["pulse"])}"
+            style="${attr(this.config.css)}"
+            size="${attr(this.config.size)}"
+            extra-css-classes="${attr(extraCssClasses)}"
+            tap-action='${attr(JSON.stringify(this.config.tapAction))}'
+            info="${attr(hasInfo ? "true" : "")}"
           ></${MARKER_TAG}>
         `,
         iconSize: [s, s],

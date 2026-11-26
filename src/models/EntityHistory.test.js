@@ -159,3 +159,18 @@ describe('EntityHistory', () => {
     });
   });
 });
+describe('LiveTrackMapCard#1 finding 3: the history dots tooltip', () => {
+  it('escapes the friendly name', () => {
+    const h = new EntityHistory('e', '<img src=x onerror=alert(1)>"&', 'red', 0.5, true, false);
+    h.react(new TimelineEntry(new Date(), "original-entity", "entity", { a: { latitude: 51.5, longitude: -0.1 } }));
+    h.react(new TimelineEntry(new Date(), "original-entity", "entity", { a: { latitude: 51.6, longitude: -0.2 } }));
+    const bindTooltip = jest.fn(function () { return this; });
+    const spy = jest.spyOn(L, 'circleMarker').mockImplementation(() => ({ bindTooltip, remove: jest.fn() }));
+    h.update();
+    expect(bindTooltip).toHaveBeenCalledTimes(1);
+    const text = bindTooltip.mock.calls[0][0];
+    expect(text.startsWith('&lt;img src=x onerror=alert(1)&gt;&quot;&amp; ')).toBe(true);
+    expect(text).not.toMatch(/[<>"]/);
+    spy.mockRestore();
+  });
+});

@@ -1,3 +1,4 @@
+import { escapeHtml } from "../../util/Html.js";
 import L from "leaflet";
 import Logger from "../../util/Logger.js";
 import { apiPath } from "../../util/TrackLine.js";
@@ -236,7 +237,8 @@ export default class PointLayersService {
     let p = this.publishers.get(id);
     if (!p) {
       const attribution = typeof state?.attributes?.attribution === "string" ? state.attributes.attribution : undefined;
-      const layer = new PointCanvasLayer(attribution ? { attribution } : {});
+      // The attribution control writes it with innerHTML: the publisher's text, escaped (LiveTrackMapCard#1).
+      const layer = new PointCanvasLayer(attribution ? { attribution: escapeHtml(attribution) } : {});
       // The device name left off the label (util/LayerLabel.js, Lee 2026-11-19).
       const label = layerLabel(this.hass ?? { states: { [id]: state } }, id, item.name);
       p = { layer, url: null, status: null, order: 0, state: null };

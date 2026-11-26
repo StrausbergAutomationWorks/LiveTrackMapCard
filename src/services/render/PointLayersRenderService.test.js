@@ -471,3 +471,13 @@ describe("cleanup and sprites", () => {
     expect(dotSprite({ color: "#FF0000", radius: 3, outline: null }, 1)).toBeNull();
   });
 });
+describe("LiveTrackMapCard#1 finding 2: a point publisher's attribution", () => {
+  it("reaches the attribution control escaped", () => {
+    stubCanvas();
+    const ov = overlays();
+    const svc = new PointLayersService(fakeMap(), undefined, ov);
+    svc.render(hassWith({ "sensor.f": pub({ attribution: "<img src=x onerror=alert(1)> & 'FIRMS'" }) }));
+    const [layer] = ov.addOverlay.mock.calls[0];
+    expect(layer.options.attribution).toBe("&lt;img src=x onerror=alert(1)&gt; &amp; &#39;FIRMS&#39;");
+  });
+});

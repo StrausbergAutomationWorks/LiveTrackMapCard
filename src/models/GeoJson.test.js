@@ -416,3 +416,10 @@ describe('GeoJson', () => {
     });
   });
 });
+describe('LiveTrackMapCard#1 finding 3: the GeoJSON tooltip', () => {
+  it('escapes every key and value; the line break between them stays markup', () => {
+    const geoJson = new GeoJson(new GeoJsonConfig('zone_data', '#ff0000'), { id: 'e', map: {}, attributes: {}, config: {} });
+    const tip = geoJson._createTooltipContent({ '<b>k</b>': '<img src=x onerror=alert(1)>', name: 'a "b" & c' });
+    expect(tip).toBe('&lt;b&gt;k&lt;/b&gt;: &lt;img src=x onerror=alert(1)&gt;<br>name: a &quot;b&quot; &amp; c');
+  });
+});

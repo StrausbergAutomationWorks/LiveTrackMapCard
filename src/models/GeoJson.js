@@ -1,3 +1,4 @@
+import { escapeHtml } from '../util/Html.js';
 import L from "leaflet";
 import Logger from "../util/Logger.js";
 import GeoJsonConfig from "../configs/GeoJsonConfig.js";
@@ -153,7 +154,7 @@ export default class GeoJson {
     // Create a simple tooltip from properties
     const entries = Object.entries(properties)
       .filter(([, value]) => value !== null && value !== undefined)
-      .map(([key, value]) => `${key}: ${value}`)
+      .map(([key, value]) => `${escapeHtml(key)}: ${escapeHtml(value)}`)   // a tooltip string is innerHTML (LiveTrackMapCard#1)
       .slice(0, 5); // Limit to first 5 properties
 
     return entries.length > 0 ? entries.join('<br>') : '';

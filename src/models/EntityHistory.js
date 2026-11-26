@@ -1,3 +1,4 @@
+import { escapeHtml } from '../util/Html.js';
 import L from 'leaflet';
 import TimelineEntry from './TimelineEntry';
 import { Polyline, CircleMarker } from 'leaflet';
@@ -73,7 +74,7 @@ export default class EntityHistory {
               fillOpacity: opacity,
               interactive: true,
             }
-          ).bindTooltip(`${this.entityTitle} ${entry.timestamp.toLocaleString()}`, {direction: 'top'})
+          ).bindTooltip(escapeHtml(`${this.entityTitle} ${entry.timestamp.toLocaleString()}`), {direction: 'top'})
         );
       }
 
